@@ -1,6 +1,6 @@
 package info.kwarc.p
 
-class Parser(input: String) {
+class Parser(file: File, input: String) {
   private var index = 0
   override def toString = input.substring(index)
 
@@ -9,23 +9,33 @@ class Parser(input: String) {
     throw Error(msg + "; found " + input.substring(index))
   }
 
+  def addRef[A<:SyntaxFragment](sf: => A): A = {
+    trim
+    val from = index
+    sf.loc = Location(file, from, index)
+    sf
+  }
+
   // all input has been parsed
   def atEnd = {index == input.length}
 
   // next character to parse
   def next = input(index)
 
+
   // string s occurs at the current index in the input
+  // if s is only letters, we additionally check that no id char follows
   def startsWith(s: String): Boolean = {
-    index+s.length <= input.length && input.substring(index, index+s.length) == s
+    val isKeyword = s.forall(_.isLetter)
+    val b = index+s.length <= input.length && input.substring(index, index+s.length) == s
+    if (b && isKeyword) (index+s.length == input.length || !Path.isIdChar(input(index+s.length)))
+    else b
   }
   // test for some strings, and if found, skip and trim
   def startsWithS(s: String): Boolean = {
-    if (index + s.length <= input.length && input.substring(index,index + s.length) == s) {
-      skip(s);
-      true
-    } else
-      false
+    val b = startsWith(s)
+    if (b) skip(s)
+    b
   }
 
   // parses all whitespace at the current position
@@ -76,9 +86,16 @@ class Parser(input: String) {
     input.substring(begin,index)
   }
 
-  def parsePath: Path = {
+  def parsePath: Path = addRef {
     val ns = parseList(parseName, ".", " ")
     Path(ns)
+  }
+
+  def parseDeclaration: Declaration = addRef {
+    if (startsWith("class") || startsWith(("module"))) parseModule
+    else if (startsWith("type")) parseTypeDecl
+    else if (next.isLetter) parseSymDecl
+    else fail("declaration expected")
   }
 
   def parseDeclarations: List[Declaration] = {
@@ -87,40 +104,20 @@ class Parser(input: String) {
     while (!break) {
       trim
       if (atEnd || startsWith("}")) {break = true}
-      else if (startsWith("class")) decls ::= parseClass
-      else if (startsWith("module")) decls ::= parseModule
-      else if (startsWith("type")) decls ::= parseTypeDecl
-      else if (next.isLetter) decls ::= parseSymDecl
-      else fail("declaration expected")
+      else decls ::= parseDeclaration
     }
     decls.reverse
   }
 
-  def parseClass: Class = {
-    skipT("class")
-    val name = parseName
-    trim
-    val supers = if (startsWith(":")) {
-      skip(":")
-      parseList(parseType(Context.empty), ",", "{")
-    } else Nil
-    trim
-    skip("{")
-    val decls = parseDeclarations
-    trim
-    skip("}")
-    Class(name, supers, decls)
-  }
-
   def parseModule: Module = {
-    skipT("module")
+    val open = if (startsWithS("class")) false else {skipT("module"); true}
     val name = parseName
     trim
     skip("{")
     val decls = parseDeclarations
     trim
     skip("}")
-    Module(name, decls)
+    Module(name, open, decls)
   }
 
   def parseSymDecl: SymDecl = {
@@ -159,6 +156,11 @@ class Parser(input: String) {
     VarDecl(n,tp,vl,mutable)
   }
 
+  def parseTheory(implicit ctx: Context): Theory = {
+    val ps = parseList(parsePath, "+", "|")
+    Theory(ps)
+  }
+
   def parseExpressions(implicit ctx: Context) = {
     skip("(")
     val es = parseList(parseExpression, ",", ")")
@@ -166,21 +168,23 @@ class Parser(input: String) {
     es
   }
 
-  def parseExpression(implicit ctx: Context): Expression = {
+  def parseExpression(implicit ctx: Context): Expression = addRef {
     var seen: List[(Expression,InfixOperator)] = Nil
     while (true) {
       trim
-      var exp = if (startsWith("{")) {
+      var exp = if (startsWithS("{")) {
         var cs: List[Expression] = Nil
         var ctxL = ctx
         trim
-        while (!startsWith("}")) {
+        while (!startsWithS("}")) {
           val c = parseExpression(ctxL)
           cs ::= c
           c match {
             case vd: VarDecl => ctxL = ctxL.append(vd)
             case _ =>
           }
+          trim
+          if (startsWith(";")) skip(";")
         }
         Block(cs.reverse)
       } else if (startsWithS("var")) {
@@ -209,6 +213,11 @@ class Parser(input: String) {
           Some(parseExpression)
         } else None
         IfThenElse(c,th,el)
+      } else if (Operator.prefixes.exists(o => startsWith(o.symbol))) {
+        val o = Operator.prefixes.find(o => startsWith(o.symbol)).get
+        skip(o.symbol)
+        val e = parseExpression
+        Application(BaseOperator(o,null),List(e))
       } else if (startsWithS("\"")) {
         val begin = index
         while (next != '"') index += 1
@@ -237,27 +246,47 @@ class Parser(input: String) {
         val s = input.substring(begin,index)
         //if (seenDot) FloatLiteral(s.toFloat) else
         IntValue(s.toInt)
-      } else if (Operator.prefixes.exists(o => startsWith(o.symbol))) {
-        val o = Operator.prefixes.find(o => startsWith(o.symbol)).get
-        skip(o.symbol)
-        val e = parseExpression
-        Application(BaseOperator(o,null),List(e))
       } else if (startsWith("(")) {
         // unit (), bracketed (e), or tuple (e,...,e)
         val es = parseExpressions
-        es match {
+        trim
+        if (startsWith("->")) {
+          skip("->")
+          val vds = es.map {
+            case vd: VarDecl => vd
+            case VarRef(n) => VarDecl(n, null)
+            case SymbolRef(p) if p.names.length == 1 => VarDecl(p.names.head, null)
+            case _ => fail("not variable declaration")
+          }
+          val c = Context(vds)
+          val b = parseExpression(ctx.append(c))
+          Lambda(c, b)
+        } else es match {
           case Nil => UnitValue
           case List(e) => e
           case es => Tuple(es)
         }
+      } else if (startsWithS("list")) {
+        val es = parseExpressions
+        ListValue(es)
       } else {
-        // variable assignment, or symbol/variable reference
+        //  symbol/variable reference
         val n = parsePath
-        if (n.names.length == 1 && ctx.domain.contains(n.names.head)) {
-          VarRef(n.names.head)
+        if (n.names.length == 1) {
+          trim
+          if (startsWith(":")) {
+            // variable declaration
+            skip(":")
+            val tp = parseType
+            VarDecl(n.names.head,tp,None,false)
+          } else if (ctx.domain.contains(n.names.head)) {
+            // reference to bound variable
+            VarRef(n.names.head)
+          } else
+            SymbolRef(n)
         } else
           SymbolRef(n)
-      } // end e =
+      } // end exp =
       trim
       val strongPostops = List('.', '(')
       while (!atEnd && (strongPostops contains next)) {
@@ -324,11 +353,11 @@ class Parser(input: String) {
     last
   }
 
-  def parseType(implicit ctx: Context): Type = {
-    trim
+  def parseType(implicit ctx: Context): Type = addRef {
     val tp = if (startsWith("int")) {skip("int"); IntType}
       //else if (startsWith("float")) {skip("float"); FloatType}
       //else if (startsWith("char")) {skip("char"); CharType}
+      else if (startsWith("rat")) {skip("rat"); RatType}
       else if (startsWith("string")) {skip("string"); StringType}
       else if (startsWith("bool")) {skip("bool"); BoolType}
       else if (startsWith("empty")) {skip("empty"); EmptyType}
@@ -346,6 +375,11 @@ class Parser(input: String) {
           case List(a) => a
           case ys => ProdType(ys)
         }
+      } else if (startsWithS("|")) {
+        val t = parseTheory
+        trim
+        skip("|")
+        ClassType(t)
       } else {
         val p = parsePath
         TypeRef(p)

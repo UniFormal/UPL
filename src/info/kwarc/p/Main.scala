@@ -15,6 +15,9 @@ object Main {
     }
     val prog = Program(Vocabulary(decls), main)
     val progC = Checker.checkProgram(prog)
-    println(progC.toString)
+    val intp = new Interpreter(progC.voc)
+    val res = intp.interpretExpression(progC.main)
+    println(progC)
+    println(res)
   }
 }

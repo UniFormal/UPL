@@ -10,9 +10,6 @@
   <component name="CodeStyleSettingsInfer">
     <option name="done" value="true" />
   </component>
-  <component name="ProblemsViewState">
-    <option name="selectedIndex" value="1" />
-  </component>
   <component name="ProjectCodeStyleSettingsMigration">
     <option name="version" value="2" />
   </component>
@@ -24,6 +21,7 @@
   <component name="PropertiesComponent">
     <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="panda.excluded.classes" value="" />
     <property name="panda.monitored.classes" value="" />
   </component>
@@ -31,7 +29,7 @@
     <configuration name="Build" type="Application" factoryName="Application">
       <option name="MAIN_CLASS_NAME" value="info.kwarc.p.Main" />
       <module name="P" />
-      <option name="PROGRAM_PARAMETERS" value="test.p" />
+      <option name="PROGRAM_PARAMETERS" value="test.p main" />
       <method v="2">
         <option name="Make" enabled="true" />
       </method>
@@ -61,13 +59,13 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/info/kwarc/p/Checker.scala</url>
-          <line>133</line>
-          <option name="timeStamp" value="9" />
+          <line>613</line>
+          <option name="timeStamp" value="18" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
-          <url>file://$PROJECT_DIR$/src/info/kwarc/p/Checker.scala</url>
-          <line>282</line>
-          <option name="timeStamp" value="13" />
+          <url>file://$PROJECT_DIR$/src/info/kwarc/p/Interpreter.scala</url>
+          <line>15</line>
+          <option name="timeStamp" value="24" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
