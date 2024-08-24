@@ -3,7 +3,8 @@ module M {
     name: string
     age: int
   }
-  class Gendered : Person {
+  class Gendered {
+    include Person
     male: bool
     age = 5
     address = (if male "Mr" else "Mrs") + " " + name

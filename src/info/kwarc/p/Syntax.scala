@@ -5,13 +5,20 @@ case class Location(file: File, from: Int, to: Int) {
 }
 
 sealed abstract class SyntaxFragment {
-  private[p] var loc: Location = null
+  private[p] var loc: Location = null // set by parser to remember location in source
+  /** moves over mutable fields, may be called after performing traversals
+    * if the resulting expression is "the same" as the original in some sense
+    * if needed, it is usually to implement the traversal using also SyntaxFragment.matchC in the first place
+    */
+  def copyFrom(sf: SyntaxFragment): this.type = {
+    loc = sf.loc
+    this
+  }
 }
 object SyntaxFragment {
-  def keepRef[A<:SyntaxFragment](pre: A)(f: A => A): A = {
-    val post = f(pre)
-    post.loc = pre.loc
-    pre
+  /** applies a function, usually by case-matching, and copies mutable data over (see copyFrom) */
+  def matchC[A<:SyntaxFragment](a: A)(f: A => A): A = {
+    f(a).copyFrom(a)
   }
 }
 
@@ -28,7 +35,7 @@ sealed trait Named extends MaybeNamed {
 }
 
 sealed trait HasChildren[A <: MaybeNamed] extends SyntaxFragment {
-  val decls: List[A]
+  def decls: List[A]
   def domain = decls collect {case d: Named => d.name}
   def lookupO(name: String) = decls.find(_.nameO.contains(name))
   def lookup(name: String) = lookupO(name).get
@@ -60,32 +67,13 @@ sealed abstract class UnnamedDeclaration extends Declaration {
 
 object Declaration {
   def update(decls: List[Declaration], old: Declaration, nw: Declaration) = {
-    val (before,old :: after) = decls.splitAt(decls.indexOf(old))
-    nw.loc = old.loc
+    val (before,_ :: after) = decls.splitAt(decls.indexOf(old))
+    nw.copyFrom(old)
     before ::: nw :: after
-  }
-  def merge(d1: Declaration, d2: Declaration) = (d1,d2) match {
-    case (SymDecl(n1, tp1, v1), SymDecl(n2, tp2, v2)) if n1 == n2 =>
-      val tpM = if (tp2 == null) tp1
-        else if (tp1 == null) tp2
-        else if (tp1 == tp2) tp1
-        else throw IError("not mergable")
-      val vM = if (v1.isEmpty) v2
-        else if (v2.isEmpty) v1
-        else if (v1 == v2) v1
-        else throw IError("not mergable")
-      SymDecl(n1, tpM, vM)
-    case ((TypeDecl(n1,v1)), TypeDecl(n2,v2)) if n1 == n2 =>
-      val vM = if (v1.isEmpty) v2
-      else if (v2.isEmpty) v1
-      else if (v1 == v2) v1
-      else throw IError("not mergable")
-      TypeDecl(n1, vM)
-    case _ => if (d1 == d2) d1 else throw IError("not mergable")
   }
 }
 
-trait HasDeclarations[A <: Declaration] extends Declaration with HasChildren[Declaration] {
+sealed trait HasDeclarations[A <: Declaration] extends Declaration with HasChildren[Declaration] {
   override def lookupPath(path: Path): Option[Declaration] = path.names match {
     case Nil => Some(this)
     case hd::_ => lookupO(hd).flatMap {d => d.lookupPath(path.tail)}
@@ -102,9 +90,25 @@ trait HasDeclarations[A <: Declaration] extends Declaration with HasChildren[Dec
           lookupRelativePath(par.up(),p)
     }
   }
-  def lookupClass(path: Path, exc: PError): Module = lookupPath(path) match {
-    case Some(m: Module) => m
-    case _ => throw exc
+  def lookupModule(path: Path): Option[Module] = lookupPath(path) match {
+    case s@Some(m: Module) => Some(m)
+    case _ => None
+  }
+
+  /** pre: theory is flat and well-formed
+    * in particular, multiple declaration are of the same kind and agree in all components that are given
+    * subtyping is not considered yet
+    */
+  def lookupInTheory(thy: Theory, n: String): Option[(Path,Declaration)] = {
+    var last: (Path,Declaration) = null
+    thy.parts.foreach {m => lookupPath(m/n) foreach {
+      case hd: HasDefiniens[_] =>
+        val r = (m,hd)
+        if (hd.dfO.isDefined) Some(r)
+        else last = r
+      case _ =>
+    }}
+    Option(last)
   }
 
   def update(old: Declaration, nw: Declaration): A
@@ -140,9 +144,18 @@ object Context {
   val empty = Context(Nil)
 }
 
-case class Theory(parts: List[Path]) {
+// TODO: Theory takes List[Include], Include takes Path
+case class Theory(parts: List[Path]) extends SyntaxFragment {
   override def toString = parts.mkString(" + ")
   private[p] var isFlat = false
+  override def copyFrom(sf: SyntaxFragment): this.type = {
+    super.copyFrom(sf)
+    sf match {
+      case t: Theory => isFlat = t.isFlat
+      case _ =>
+    }
+    this
+  }
   override def equals(that: Any) = that match {
     case Theory(those) =>
       // hardcode commutativity, idempotency of union
@@ -160,8 +173,8 @@ case class StaticEnvironment(voc: Vocabulary, parent: Path, scopes: List[(Theory
   def pop() = copy(scopes = scopes.tail)
   def theory = scopes.head._1
   def ctx = scopes.head._2
-  def add(c: Context) = copy(scopes = (theory, ctx.append(c))::scopes)
-  def add(vd: VarDecl) = add(Context(List(vd)))
+  def add(c: Context): StaticEnvironment = copy(scopes = (theory, ctx.append(c))::scopes)
+  def add(vd: VarDecl): StaticEnvironment = add(Context(List(vd)))
   def update(p: Path, old: Declaration, nw: Declaration) = {
     if (old == nw) this else {
       copy(voc = voc.update(p,old,nw))
@@ -169,6 +182,7 @@ case class StaticEnvironment(voc: Vocabulary, parent: Path, scopes: List[(Theory
   }
   def enter(n: String) = copy(parent = parent/n)
   def leave = copy(parent = parent.up())
+  def parentDecl = voc.lookupPath(parent)
 }
 object StaticEnvironment {
   def apply(p: Program): StaticEnvironment = StaticEnvironment(p.voc, Path(Nil), List((Theory.empty, Context.empty)))
@@ -183,15 +197,21 @@ trait HasDefiniens[A<:SyntaxFragment] {
   val dfO: Option[A]
 }
 
-case class Module(name: String, open: Boolean, decls: List[Declaration]) extends NamedDeclaration with HasDeclarations[Module] {
+case class Module(name: String, closed: Boolean, decls: List[Declaration]) extends NamedDeclaration with HasDeclarations[Module] {
   override def toString = {
-    val k = if (open) "module" else "class"
+    val k = if (closed) "class" else "module"
     s"$k $name {\n${decls.mkString("\n").indent(2)}}"
   }
-  private[p] var supers: List[Path] = null
   def update(old: Declaration, nw: Declaration) = {
-    copy(decls = Declaration.update(decls, old, nw))
+    val mC = copy(decls = Declaration.update(decls, old, nw))
+    mC.supers = supers
+    mC
   }
+  // filled during type-checking
+  /** parent theory */
+  private[p] var supers: Theory = null
+  /** if thisPath is the path to this module, this module as a theory */
+  private[p] def theory(thisPath: Path) = Theory(thisPath::supers.parts)
 }
 
 case class SymDecl(name: String, tp: Type, dfO: Option[Expression]) extends NamedDeclaration with HasDefiniens[Expression] {
@@ -217,8 +237,7 @@ case class Include(dom: Theory, dfO: Option[Expression], realize: Boolean) exten
   }
 }
 
-case class Foreign(format: String, parts: List[(String, SyntaxFragment)], lastPart: String) extends UnnamedDeclaration
-
+// case class Foreign(format: String, parts: List[(String, SyntaxFragment)], lastPart: String) extends UnnamedDeclaration
 
 // ***************** Types **************************************
 sealed abstract class Type extends SyntaxFragment
@@ -226,6 +245,10 @@ sealed abstract class Type extends SyntaxFragment
 case class TypeRef(path: Path) extends Type {
   override def toString = path.toString
 }
+
+// TODO: type field references are needed; they represent an unknown type
+//  the only way to check against it is by calling methods on an instance
+//  that is statically known to be equal when restricted to the class declaring the type
 
 case class ClassType(domain: Theory) extends Type {
   override def toString = "|" + domain.toString + "|"
@@ -238,10 +261,6 @@ object AnyStructure {
     case ClassType(Theory(Nil)) => Some(())
     case _ =>
   }
-}
-
-case class StructureType(decls: List[Declaration]) extends Type {
-  override def toString = decls.mkString("{", ",", "}")
 }
 
 case class ExprsOver(scope: Theory, tp: Type) extends Type {
@@ -271,19 +290,48 @@ case class ListType(elem: Type) extends TypeOperator(List(elem)) {
 }
 
 // ***************** Expressions **************************************
-sealed abstract class Expression extends SyntaxFragment {
-  protected[p] var interpreted = false
-}
+sealed abstract class Expression extends SyntaxFragment
 
 case class SymbolRef(path: Path) extends Expression {
   override def toString = path.toString
 }
 
-case class Structure(decls: List[Declaration]) extends Expression with HasChildren[Declaration]
-
-case class FieldRef(owner: Expression, name: String) extends Expression {
-  override def toString = s"$owner.$name"
+case class Instance(theory: Theory, decls: List[Declaration]) extends Expression with HasChildren[Declaration] with MutableExpressionStore {
+  // non-null exactly for run-time instances
+  private[p] var fields: List[MutableExpression] = null
+  def isRuntime = fields != null
+  override def equals(that: Any): Boolean = {
+    that match {
+      case that: Instance =>
+        if (fields != null) {
+          this eq that
+        }
+        else {
+          this.theory == that.theory && this.decls == that.decls
+        }
+      case _ => false
+    }
+  }
+  override def copyFrom(sf: SyntaxFragment): this.type = {
+    super.copyFrom(sf)
+    sf match {
+      case i: Instance => fields = i.fields
+      case _ =>
+    }
+    this
+  }
 }
+
+case class FieldRef(owner: Option[Expression], name: String) extends Expression {
+  override def toString = {
+    val ownerS = owner match {
+      case None => ""
+      case Some(e) => e + "."
+    }
+    ownerS+name
+  }
+}
+
 case class VarRef(name: String) extends Expression {
   override def toString = name
 }
@@ -323,8 +371,17 @@ case class While(cond: Expression, body: Expression) extends Expression
 case class For(name: String, range: Expression, body: Expression) extends Expression
 
 case class Lambda(ins: Context, body: Expression) extends Expression {
-  // used during interpretation to store the frame relative to which the body must be interpreted when the function is applied
+  // used at run-time to store the frame relative to which the body must be interpreted when the function is applied
   private[p] var frame: Frame = null
+  override def copyFrom(sf: SyntaxFragment): this.type = {
+    super.copyFrom(sf)
+    sf match {
+      case l: Lambda => frame = l.frame
+      case _ =>
+    }
+    this
+  }
+
   override def toString = s"($ins) -> $body"
 }
 case class Application(fun: Expression, args: List[Expression]) extends Expression {

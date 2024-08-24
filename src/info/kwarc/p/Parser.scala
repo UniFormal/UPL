@@ -12,8 +12,9 @@ class Parser(file: File, input: String) {
   def addRef[A<:SyntaxFragment](sf: => A): A = {
     trim
     val from = index
-    sf.loc = Location(file, from, index)
-    sf
+    val a = sf
+    a.loc = Location(file, from, index)
+    a
   }
 
   // all input has been parsed
@@ -81,6 +82,7 @@ class Parser(file: File, input: String) {
   }
 
   def parseName: String = {
+    trim
     val begin = index
     while (!atEnd && next.isLetterOrDigit) index += 1
     input.substring(begin,index)
@@ -93,6 +95,7 @@ class Parser(file: File, input: String) {
 
   def parseDeclaration: Declaration = addRef {
     if (startsWith("class") || startsWith(("module"))) parseModule
+    else if (startsWith("include") || startsWith("realize")) parseInclude
     else if (startsWith("type")) parseTypeDecl
     else if (next.isLetter) parseSymDecl
     else fail("declaration expected")
@@ -110,14 +113,25 @@ class Parser(file: File, input: String) {
   }
 
   def parseModule: Module = {
-    val open = if (startsWithS("class")) false else {skipT("module"); true}
+    val closed = if (startsWithS("class")) true else {skipT("module"); false}
     val name = parseName
     trim
     skip("{")
     val decls = parseDeclarations
     trim
     skip("}")
-    Module(name, open, decls)
+    Module(name, closed, decls)
+  }
+
+  def parseInclude: Include = {
+    implicit val ctx = Context.empty
+    val rz = if (startsWithS("include")) false else {skip("realize"); true}
+    val dom = parseTheory
+    trim
+    val dfO = if (startsWithS("=")) {
+      Some(parseExpression)
+    } else None
+    Include(dom, dfO, rz)
   }
 
   def parseSymDecl: SymDecl = {
@@ -157,6 +171,7 @@ class Parser(file: File, input: String) {
   }
 
   def parseTheory(implicit ctx: Context): Theory = {
+    trim
     val ps = parseList(parsePath, "+", "|")
     Theory(ps)
   }
@@ -168,11 +183,15 @@ class Parser(file: File, input: String) {
     es
   }
 
-  def parseExpression(implicit ctx: Context): Expression = addRef {
+  def parseExpression(implicit ctx: Context): Expression = addRef {parseExpressionInner}
+  // needed because addRef does not work with return-statements
+  private def parseExpressionInner(implicit ctx: Context): Expression = {
     var seen: List[(Expression,InfixOperator)] = Nil
     while (true) {
       trim
-      var exp = if (startsWithS("{")) {
+      var exp = if (startsWithS(".")) {
+        SymbolRef(parsePath)
+      } else if (startsWithS("{")) {
         var cs: List[Expression] = Nil
         var ctxL = ctx
         trim
@@ -198,7 +217,6 @@ class Parser(file: File, input: String) {
         val b = parseExpression
         While(c,b)
       } else if (startsWithS("for")) {
-        trim
         val v = parseName
         trim
         skipT("in")
@@ -290,9 +308,10 @@ class Parser(file: File, input: String) {
       trim
       val strongPostops = List('.', '(')
       while (!atEnd && (strongPostops contains next)) {
+        // TODO: clashes with path-separator
         if (startsWithS(".")) {
           val n = parseName
-          exp = FieldRef(exp,n)
+          exp = FieldRef(Some(exp),n)
         } else if (startsWith("(")) {
           val es = parseExpressions
           exp = Application(exp,es)

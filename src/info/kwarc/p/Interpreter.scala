@@ -1,25 +1,33 @@
 package info.kwarc.p
 
-case class FrameEntry(name: String, var value: Expression) {
+import SyntaxFragment.matchC
+
+case class MutableExpression(name: String, var value: Expression) {
   override def toString = name + " = " + value
 }
+
+trait MutableExpressionStore {
+  private[p] def fields: List[MutableExpression]
+  def getO(n: String) = fields.find(_.name == n)
+  def get(n: String) = getO(n) match {
+    case Some(f) => f.value
+    case None => throw IError("variable does not exist: " + n)
+  }
+  def set(n: String, v: Expression) {
+    fields.find(_.name == n).get.value = v
+  }
+}
+
 /** @param owner the object relative to which names are to be interpreted,
   *  e.g., the class in which the currently interpreted function is declared
   *        empty if some other function is interpreted
   * @param vars the visible local variables
   *  e.g., the arguments of the called function
   */
-case class Frame(name: String, owner: Option[Structure], var vars: List[FrameEntry]) {
-  override def toString = name + ": " + owner + vars.mkString(", ")
-  def lookup(n: String) = vars.find(_.name == n) match {
-    case Some(f) => f.value
-    case None => throw IError("variable does not exist: " + n)
-  }
-  def update(n: String, v: Expression) {
-    vars.find(_.name == n).get.value = v
-  }
-  def add(n: String, vl: Expression) {
-    vars ::= FrameEntry(n, vl)
+case class Frame(name: String, owner: Option[Instance], var fields: List[MutableExpression]) extends MutableExpressionStore {
+  override def toString = name + ": " + owner + fields.mkString(", ")
+  def allocate(n: String, vl: Expression) {
+    fields ::= MutableExpression(n, vl)
     addedInBlock = (addedInBlock.head + 1) :: addedInBlock.tail
   }
 
@@ -28,7 +36,7 @@ case class Frame(name: String, owner: Option[Structure], var vars: List[FrameEnt
     addedInBlock ::= 0
   }
   def leaveBlock {
-    vars = vars.drop(addedInBlock.head)
+    fields = fields.drop(addedInBlock.head)
     addedInBlock = addedInBlock.tail
   }
 }
@@ -47,58 +55,94 @@ class Interpreter(vocInit: Vocabulary) {
   private def pop() {stack = stack.tail}
 
   def interpretDeclaration(d: Declaration) {
+    // TODO
     voc = voc.append(d)
   }
 
+  def interpretExpressionInFrame(f: Frame, exp: Expression) = {
+    push(f)
+    val expI = interpretExpression(exp)
+    pop()
+    expI
+  }
   def interpretExpression(exp: Expression): Expression = {
-    if (exp.interpreted) return exp
-    val expI: Expression = exp match {
+    exp match {
       case _: BaseValue => exp
       case _: BaseOperator => exp
       case SymbolRef(p) => voc.lookupPath(p) match {
-        case Some(sd:SymDecl) => sd.value match {
-          case None => exp // allow this?
+        case Some(sd:SymDecl) => sd.dfO match {
+          case None => fail(exp, "no definiens") //TODO allow this as an abstract declaration in a module; all elimination forms below must remain uninterpreted
           case Some(v) => interpretExpression(v)
         }
         case _ => fail(p, "not a value")
       }
-      case VarRef(n) => frame.lookup(n) // frame values are always interpreted
+      case VarRef(n) => frame.get(n) // frame values are always interpreted
       case VarDecl(n,_, vl, _) =>
         val vlI = vl match {
-          case Some(v) => interpretExpression(v)
           case None => fail(exp, "uninitialized variable")
+          case Some(v) => interpretExpression(v)
         }
-        frame.add(n, vlI)
+        frame.allocate(n, vlI)
         UnitValue
       case Assign(t, v) =>
         val vI = interpretExpression(v)
         t match {
-          case VarRef(n) => frame.update(n,vI)
+          case VarRef(n) => frame.set(n,vI)
           case _ => fail(exp,"complex target unsupported")
         }
         UnitValue
       case ExprOver(v,q) =>
         val qI = EvalInterpreter(q)(0)
         ExprOver(v,qI)
-      case Structure(fs) =>
-        val fsI = fs map {
-          case sd: SymDecl => sd.copy(value = sd.value map interpretExpression)
+      case Eval(_) =>
+        fail(exp, "eval outside quotation")
+      case inst:Instance =>
+        // if instance had already been created, this would not be reached
+        val fsI = inst.decls.collect {
+          case sd: SymDecl =>
+            val dfI = interpretExpression(sd.dfO.get)
+            MutableExpression(sd.name, dfI)
         }
-        Structure(fsI)
-      case FieldRef(ow, n) =>
-        val owI = interpretExpression(ow)
+        val runtimeInst = inst.copy() // create new Java object for every new instance
+        runtimeInst.fields = fsI.reverse
+        // execute the inherited field initializers in the context of this instance
+        // variables available in the scope surrounding 'inst' are not visible
+        push(Frame("new instance", Some(runtimeInst), Nil))
+        runtimeInst.theory.parts.foreach {p =>
+          val m = voc.lookupModule(p).getOrElse(fail(exp, "unknown module"))
+          m.decls.foreach {
+            case sd: SymDecl if sd.dfO.isDefined =>
+              val d = sd.dfO.get
+              val dI = interpretExpression(d)
+              if (!(d eq dI)) { // or sd.mutable
+                inst.fields ::= MutableExpression(sd.name, dI)
+              }
+            case _ =>
+          }
+        }
+        pop()
+        runtimeInst
+      case FieldRef(owO, n) =>
+        val owI = owO match {
+          case Some(ow) => interpretExpression(ow)
+          case None => frame.owner.getOrElse {
+            fail(exp,"missing owner")
+          }
+        }
         owI match {
-          case s: Structure =>
-            val sd = s.lookup(n) match {
-              case sd: SymDecl => sd
-              case _ => fail(exp, "not an expression field")
+          case inst: Instance if inst.isRuntime =>
+            inst.getO(n).map(_.value) getOrElse {
+              val (_,d) = voc.lookupInTheory(inst.theory,n).getOrElse {
+                fail(exp,"unknown field")
+              }
+              d match {
+                case sd: SymDecl =>
+                  val fr = Frame(sd.name, Some(inst), Nil)
+                  interpretExpressionInFrame(fr, sd.dfO.get)
+                case _ => fail(exp,"field not a symbol")
+              }
             }
-            if (sd.tp.isInstanceOf[FunType]) {
-              // functions must be interpreted at call-time in the context of their owner
-              FieldRef(owI,n)
-            } else
-              sd.value.get // exists by type-checking
-          case _ => fail(exp,"owner not a structure")
+          case _ => fail(exp,"owner not a runtime instance")
         }
       case Block(es) =>
         frame.enterBlock
@@ -131,12 +175,13 @@ class Interpreter(vocInit: Vocabulary) {
         }
         UnitValue
       case For(i, r, b) =>
-        val rI = interpretExpression(r) match {
+        val rI = interpretExpression(r)
+        rI match {
           case ListValue(vs) =>
             frame.enterBlock
-            frame.add(i, UnitValue) // irrelevant value
+            frame.allocate(i, null) // irrelevant value
             vs.foreach {v =>
-              frame.update(i, v)
+              frame.set(i, v)
               interpretExpression(b)
             }
             frame.leaveBlock
@@ -145,8 +190,9 @@ class Interpreter(vocInit: Vocabulary) {
         UnitValue
       case lam: Lambda =>
         // lambdas must be interpreted at call-time, and the body is relative to the current frame
-        lam.frame = frame
-        lam
+        val lamC = lam.copy() // the same lambda can be interpreted in different frames
+        lamC.frame = frame
+        lamC
       case Application(f, as) =>
         val fI = interpretExpression(f)
         val asI = as map interpretExpression
@@ -159,20 +205,7 @@ class Interpreter(vocInit: Vocabulary) {
             // names in lam.body are relative to that
             val r = applyFunction(f.toString, None, lam, asI)
             r
-          case FieldRef(ow, n) =>
-            ow match {
-              case str: Structure =>
-                val fd = str.lookup(n) match {
-                  case fd: SymDecl => fd
-                  case _ => fail(exp, "not an expression")
-                }
-                fd.value.get match {
-                  case lam: Lambda =>
-                    applyFunction(n.toString, Some(str), lam, asI)
-                  case _ => fail(f, "value of function field not a lambda")
-                }
-              case _ => fail(f, "owner of function not a structure")
-            }
+          case _ => fail(f, "not a function")
         }
       case Tuple(es) =>
         val esI = es map interpretExpression
@@ -199,16 +232,12 @@ class Interpreter(vocInit: Vocabulary) {
           throw RuntimeError("index out of bounds")
         esI(iI)
     } // end match
-    expI.interpreted = true
-    expI
   }
 
-  def applyFunction(name: String, owner: Option[Structure], lam: Lambda, args: List[Expression]) = {
-    val fes = (lam.ins.decls zip args) map {case (i,a) => FrameEntry(i.name,a)}
-    push(Frame(name, owner, fes:::lam.frame.vars))
-    val bI = interpretExpression(lam.body)
-    pop()
-    bI
+  def applyFunction(name: String, owner: Option[Instance], lam: Lambda, args: List[Expression]) = {
+    val fes = (lam.ins.decls zip args) map {case (i,a) => MutableExpression(i.name,a)}
+    val fr = Frame(name, owner, fes:::lam.frame.fields)
+    interpretExpressionInFrame(fr, lam.body)
   }
 
   def applyOperator(o: BaseOperator, as: List[Expression]): Expression = {
@@ -256,7 +285,7 @@ class Interpreter(vocInit: Vocabulary) {
 
   /** interpret the bodies of Eval, leave AST unchanged otherwise */
   object EvalInterpreter extends Traverser[Int] {
-    override def apply(exp: Expression)(implicit i: Int) = exp match {
+    override def apply(exp: Expression)(implicit i: Int) = matchC(exp) {
       case Eval(e) if i == 0 =>
         val eI = interpretExpression(e)
         eI match {
