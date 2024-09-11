@@ -97,7 +97,7 @@ class Parser(file: File, input: String) {
     if (startsWith("class") || startsWith(("module"))) parseModule
     else if (startsWith("include") || startsWith("realize")) parseInclude
     else if (startsWith("type")) parseTypeDecl
-    else if (next.isLetter) parseSymDecl
+    else if (next.isLetter) parseExprDecl
     else fail("declaration expected")
   }
 
@@ -128,13 +128,15 @@ class Parser(file: File, input: String) {
     val rz = if (startsWithS("include")) false else {skip("realize"); true}
     val dom = parseTheory
     trim
-    val dfO = if (startsWithS("=")) {
+    val dfO = if (!rz && startsWithS("=")) {
       Some(parseExpression)
-    } else None
-    Include(dom, dfO, rz)
+    } else {
+      if (rz) Some(null) else None
+    }
+    Include(dom, dfO)
   }
 
-  def parseSymDecl: SymDecl = {
+  def parseExprDecl: ExprDecl = {
     val name = parseName
     trim
     val tp = if (startsWithS(":")) {
@@ -144,18 +146,20 @@ class Parser(file: File, input: String) {
     val vl = if (startsWithS("=")) {
       Some(parseExpression(Context.empty))
     } else None
-    SymDecl(name, tp, vl)
+    ExprDecl(name, tp, vl)
   }
 
   def parseTypeDecl: TypeDecl = {
     skipT("type")
     val name = parseName
     trim
-    val df = if (startsWithS("="))
-      Some(parseType(Context.empty))
-    else
-      None
-    TypeDecl(name, df)
+    val (tp,df) = if (startsWithS("=")) {
+      (null,Some(parseType(Context.empty)))
+    } else if (startsWithS("<")) {
+      (parseType(Context.empty), None)
+    } else
+      (null, None)
+    TypeDecl(name, tp, df)
   }
 
   def parseVarDecl(mutable: Boolean)(implicit ctx: Context): VarDecl = {
@@ -173,7 +177,7 @@ class Parser(file: File, input: String) {
   def parseTheory(implicit ctx: Context): Theory = {
     trim
     val ps = parseList(parsePath, "+", "|")
-    Theory(ps)
+    Theory(ps.map(p => Inclusion(p)))
   }
 
   def parseExpressions(implicit ctx: Context) = {
@@ -376,15 +380,19 @@ class Parser(file: File, input: String) {
     val tp = if (startsWith("int")) {skip("int"); IntType}
       //else if (startsWith("float")) {skip("float"); FloatType}
       //else if (startsWith("char")) {skip("char"); CharType}
-      else if (startsWith("rat")) {skip("rat"); RatType}
-      else if (startsWith("string")) {skip("string"); StringType}
-      else if (startsWith("bool")) {skip("bool"); BoolType}
-      else if (startsWith("empty")) {skip("empty"); EmptyType}
-      else if (startsWith("list[")) {
-        skip("list[")
+      else if (startsWithS("rat")) RatType
+      else if (startsWithS("string")) StringType
+      else if (startsWithS("bool")) BoolType
+      else if (startsWithS("empty")) EmptyType
+      else if (startsWithS("list[")) {
         val y = parseType
         skip("]")
         ListType(y)
+      }
+      else if (startsWithS("Option[")) {
+        val y = parseType
+        skip("]")
+        OptionType(y)
       } else if (startsWith("(")) {
         skip("(")
         val ys = parseList(parseType, ",", ")")
@@ -400,8 +408,14 @@ class Parser(file: File, input: String) {
         skip("|")
         ClassType(t)
       } else {
-        val p = parsePath
-        TypeRef(p)
+        val own = parseExpression
+        if (startsWithS(".")) {
+          val f = parseName
+          TypeFieldRef(Some(own), f)
+        } else own match {
+          case SymbolRef(p) => TypeRef(p).copyFrom(own)
+          case _ => fail("type expected")
+        }
       }
     trim
     if (startsWith("->")) {

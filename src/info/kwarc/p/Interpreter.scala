@@ -70,7 +70,7 @@ class Interpreter(vocInit: Vocabulary) {
       case _: BaseValue => exp
       case _: BaseOperator => exp
       case SymbolRef(p) => voc.lookupPath(p) match {
-        case Some(sd:SymDecl) => sd.dfO match {
+        case Some(sd:ExprDecl) => sd.dfO match {
           case None => fail(exp, "no definiens") //TODO allow this as an abstract declaration in a module; all elimination forms below must remain uninterpreted
           case Some(v) => interpretExpression(v)
         }
@@ -99,7 +99,7 @@ class Interpreter(vocInit: Vocabulary) {
       case inst:Instance =>
         // if instance had already been created, this would not be reached
         val fsI = inst.decls.collect {
-          case sd: SymDecl =>
+          case sd: ExprDecl =>
             val dfI = interpretExpression(sd.dfO.get)
             MutableExpression(sd.name, dfI)
         }
@@ -108,10 +108,11 @@ class Interpreter(vocInit: Vocabulary) {
         // execute the inherited field initializers in the context of this instance
         // variables available in the scope surrounding 'inst' are not visible
         push(Frame("new instance", Some(runtimeInst), Nil))
-        runtimeInst.theory.parts.foreach {p =>
-          val m = voc.lookupModule(p).getOrElse(fail(exp, "unknown module"))
+        runtimeInst.theory.parts.foreach {i =>
+          val m = voc.lookupModule(i.path).getOrElse(fail(exp, "unknown module"))
+          // TODO: i.dfO
           m.decls.foreach {
-            case sd: SymDecl if sd.dfO.isDefined =>
+            case sd: ExprDecl if sd.dfO.isDefined =>
               val d = sd.dfO.get
               val dI = interpretExpression(d)
               if (!(d eq dI)) { // or sd.mutable
@@ -132,11 +133,11 @@ class Interpreter(vocInit: Vocabulary) {
         owI match {
           case inst: Instance if inst.isRuntime =>
             inst.getO(n).map(_.value) getOrElse {
-              val (_,d) = voc.lookupInTheory(inst.theory,n).getOrElse {
+              val (_,d) = Checker.lookupInTheory(StaticEnvironment(voc,Path.empty,Nil),inst.theory,n).getOrElse {
                 fail(exp,"unknown field")
               }
               d match {
-                case sd: SymDecl =>
+                case sd: ExprDecl =>
                   val fr = Frame(sd.name, Some(inst), Nil)
                   interpretExpressionInFrame(fr, sd.dfO.get)
                 case _ => fail(exp,"field not a symbol")

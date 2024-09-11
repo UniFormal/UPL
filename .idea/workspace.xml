@@ -10,6 +10,9 @@
   <component name="CodeStyleSettingsInfer">
     <option name="done" value="true" />
   </component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$PROJECT_DIR$/src/info/kwarc/p/Checker.scala" root0="SKIP_INSPECTION" />
+  </component>
   <component name="ProjectCodeStyleSettingsMigration">
     <option name="version" value="2" />
   </component>
@@ -54,7 +57,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/info/kwarc/p/Checker.scala</url>
-          <line>668</line>
+          <line>882</line>
           <option name="timeStamp" value="18" />
         </line-breakpoint>
       </breakpoints>

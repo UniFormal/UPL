@@ -25,7 +25,7 @@ object Checker {
   def checkDeclaration(env: StaticEnvironment, decl: Declaration): StaticEnvironment = {
     implicit val cause = decl
     decl match {
-      case nd: HasDeclarations[_] =>
+      case nd: NestingDeclaration[_] =>
         nd.decls.groupBy(_.nameO).foreach {case (n,ds) =>
           if (n.isDefined && ds.length > 1) {
             fail("name already defined: " + n.get)
@@ -42,41 +42,81 @@ object Checker {
       case m:Module =>
         // invariant: m.supers is the flattening of all includes that have been checked already
         //   m.supers is extended after checking an include
-        m.supers = Theory(Nil)
+        if (m.closed) {
+          m.supers = Theory(Nil)
+          m.realizes = Nil
+          m.flat = Nil
+        }
         val envC = checkDeclarations(env.enter(m.name), m.decls).leave
         if (m.closed) {
-          // TODO check compatibility of multiple includes of the same module
-          // TODO check totality
-        } else {
-          m.decls.foreach {
-            case hd: HasDefiniens[_] if hd.dfO.isEmpty => fail("undefined declaration in open module")(hd)
-            case _ =>
+          // full flattening
+          var result : List[SymbolDeclaration] = Nil
+          var todo: List[List[Declaration]] = List(m.decls)
+          while (!todo.isEmpty) {
+            todo.head match {
+              case Nil => todo = todo.tail
+              case d :: ds => d match {
+                case sd: SymbolDeclaration =>
+                  result.find(_.nameO contains sd.name) match {
+                    case None => result ::= sd
+                    case Some(oldSd) =>
+                      if (oldSd != sd) {
+                        val m = merge(envC,oldSd, sd)
+                        result ::= m
+                        oldSd.redundant = true
+                      }
+                  }
+                case id: Include =>
+                  id.dom.parts.reverseMap {i =>
+                    val im = env.voc.lookupModule(i.path).getOrElse(fail("unknown module")(id))
+                    if (i.path == envC.parent) fail("module includes itself")(id)
+                    todo ::= im.decls
+                  }
+                case _ => // TODO ?
+              }
+            }
           }
+          // return 'result' after reversing and filtering out redundant declarations
+          var flat: List[SymbolDeclaration] = Nil
+          result.foreach {d => if (!d.redundant) flat ::= d}
+          m.flat = flat
+          val defined = flat collect {
+            case sd if sd.dfO.isDefined => sd.name
+          }
+          m.realizes.foreach {p =>
+            val needed = env.voc.lookupModule(p).get.flat.collect {
+              case sd if sd.dfO.isEmpty => sd.name
+            }
+            val missing = needed.filterNot(defined.contains(_))
+            if (missing.nonEmpty) fail(s"realization of $p not total: ${missing.mkString(", ")}")(m)
+          }
+          // TODO instance creation may occur before or while a theory is checked - needs 2-phase approach
         }
         envC
-      case id@Include(dom, dfO, rz) =>
+      case id@Include(dom, dfO) =>
         val mod = env.parentDecl match {
           case Some(m: Module) if m.closed => m
           case _ => fail("include only allowed in closed module")
         }
         val idC = if (dom != null) {
           val domC = checkTheory(env, dom)(id)
-          val dfOC = dfO map {d => checkExpression(env,d,ClassType(domC))}
-          Include(domC,dfOC,rz)
+          val dfOC = if (dfO contains null) None else dfO map {d => checkExpression(env,d,ClassType(domC))}
+          Include(domC,dfOC)
         } else dfO match {
           case None => fail("untyped include")
           case Some(df) =>
             // infer domain from definiens
             val (dfC,dfI) = inferExpression(env,df)
             dfI match {
-              case ClassType(t) =>
-                Include(t, Some(dfC), rz)
+              case ClassType(thy) =>
+                Include(thy, Some(dfC))
               case _ => fail("domain not a theory")
             }
         }
         mod.supers = relativeFlatten(env, mod.supers, idC.dom)(id)
+        if (id.realize) mod.realizes :::= id.dom.parts.collect {case i if i.dfO.isEmpty => i.path}
         env.update(env.parent, id, idC)
-      case sd @ SymDecl(_, tp, dfO) =>
+      case sd: SymbolDeclaration =>
         val thy = env.parentDecl match {
           case Some(m: Module) if m.closed => m.supers
           case _ => Theory(Nil)
@@ -84,15 +124,21 @@ object Checker {
         val sdC = checkSymDeclAgainstTheory(env, thy, sd)
         // TODO check purity of definiens
         env.update(env.parent, sd, sdC)
-      case td@TypeDecl(_,dfO) =>
-        val dfOC = dfO map {t => checkType(env,t)}
-        val tdC = td.copy(dfO = dfOC)
-        env.update(env.parent, td, tdC)
     }
   }
 
+  // TODO does not check compatibility
   def checkTheory(env: StaticEnvironment, thy: Theory)(implicit cause: SyntaxFragment): Theory = {
-    val partsF = flatten(env, Nil, List(thy.parts))
+    val inclsC = thy.parts.map {i =>
+      val pC = env.voc.lookupRelativePath(env.parent, i.path) match {
+        case Some((q,m:Module)) => q
+        case Some(_) => fail("not a module")
+        case None => fail("undefined module")
+      }
+      val dfOC = i.dfO map {d => checkExpression(env, d, ClassType(Theory(pC)))}
+      Inclusion(pC, dfOC)
+    }
+    val partsF = flatten(env, Nil, List(inclsC))
     Theory(partsF)
   }
 
@@ -102,11 +148,12 @@ object Checker {
     * - definition: sd may be Undefined/Defined
     * - inherited: theory may have No/Other/Abstract/Concrete declaration for the name
     */
-  def checkSymDeclAgainstTheory(env: StaticEnvironment, thy: Theory, sd: SymDecl): SymDecl = {
+  def checkSymDeclAgainstTheory(env: StaticEnvironment, thy: Theory, sd: SymbolDeclaration): SymbolDeclaration = {
     implicit val cause = sd
-    env.voc.lookupInTheory(thy,sd.name) match {
+    lookupInTheory(env,thy,sd.name) match {
       // switch on inherited
-      case Some((_,abs: SymDecl)) =>
+      case Some((_,abs: SymbolDeclaration)) =>
+        if (abs.kind != sd.kind) fail("name is inherited but has kind " + abs.kind)
         // Concrete: error
         if (abs.dfO.isDefined) fail("name is inherited and already defined")
         // Abstract: inherit type
@@ -116,37 +163,45 @@ object Checker {
           abs.tp
         } else {
           // type = Present: must be subtype of inherited type
-          val sdtpC = checkType(env,sd.tp)
-          checkSubtype(env,sdtpC,abs.tp)
-          sdtpC
+          checkType(env, sd.tp, abs.tp)
         }
-        val dfC = sd.dfO match {
-          case None => None // definition = Undefined: nothing to do
-          case Some(df) =>
+        sd match {
+          case sd: ExprDecl =>
+            // definition = Undefined: nothing to do
             // definition = Defined: check against type
-            Some(checkExpression(env,df,tpC))
+            val dfC = sd.dfO.map {df => checkExpression(env,df,tpC)}
+            sd.copy(tp = tpC,dfO = dfC)
+          case sd: TypeDecl =>
+            val dfC = sd.dfO.map {df => checkType(env, df, tpC)}
+            sd.copy(tp = tpC,dfO = dfC)
         }
-        sd.copy(tp = tpC,dfO = dfC)
       case Some(_) =>
         // Other: error
         fail("name is inherited but not a symbol")
       case None =>
         // No: check declaration without inherited type
-        val (tpC,dfC) = if (sd.tp == null) {
-          sd.dfO match {
-            case None => fail("untyped declaration")
-            case Some(df) =>
-              val (c,i) = inferExpression(env,df)
-              (i,Some(c))
-          }
-        } else {
-          val tC = checkType(env,sd.tp)
-          val dC = sd.dfO map {d =>
-            checkExpression(env,d,tC)
-          }
-          (tC,dC)
+        sd match {
+          case td: TypeDecl =>
+            val tpC = if (td.tp == null) AnyType else checkType(env,td.tp)
+            val dfOC = td.dfO map {df => checkType(env,df,tpC)}
+            td.copy(tp = tpC,dfO = dfOC)
+          case sd: ExprDecl =>
+            val (tpC,dfC) = if (sd.tp == null) {
+              sd.dfO match {
+                case None => fail("untyped declaration")
+                case Some(df) =>
+                  val (c,i) = inferExpression(env,df)
+                  (i,Some(c))
+              }
+            } else {
+              val tC = checkType(env,sd.tp)
+              val dC = sd.dfO map {d =>
+                checkExpression(env,d,tC)
+              }
+              (tC,dC)
+            }
+            sd.copy(tp = tpC,dfO = dfC)
         }
-        sd.copy(tp = tpC,dfO = dfC)
     }
   }
 
@@ -179,23 +234,36 @@ object Checker {
   }
 
   // ***************** Types **************************************
+  def checkType(env: StaticEnvironment,tp: Type, bound: Type): Type = {
+    val tpC = checkType(env,tp)
+    checkSubtype(env, tp, bound)(tp)
+    tpC
+  }
   def checkType(env: StaticEnvironment,tp: Type): Type = {
     implicit val cause = tp
     matchC(tp) {
       case TypeRef(p) =>
-        env.voc.lookupRelativePath(env.parent, p) match {
-          case Some((pC,pd)) =>
-            pd match {
-              case _: TypeDecl => TypeRef(pC)
-              case m: Module =>
-                // indeterminate use of module as type interpreted as class type
-                if (!m.closed) fail("open module not a type")
-                val pF = flatten(env, Theory(List(pC)))(tp)
-                ClassType(pF)
-              case _ => fail("not a type symbol")
+        resolveName(env, p) match {
+          case Some(NameResolution(pC,pd: TypeDecl,closed)) =>
+            if (closed) TypeFieldRef(None,p.head) else TypeRef(pC)
+          case Some(NameResolution(pC, m: Module, false)) =>
+            // TODO: what if m is defined inside the class
+            // indeterminate use of module as type interpreted as class type
+            if (!m.closed) fail("open module not a type")
+            val pF = flatten(env,Theory(pC))(tp)
+            ClassType(pF)
+          case Some(_) => fail(s"$p is not a type")
+          case None => fail(s"$p is not defined")
+        }
+      case TypeFieldRef(ownerO,f) =>
+        resolveField(env, ownerO, f) match {
+          case (oC,td:TypeDecl) =>
+            oC foreach {o =>
+              val pure = isPure(env, o)
+              if (!pure) fail("impure owner of type field")
             }
-          case None =>
-            fail("symbol not declared")
+            TypeFieldRef(oC,f)
+          case _ => fail("not a type")
         }
       case _: BaseType => tp
       case tp: TypeOperator =>
@@ -215,25 +283,40 @@ object Checker {
 
   /** closure under inheritance, in depth-first order
     * invariant: closure(result:::ps.flatten) is unchanged by recursion; result is closed
-    * ps:List[Path] would suffice; but ps:List[List[Path]] allows constant-time prepending
+    * ps:List[_] would suffice; but ps:List[List[_]] allows constant-time prepending
     */
-  private def flatten(env: StaticEnvironment, result: List[Path], ps: List[List[Path]])(implicit cause: SyntaxFragment): List[Path] = {
+  private def flatten(env: StaticEnvironment, result: List[Inclusion], ps: List[List[Inclusion]])
+                     (implicit cause: SyntaxFragment): List[Inclusion] = {
     ps match {
-      case Nil => result.reverse
+      case Nil => result.filterNot(_.redundant).reverse
       case Nil::tl => flatten(env, result, tl)
       case (hd::tl)::tls =>
-        if (result contains hd)
-          flatten(env, result, tl::tls)
-        else {
-          env.voc.lookupRelativePath(env.parent, hd) match {
-            case Some((hdC, md: Module)) =>
-              val incls = md.decls collect {
-                case i: Include => i.dom.parts
-              }
-              flatten(env, hdC::result, incls:::tl::tls)
-            case Some(_) => fail(s"$hd not a class")
-            case None => fail(s"$hd undefined")
-          }
+        result.find(_.path == hd.path) match {
+          case Some(i) =>
+            // include of hd.path already exists
+            val resultH = if (i.dfO == hd.dfO || hd.dfO.isEmpty) {
+              // redundant: drop hd
+              result
+            } else if (i.dfO.isEmpty) {
+              // no definiens so far: add hd, remove old include later
+              i.redundant = true
+              hd::result
+            } else {
+              // TODO: check equality, then drop
+              fail("conflicting definitions")
+            }
+            flatten(env,resultH,tl :: tls)
+          case None =>
+            // new include, add it and recurse into its supers
+            env.voc.lookupPath(hd.path) match {
+              case Some(md: Module) =>
+                val incls = md.decls collect {
+                  case i: Include => i.dom.parts.map(_.compose(hd))
+                }
+                flatten(env, hd::result, incls:::tl::tls)
+              case Some(_) => fail(s"${hd.path} not a class")
+              case None => fail(s"${hd.path} undefined")
+            }
         }
     }
   }
@@ -250,6 +333,51 @@ object Checker {
     val union = Theory(flatten(env, flatThy.parts, List(other.parts)))
     union.isFlat = true
     union
+  }
+
+  /** pre: theory is flat and well-formed
+    * multiple declarations of the same name are merged
+    */
+  def lookupInTheory(env: StaticEnvironment, thy: Theory, n: String): Option[(Path,Declaration)] = {
+    var sofar: List[(Path,SymbolDeclaration)] = Nil
+    thy.parts.foreach {i =>
+      env.voc.lookupPath(i.path/n) foreach {
+        case hd: SymbolDeclaration =>
+          if (hd.dfO.isDefined || i.dfO.isDefined) {
+            // hd has/acquires definiens, so return right away
+            val hdL = i.dfO match {
+              case Some(own) => OwnerSubstitutor(own,hd)
+              case None => hd
+            }
+            return Some((i.path,hdL))
+          } else {
+            // hd remains undefined, remember it
+            sofar ::= (i.path, hd)
+          }
+        case _ =>
+      }}
+    if (sofar.isEmpty) None else {
+      var merged = sofar.head._2
+      sofar.tail foreach {case (_,d) =>
+        merged = merge(env, merged, d)
+      }
+      Some((sofar.head._1,merged))
+    }
+  }
+
+  // TODO more compatibility checks needed
+  def merge(env: StaticEnvironment, d: SymbolDeclaration, e: SymbolDeclaration): SymbolDeclaration = {
+    if (d == e) return d
+    implicit val cause = e
+    if (d.kind != e.kind) fail("incompatbile kinds")
+    if (d.nameO != e.nameO) fail("incompatbile names")
+    if (d.dfO.isDefined && e.dfO.isDefined) fail("incompatible definitions")
+    val tpM = typeIntersection(env,d.tp,e.tp)
+    (d,e) match {
+      case (d: ExprDecl,e:ExprDecl) => d.copy(tp = tpM, dfO = d.dfO orElse e.dfO)
+      case (d: TypeDecl,e:TypeDecl) => d.copy(tp = tpM, dfO = d.dfO orElse e.dfO)
+      case _ => throw Error(d, "impossible case")
+    }
   }
 
   /** sub subtype of sup */
@@ -269,6 +397,7 @@ object Checker {
   /** least common supertype
     * flattened if the inputs are
     */
+    //TODO type bounds
   def typeUnion(env: StaticEnvironment,a: Type,b: Type)(implicit cause: SyntaxFragment): Type = {
     (a,b) match {
       case (a,b) if a == b => a
@@ -291,13 +420,20 @@ object Checker {
         // model of aT or model of bT, i.e., model of intersection
         val i = theoryIntersection(env,aT,bT)
         if (i.parts.isEmpty) AnyType else ClassType(i)
-      case _ => AnyType
+      case _ =>
+        val aN = typeNormalize(env, a)
+        val bN = typeNormalize(env, b)
+        if (aN != a || bN != b)
+          typeUnion(env, aN, bN)
+        else
+          AnyType
     }
   }
 
   /** greatest common subtype
     * flattened if the inputs are
     */
+   //TODO type bounds
   def typeIntersection(env: StaticEnvironment, a: Type, b: Type)(implicit cause: SyntaxFragment): Type = {
     (a,b) match {
       case (a,b) if a == b => a
@@ -319,13 +455,19 @@ object Checker {
       case (ClassType(aT), ClassType(bT)) =>
         // model of aT and of bT, i.e., model of the union
         ClassType(theoryUnion(env,aT,bT))
-      case _ => EmptyType
+      case _ =>
+        val aN = typeNormalize(env, a)
+        val bN = typeNormalize(env, b)
+        if (aN != a || bN != b)
+          typeIntersection(env, aN, bN)
+        else
+          EmptyType
     }
   }
 
   /** union (colimit) of theories */
   def theoryUnion(env: StaticEnvironment, a: Theory, b: Theory): Theory = {
-    val pqs = (a.parts ::: b.parts).distinct
+    val pqs = (a.parts ::: b.parts).distinct //TODO error if definiens do not agree; or if local definitions do not agree
     val thy = Theory(pqs)
     thy.isFlat = a.isFlat && b.isFlat // flat if the inputs are
     thy
@@ -333,7 +475,7 @@ object Checker {
 
   /** intersection of theories: the union of all common includes */
   def theoryIntersection(env: StaticEnvironment, a: Theory, b: Theory): Theory = {
-    val pqs = a.parts intersect b.parts
+    val pqs = a.parts intersect b.parts // TODO remove definiens if not the same
     val thy = Theory(pqs)
     thy.isFlat = a.isFlat && b.isFlat // flat if the inputs are
     thy
@@ -351,15 +493,31 @@ object Checker {
     matchC(tp) {
       case TypeRef(p) => env.voc.lookupPath(p) match {
         case Some(td: TypeDecl) => td.dfO match {
-          case Some(df) => typeNormalize(env, df)
+          case Some(df) => n(df)
           case None => tp
         }
-        case _ => tp
+        case _ => fail("illegal type")(tp) // impossible if tp is checked
       }
+      case TypeFieldRef(ownO, f) =>
+        resolveField(env,ownO, f)(tp) match {
+          case (oC,td:TypeDecl) => td.dfO match {
+            case None => TypeFieldRef(oC,f)
+            case Some(df) => oC match {
+              case None => n(df)
+              case Some(o) =>
+                // this code has the effect that type definitions in statically known class types are visible to the outside
+                // this is not necessarily desirable
+                val os = new OwnerSubstitutor(o)
+                n(os.apply(df)(0))
+            }
+          }
+          case _ => fail("illegal type")(tp) // impossible if tp is checked
+        }
       case _: BaseType => tp
       case FunType(as,a) => FunType(as map n, n(a))
       case ProdType(as) => ProdType(as map n)
       case ListType(a) => ListType(n(a))
+      case OptionType(a) => OptionType(n(a))
       case ClassType(sc) => ClassType(f(sc))
       case ExprsOver(sc, t) => ExprsOver(f(sc), n(t))
       case null =>
@@ -428,100 +586,105 @@ object Checker {
 
   def inferExpression(env: StaticEnvironment,exp: Expression): (Expression,Type) = {
     implicit val cause = exp
+    val mf = new MagicFunctions(env)
     val (expC,expI) = exp match {
       case e: BaseValue => (e,e.tp)
       case op: BaseOperator =>
         if (op.tp == null)
           fail("cannot infer type of operator")
         val ft = typeNormalize(env,op.tp) match {
-          case ft:FunType => ft
+          case ft: FunType => ft
           case _ => fail("operator type not a function")
         }
-        val out = inferOperator(env, op.operator, ft.ins)
-        checkSubtype(env, out, ft.out)(exp)
-        (BaseOperator(op.operator, ft), op.tp)
+        val out = inferOperator(env,op.operator,ft.ins)
+        checkSubtype(env,out,ft.out)(exp)
+        (BaseOperator(op.operator,ft),op.tp)
       case SymbolRef(p) =>
-        // p might actually be a local field ref in a closed module; if so, change the expression and restart
-        // TODO: p could be local in an enclosing closed module
-        if (p.names.length == 1) {
-          env.parentDecl match {
-            case Some(m: Module) if m.closed =>
-              env.voc.lookupInTheory(m.theory(env.parent), p.head) match {
-                case Some(_) =>
-                  val expC = FieldRef(None,p.head)
-                  return inferExpression(env,expC)
-                case None =>
-              }
-            case _ =>
+        resolveName(env, p) match {
+          case Some(NameResolution(pC,pd: ExprDecl,closed)) =>
+            val expC = if (closed) FieldRef(None,p.head) else SymbolRef(pC)
+            (expC,pd.tp)
+          case Some(_) => fail(s"$p is not an expression")
+          case None => fail(s"$p is not defined")
+        }
+      case Instance(thy,ds) =>
+        val thyC = checkTheory(env,thy)
+        var definednames: List[String] = Nil
+        val dsC = ds map {
+          case ad: AtomicDeclaration if ad.dfO.isEmpty =>
+            fail("undefined declaration in instance")(ad)
+          case sd: SymbolDeclaration =>
+            definednames ::= sd.name
+            checkSymDeclAgainstTheory(env,thyC,sd)
+          case i: Include =>
+            fail("include unsupported")(i)
+        }
+        thyC.parts.foreach {p =>
+          if (p.dfO.isEmpty) {
+            val m = env.voc.lookupModule(p.path).getOrElse(fail("not a module"))
+            val missing = m.abstractFields.filterNot(definednames.contains(_))
+            if (missing.nonEmpty) fail("missing definitions")
           }
         }
-        // otherwise, p is a relative reference to a declaration in an open module
-        val (pC,pd) = env.voc.lookupRelativePath(env.parent, p) getOrElse {
-          // env.voc.lookupRelativePath(env.parent, p) // comment in only for debugging
-          fail(s"$p is not defined")
-        }
-        val eI = pd match {
-          case fd: SymDecl => fd.tp
-          case _ => fail(s"$p is not an expression")
-        }
-        (SymbolRef(pC),eI)
-      case Instance(thy, ds) =>
-        val thyC = checkTheory(env, thy)
-        val dsC = ds map {
-          case sd: SymDecl if sd.dfO.isDefined =>
-            checkSymDeclAgainstTheory(env, thyC, sd)
-          case d => fail("illegal declaration in instance")(d)
-        }
-        // TODO check totality
-        (Instance(thyC,dsC), ClassType(thyC))
-      case FieldRef(ownerO, f) =>
+        (Instance(thyC,dsC),ClassType(thyC))
+      case FieldRef(ownerO,f) =>
         // TODO: mutable fields and fields not initialized by the type must be stored inside the owner
-        val (oC, thy) = ownerO match {
-          case None =>
-            val t = env.parentDecl match {
-              case Some(m:Module) => m.theory(env.parent)
-              case Some(_) => fail("not a class")
-              case None => fail("unknown parent")
+        resolveField(env, ownerO, f) match {
+          case (oC,sd:ExprDecl) =>
+            val eC = FieldRef(oC,f)
+            oC match {
+              case None => (eC,sd.tp)
+              case Some(o) =>
+                val os = new OwnerSubstitutor(o)
+                val eI = os.apply(sd.tp)(0)
+                if (os.substituted) {
+                  val pure = isPure(env,o)
+                  if (!pure) fail("type of field contains local type; owner must be pure")
+                }
+                (eC,eI)
             }
-            (None,t)
-          case Some(o) =>
-            val (oC,oI) = inferExpression(env,o)
-            oI match {
-              case ClassType(thy) => (Some(oC),thy)
-              case _ => fail("not a class type")
+          case _ => fail("not an expression")
+        }
+      case InstanceWith(e,p) =>
+        val (eC,eI) = inferExpressionNorm(env, e)
+        eI match {
+          case ClassType(thy) =>
+            // TODO: this check is not correct; we must check that every dependency of p that's not already in thy is defined
+            // interpreter will simply modify the instance
+            val pC = env.voc.lookupRelativePath(env.parent, p) match {
+              case Some((parp,m:Module)) =>
+                if (!m.closed) fail("upcast requires closed module")
+                m.decls.foreach {
+                  case hd: AtomicDeclaration if hd.dfO.isEmpty => fail("undefined field in upcast")(hd)
+                  case _ =>
+                }
+                parp
+              case _ => fail("upcast requires module")
             }
+            val thyP = relativeFlatten(env, thy, Theory(pC))
+            (InstanceWith(eC,pC), ClassType(thyP))
+          case _ => fail("not an instance")
         }
-        val (_,fd) = env.voc.lookupInTheory(thy, f).getOrElse {
-          fail("unknown field")
-        }
-        //val fC = m/f
-        val eI = fd match {
-          case fd: SymDecl =>
-            // no field references allowed in types, so no owners to substitute in fd.tp
-            // but we need to expand all abbreviations
-            typeNormalize(env,fd.tp)
-          case _ => fail(s"$f is not an expression")
-        }
-        val eC = FieldRef(oC,f)
-        (eC,eI)
       case VarRef(n) =>
-        (exp, env.ctx.lookup(n).tp)
+        (exp,env.ctx.lookup(n).tp)
       case ExprOver(t,q) =>
-        val tC = checkTheory(env, t)
+        val tC = checkTheory(env,t)
         val envL = env.push(tC)
-        val (qC,qI) = inferExpression(envL, q)
+        val (qC,qI) = inferExpression(envL,q)
         val vC = envL.voc
-        (ExprOver(tC,qC), ExprsOver(tC, qI))
+        (ExprOver(tC,qC),ExprsOver(tC,qI))
       case Eval(e) =>
         if (env.scopes.isEmpty) fail("eval outside quotation")
         val envL = env.pop()
-        val (eC,eI) = inferExpressionNorm(envL, e)
+        val (eC,eI) = inferExpressionNorm(envL,e)
         eI match {
-          case ExprsOver(eT, q) =>
+          case ExprsOver(eT,q) =>
             if (!isSubtheory(eT,env.theory)) {
               fail("quoted over wrong theory")
             }
             (Eval(eC),q)
+          case mf.evaluation(_,a) =>
+            (mf.evaluation.insert(eC, Nil), a)
           case _ => fail("not a quoted expression")
         }
       case Lambda(ins,bd) =>
@@ -539,24 +702,28 @@ object Checker {
             (Application(opC,asC),out)
           case f =>
             val (fC,fI) = inferExpressionNorm(env,f)
-            fI match {
-              case FunType(ins,out) =>
-                if (as.length != ins.length) fail("wrong number of arguments")
-                val asC = (as zip ins).map {case (a,i) => checkExpression(env,a,i)}
-                (Application(fC,asC),out)
+            val (fM,ins,out) = fI match {
+              case FunType(ins,out) => (fC,ins,out)
+              case mf.application(_,FunType(ins,out)) => (mf.application.insert(fC,as),ins,out)
               case _ => fail("not a function")(f)
             }
+            if (as.length != ins.length) fail("wrong number of arguments")
+            val asC = (as zip ins).map {case (a,i) => checkExpression(env,a,i)}
+            (Application(fM,asC),out)
         }
       case Tuple(es) =>
         val (esC,esI) = es.map(e => inferExpression(env,e)).unzip
         (Tuple(esC),ProdType(esI))
       case Projection(tup, p) =>
+        val mfp = new mf.projection(p)
         val (tupC,tupI) = inferExpressionNorm(env,tup)
         tupI match {
           case ProdType(ts) =>
             if (p <= 0) fail("non-positive index")
             if (p > ts.length) fail("index out of bounds")
             (Projection(tupC,p), ts(p))
+          case mfp(_,a) =>
+            (mfp.insert(tupC, List(IntValue(p))), a)
           case _ => fail("not a list")
         }
       case ListValue(es) =>
@@ -565,11 +732,13 @@ object Checker {
         (ListValue(esC),ListType(eI))
       case ListElem(l, p) =>
         val (lC,lI) = inferExpressionNorm(env, l)
-        val pC = checkExpression(env, l, IntType)
+        val pC = checkExpression(env, p, IntType)
         lI match {
           case ListType(t) =>
             // list index bound unchecked
             (ListElem(lC,pC), t)
+          case mf.listElement(_,FunType(List(IntType),a)) =>
+            (mf.listElement.insert(lC, List(pC)), a)
           case _ => fail("not a list")
         }
       case Block(es) =>
@@ -629,17 +798,62 @@ object Checker {
         (IfThenElse(condC, thnC, elsOC), eI)
       case For(n, range, bd) =>
         val (rangeC,rangeI) = inferExpressionNorm(env, range)
-        val nTp = rangeI match {
-          case ListType(t) => t
+        val (rangeM, nTp) = rangeI match {
+          case ListType(t) => (rangeC, t)
+          case mf.iteration(_,ListType(t)) => (mf.iteration.insert(rangeC, Nil), t)
           case _ => fail("not iterable")
         }
         val bdC = checkExpression(env.add(VarDecl(n,nTp)), bd, AnyType)
-        (For(n, rangeC, bdC), UnitType)
+        (For(n, rangeM, bdC), UnitType)
     }
     expC.copyFrom(exp)
     (expC,expI)
   }
 
+  // TODO: check purity of expression
+  def isPure(env: StaticEnvironment, exp: Expression) = exp match {
+    case _:VarRef | _:SymbolRef => true
+    case _ => false
+  }
+
+  case class NameResolution(path: Path, decl: Declaration, closed: Boolean)
+  // TODO: p could be local in an enclosing closed module
+  def resolveName(env: StaticEnvironment, p: Path) = {
+    val closedField = if (p.names.length == 1) {
+      // p might actually be a local field ref in a closed module; if so, change the expression and restart
+      env.parentDecl match {
+        case Some(m: Module) if m.closed =>
+          lookupInTheory(env,m.theory(env.parent),p.head).map {case (p,d) => NameResolution(p,d,true)}
+        case _ => None
+      }
+    } else {
+      None
+    }
+    closedField orElse {
+      env.voc.lookupRelativePath(env.parent,p).map {case (p,d) => NameResolution(p,d,false)}
+    }
+  }
+  def resolveField(env: StaticEnvironment, ownerO: Option[Expression], field: String)(implicit cause: SyntaxFragment) = {
+    val (oC,thy) = ownerO match {
+      case None =>
+        val t = env.parentDecl match {
+          case Some(m: Module) => m.theory(env.parent)
+          case Some(_) => fail("not a class")
+          case None => fail("unknown parent")
+        }
+        (None,t)
+      case Some(o) =>
+        val (oC,oI) = inferExpression(env,o)
+        oI match {
+          case ClassType(thy) => (Some(oC),thy)
+          case _ => fail("not a class type")
+        }
+    }
+    val (_,d) = lookupInTheory(env,thy,field).getOrElse {
+      fail("unknown field")
+    }
+    (oC,d)
+  }
   def inferOperator(env: StaticEnvironment,op: Operator,ins: List[Type])(implicit cause: Expression): Type = {
     if (ins.isEmpty) fail("operator needs arguments")
     op match {
@@ -670,4 +884,22 @@ object Checker {
         }
     }
   }
+}
+
+class MagicFunctions(env: StaticEnvironment) {
+  class MagicFunction(name: String) {
+    def insert(owner: Expression,args: List[Expression]) = Application(FieldRef(Some(owner),name),args)
+    def unapply(tp: Type) = tp match {
+      case ClassType(thy) => Checker.lookupInTheory(env,thy,name) match {
+        case Some((_,d: ExprDecl)) => Some((thy,d.tp))
+        case _ => None
+      }
+      case _ => None
+    }
+  }
+  object listElement extends MagicFunction("elemAt")
+  object iteration extends MagicFunction("elements")
+  object application extends MagicFunction("apply")
+  class projection(n: Int) extends MagicFunction("component_"+n)
+  object evaluation extends MagicFunction("eval")
 }

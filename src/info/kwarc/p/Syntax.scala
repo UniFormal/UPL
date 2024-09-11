@@ -6,12 +6,14 @@ case class Location(file: File, from: Int, to: Int) {
 
 sealed abstract class SyntaxFragment {
   private[p] var loc: Location = null // set by parser to remember location in source
+  private[p] var redundant = false // can be used to mark to be removed later, e.g., when declarations are subsumed
   /** moves over mutable fields, may be called after performing traversals
     * if the resulting expression is "the same" as the original in some sense
     * if needed, it is usually to implement the traversal using also SyntaxFragment.matchC in the first place
     */
   def copyFrom(sf: SyntaxFragment): this.type = {
     loc = sf.loc
+    redundant = sf.redundant
     this
   }
 }
@@ -53,6 +55,7 @@ case class Path(names: List[String]) extends SyntaxFragment {
 
 object Path {
   import Character._
+  val empty = Path(Nil)
   val isCharClasses = List(CONNECTOR_PUNCTUATION)
   def isIdChar(c: Char) = c.isLetter || c.isDigit || isCharClasses.contains(c.getType)
 }
@@ -73,7 +76,7 @@ object Declaration {
   }
 }
 
-sealed trait HasDeclarations[A <: Declaration] extends Declaration with HasChildren[Declaration] {
+sealed trait NestingDeclaration[A <: Declaration] extends Declaration with HasChildren[Declaration] {
   override def lookupPath(path: Path): Option[Declaration] = path.names match {
     case Nil => Some(this)
     case hd::_ => lookupO(hd).flatMap {d => d.lookupPath(path.tail)}
@@ -95,22 +98,6 @@ sealed trait HasDeclarations[A <: Declaration] extends Declaration with HasChild
     case _ => None
   }
 
-  /** pre: theory is flat and well-formed
-    * in particular, multiple declaration are of the same kind and agree in all components that are given
-    * subtyping is not considered yet
-    */
-  def lookupInTheory(thy: Theory, n: String): Option[(Path,Declaration)] = {
-    var last: (Path,Declaration) = null
-    thy.parts.foreach {m => lookupPath(m/n) foreach {
-      case hd: HasDefiniens[_] =>
-        val r = (m,hd)
-        if (hd.dfO.isDefined) Some(r)
-        else last = r
-      case _ =>
-    }}
-    Option(last)
-  }
-
   def update(old: Declaration, nw: Declaration): A
   def update(p: Path, old: Declaration, nw: Declaration): A = {
     if (p.isRoot) {
@@ -127,7 +114,14 @@ sealed trait HasDeclarations[A <: Declaration] extends Declaration with HasChild
   }
 }
 
-case class Vocabulary(decls: List[Declaration]) extends UnnamedDeclaration with HasDeclarations[Vocabulary] {
+sealed abstract class ExpressionOrType extends SyntaxFragment
+
+sealed trait AtomicDeclaration extends Declaration {
+  def tp: Type
+  val dfO: Option[ExpressionOrType]
+}
+
+case class Vocabulary(decls: List[Declaration]) extends UnnamedDeclaration with NestingDeclaration[Vocabulary] {
   override def toString = decls.mkString("\n")
   def append(d: Declaration) = Vocabulary(decls ::: List(d))
   def update(old: Declaration, nw: Declaration): Vocabulary = {
@@ -144,8 +138,23 @@ object Context {
   val empty = Context(Nil)
 }
 
-// TODO: Theory takes List[Include], Include takes Path
-case class Theory(parts: List[Path]) extends SyntaxFragment {
+case class Inclusion(path: Path, dfO: Option[Expression]) {
+  private[p] var redundant = false
+  def compose(that: Inclusion) = that.dfO match {
+    case None => this
+    case Some(andThen) => dfO match {
+      case None => copy(dfO = that.dfO)
+      case Some(df) =>
+        val dfC = OwnerSubstitutor(andThen,df)
+        copy(dfO = Some(dfC))
+    }
+  }
+}
+object Inclusion {
+  def apply(p: Path): Inclusion = Inclusion(p, None)
+}
+
+case class Theory(parts: List[Inclusion]) extends SyntaxFragment {
   override def toString = parts.mkString(" + ")
   private[p] var isFlat = false
   override def copyFrom(sf: SyntaxFragment): this.type = {
@@ -166,6 +175,7 @@ case class Theory(parts: List[Path]) extends SyntaxFragment {
 }
 object Theory {
   def empty = Theory(Nil)
+  def apply(p: Path): Theory = Theory(List(Inclusion(p)))
 }
 
 case class StaticEnvironment(voc: Vocabulary, parent: Path, scopes: List[(Theory,Context)]) {
@@ -193,11 +203,7 @@ case class Program(voc: Vocabulary, main: Expression) extends SyntaxFragment {
   override def toString = voc + "\n" + main
 }
 
-trait HasDefiniens[A<:SyntaxFragment] {
-  val dfO: Option[A]
-}
-
-case class Module(name: String, closed: Boolean, decls: List[Declaration]) extends NamedDeclaration with HasDeclarations[Module] {
+case class Module(name: String, closed: Boolean, decls: List[Declaration]) extends NamedDeclaration with NestingDeclaration[Module] {
   override def toString = {
     val k = if (closed) "class" else "module"
     s"$k $name {\n${decls.mkString("\n").indent(2)}}"
@@ -210,45 +216,85 @@ case class Module(name: String, closed: Boolean, decls: List[Declaration]) exten
   // filled during type-checking
   /** parent theory */
   private[p] var supers: Theory = null
+  /** flat set of undefined fields that instances must define */
+  private[p] var flat: List[SymbolDeclaration] = null
+  private[p] def abstractFields = flat.collect {case sd if sd.dfO.isEmpty => sd.name}
+  /** realized parents */
+  private[p] var realizes: List[Path] = null
   /** if thisPath is the path to this module, this module as a theory */
-  private[p] def theory(thisPath: Path) = Theory(thisPath::supers.parts)
-}
-
-case class SymDecl(name: String, tp: Type, dfO: Option[Expression]) extends NamedDeclaration with HasDefiniens[Expression] {
-  override def toString = {
-    val tpS = if (tp == null) "???" else tp.toString
-    val dfS = dfO match {case Some(d) => " = " + d case None => ""}
-    s"$name: $tpS$dfS"
+  private[p] def theory(thisPath: Path) = Theory(Inclusion(thisPath)::supers.parts)
+  override def copyFrom(sf: SyntaxFragment) = {
+    super.copyFrom(sf)
+    sf match {
+      case m: Module =>
+        supers = m.supers
+        flat = m.flat
+        realizes = m.realizes
+      case _ =>
+    }
+    this
   }
 }
 
-case class TypeDecl(name: String, dfO: Option[Type]) extends NamedDeclaration with HasDefiniens[Type] {
+sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
+  def kind: String // expression, type, ...
   override def toString = {
+    val tpS = if (tp == null || tp == AnyType) "" else " <  " + tp.toString
     val dfOS = dfO match {case Some(t) => " = " + t case None => ""}
-    "type " + name+dfOS
+    kind + name+tpS+dfOS
   }
 }
 
-case class Include(dom: Theory, dfO: Option[Expression], realize: Boolean) extends UnnamedDeclaration with HasDefiniens[Expression] {
+case class ExprDecl(name: String, tp: Type, dfO: Option[Expression]) extends SymbolDeclaration {
+  def kind = "val"
+}
+
+case class TypeDecl(name: String, tp: Type, dfO: Option[Type]) extends SymbolDeclaration {
+  def kind = "type"
+}
+
+case class Include(dom: Theory, dfO: Option[Expression]) extends UnnamedDeclaration with AtomicDeclaration {
+  def tp = ClassType(dom)
   override def toString = {
     val kw = if (realize) "realize" else "include"
-    val dfS = dfO match {case None => "" case Some(d) => " = " + d.toString}
+    val dfS = dfO match {case None | Some(null) => "" case Some(d) => " = " + d.toString}
     kw + " " + dom + dfS
   }
+  // we use Some(null) to track which includes must be fully defined when the containing module ends
+  def realize = dfO contains null
+}
+object Include {
+  def apply(p: Path, realize: Boolean = false): Include = Include(Theory(p), if (realize) Some(null) else None)
 }
 
 // case class Foreign(format: String, parts: List[(String, SyntaxFragment)], lastPart: String) extends UnnamedDeclaration
 
 // ***************** Types **************************************
-sealed abstract class Type extends SyntaxFragment
+sealed abstract class Type extends ExpressionOrType
 
 case class TypeRef(path: Path) extends Type {
   override def toString = path.toString
 }
 
-// TODO: type field references are needed; they represent an unknown type
-//  the only way to check against it is by calling methods on an instance
-//  that is statically known to be equal when restricted to the class declaring the type
+/* Defined types are known from the outside and normalize to their definiens.
+ * Undefined types are abstract from the outside even after defining them during instance creation.
+ * Accessing them requires a pure owner and returns an unknown type.
+ * The only way to create values for it is by calling methods on an instance that is
+ * statically known to be equal when restricted to the class declaring the type field.
+ */
+// checker must ensure owner is Pure (Scala path types: owner must be variable to separate side effects from type field access.)
+// instance creation and field references must take type fields into account
+// interpreter invariant: semantics should not depend on types other than class refs, computation of types should never be needed,
+// i.e., removing all types from declarations and type fields from modules/instances should be allowed
+case class TypeFieldRef(owner: Option[Expression], name: String) extends Type {
+  override def toString = {
+    val ownerS = owner match {
+      case None => ""
+      case Some(e) => e + "."
+    }
+    ownerS+name
+  }
+}
 
 case class ClassType(domain: Theory) extends Type {
   override def toString = "|" + domain.toString + "|"
@@ -288,15 +334,18 @@ case class ProdType(comps: List[Type]) extends TypeOperator(comps) {
 case class ListType(elem: Type) extends TypeOperator(List(elem)) {
   override def toString = s"List[$elem]"
 }
+case class OptionType(elem: Type) extends TypeOperator(List(elem)) {
+  override def toString = s"Option[$elem]"
+}
 
 // ***************** Expressions **************************************
-sealed abstract class Expression extends SyntaxFragment
+sealed abstract class Expression extends ExpressionOrType
 
 case class SymbolRef(path: Path) extends Expression {
   override def toString = path.toString
 }
 
-case class Instance(theory: Theory, decls: List[Declaration]) extends Expression with HasChildren[Declaration] with MutableExpressionStore {
+case class Instance(theory: Theory, decls: List[AtomicDeclaration]) extends Expression with HasChildren[Declaration] with MutableExpressionStore {
   // non-null exactly for run-time instances
   private[p] var fields: List[MutableExpression] = null
   def isRuntime = fields != null
@@ -330,6 +379,10 @@ case class FieldRef(owner: Option[Expression], name: String) extends Expression 
     }
     ownerS+name
   }
+}
+
+case class InstanceWith(exp: Expression, tp: Path) extends Expression {
+  override def toString = exp + "#" + tp
 }
 
 case class VarRef(name: String) extends Expression {
