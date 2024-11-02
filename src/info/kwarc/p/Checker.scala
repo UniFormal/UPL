@@ -3,24 +3,24 @@ package info.kwarc.p
 import SyntaxFragment.matchC
 
 object Checker {
+  private val debug = true
+
   case class Error(cause: SyntaxFragment,msg: String) extends PError(cause.loc + ": " + msg + " while checking " + cause.toString)
   def fail(m: String)(implicit cause: SyntaxFragment) = throw Error(cause,m)
 
   def checkProgram(p: Program): Program = matchC(p) {
     case Program(voc,mn) =>
       val env = GlobalEnvironment("")
-      val vocC = checkDeclaration(env, voc) match {
-        case m: Module => m
-        case _ => fail("implementation error: not a module after checking")(voc)
-      }
-      val envC = GlobalEnvironment(vocC)
+      val vocC = checkDeclarationsAndFlatten(env, p.voc)
+      val envC = GlobalEnvironment(Module.anonymous(vocC))
       val mnC = checkExpression(envC,mn,AnyType)
       Program(vocC, mnC)
   }
 
   def checkDeclaration(env: GlobalEnvironment, decl: Declaration): Declaration = {
+    if (debug) println("checking: " + decl)
     implicit val cause = decl
-    decl match {
+    val declC = decl match {
       case m:Module =>
         // checking will try to merge declarations of the same name, so no uniqueness check needed
         val envM = env.add(m.copy(decls = Nil)).enter(m.name)
@@ -60,6 +60,8 @@ object Checker {
         checkSymbolDeclaration(env, env.currentParent, sd)
         // TODO check purity of definiens
     }
+    declC.copyFrom(decl)
+    declC
   }
 
   private case class FlattenInput(decls: List[Declaration], alsoCheck: Boolean, alsoTranslate: Option[Expression]) {
@@ -90,8 +92,8 @@ object Checker {
     var envC = env // will change as we process declarations
     // adds a declaration to the result, possibly merging with an existing one
     // returns true if added (redundant otherwise)
-    def add(d: Declaration, via: Option[Expression]): Boolean = {
-      val dT = via match {
+    def add(d: Declaration, current: FlattenInput): Boolean = {
+      val dT = current.alsoTranslate match {
         case None => d
         case Some(o) => OwnerSubstitutor(o, d)
       }
@@ -101,13 +103,16 @@ object Checker {
       }.find {case (e,c) => c != Declaration.Independent}
       existing match {
         case None =>
+          if (debug) println("new declaration: " + dT)
           envC = envC.add(dT)
         case Some((e,r)) => r match {
           case Declaration.Identical | Declaration.Subsumes =>
+            if (debug) println("subsumed declaration: " + dT)
           // new declaration is redundant: nothing to do
           case Declaration.SubsumedBy =>
             // old declaration is redundant: mark it for later removal
             e.redundant = true
+            if (debug) println("subsuming declaration: " + dT)
             envC = envC.add(dT)
           case Declaration.Clashing =>
             // declarations could be incompatible; further comparison needed
@@ -126,9 +131,8 @@ object Checker {
       todo = current.tail :: todo.tail
       // check it if necessary
       val dC = if (current.alsoCheck) checkDeclaration(envC, d) else d
-      envC = envC.add(dC)
       // flatten the current declaration and move the result to 'done'
-      val changed = add(dC, current.alsoTranslate)
+      val changed = add(dC, current)
       // if it is a non-redundant include, queue the body as well
       if (changed) dC match {
         case Include(p, dfO, _) =>
@@ -848,21 +852,37 @@ object Checker {
   private def resolveName(env: GlobalEnvironment, obj: Object)(implicit cause: SyntaxFragment): (Object,Option[NamedDeclaration]) = {
     obj match {
       case ClosedRef(n) =>
+        // try finding local variable n in context
         if (env.context.lookupO(n).isDefined) {
-          // local variable n
-          (VarRef(n),None)
-        } else lookupClosed(env,n) match {
-          case Some(d) =>
-            // closed reference n
-            (obj,Some(d))
-          case None => env.voc.lookupRelativePath(env.currentParent,Path(List(n))) match {
-            case Some((p,d)) =>
-              // open reference n
-              (OpenRef(p,None),Some(d))
-            case None =>
-              // give up
-              fail("unknown identifier")
+          return (VarRef(n),None)
+        }
+        // try finding n declared in current module
+        if (env.inPhysicalTheory) {
+          val p = env.currentParent/n
+          env.voc.lookupPathAndParents(p, Nil) match {
+            case Some(d :: (par: Module) :: _) if par.closed =>
+              // declaration in current, closed module
+              return (obj,Some(d))
+            case Some(d :: _) =>
+              // if the current module is open, we must change this to an open reference
+              return (OpenRef(p,None),Some(d))
+            case _ =>
           }
+        }
+        // try finding n declared in included module
+        lookupClosed(env,n) match {
+          case Some(d) =>
+            return (obj,Some(d))
+          case None =>
+        }
+        // try finding n in any parent theory
+        env.voc.lookupRelativePath(env.currentParent,Path(List(n))) match {
+          case Some((p,d)) =>
+            // open reference n in parent theory
+            (OpenRef(p,None),Some(d))
+          case None =>
+            // give up
+            fail("unknown identifier")
         }
       case _ => (obj,null)
     }
@@ -919,7 +939,8 @@ object Checker {
             if (u == AnyType) fail("incompatible lists")
             ListType(u)
           case (_:Connective, BoolType, BoolType) => BoolType
-          case (_:Comparison, s@(IntType|RatType|BoolType|StringType), t@(IntType|RatType|BoolType|StringType)) if s == t => BoolType
+          case (_:Comparison, s@(BoolType|StringType), t@(BoolType|StringType)) if s == t => BoolType
+          case (_:Comparison, s@(IntType|RatType), t@(IntType|RatType)) => BoolType
           case (_:Equality, s, t)  =>
             val u = typeUnion(env, s, t)
             if (u == AnyType) fail("comparison of incompatible types")

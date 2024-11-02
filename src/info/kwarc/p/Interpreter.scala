@@ -42,6 +42,7 @@ case class Frame(name: String, owner: Option[Instance], var fields: List[Mutable
 }
 
 class Interpreter(vocInit: Module) {
+  private val debug = true
   /** unexpected error, e.g., typing error in input or expression does not simplify into value */
   case class Error(stack: List[Frame], msg: String) extends PError(msg)
   def fail(msg: String)(implicit sf: SyntaxFragment) = throw Error(stack, msg + ": " + sf)
@@ -67,13 +68,14 @@ class Interpreter(vocInit: Module) {
     expI
   }
   def interpretExpression(exp: Expression): Expression = {
+    if (debug) println("interpreting: " + exp)
     implicit val cause = exp
     exp match {
       case _: BaseValue => exp
       case _: BaseOperator => exp
       case ClosedRef(n) => frame.owner match {
         case None =>
-          fail("no definiens") //TODO allow this as an abstract declaration in a module; all elimination forms below must remain uninterpreted
+          fail("no owner for closed references") //TODO allow this as an abstract declaration in a module; all elimination forms below must remain uninterpreted
         case Some(inst) =>
           inst.getO(n) match {
             case Some(me) => me.value

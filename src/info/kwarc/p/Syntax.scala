@@ -152,18 +152,29 @@ object LocalEnvironment {
   *                      also the bottom element of the stack of local environments
   * @param locals because checking must jump around between local environments, the letter are stored as a stack
   */
-case class GlobalEnvironment(voc: Module,currentParent: Path,locals: List[LocalEnvironment]) {
+case class GlobalEnvironment(voc: Module, currentParent: Path,locals: List[LocalEnvironment]) {
   private def initLocal = if (locals.nonEmpty) this else copy(locals = List(LocalEnvironment(Theory(currentParent))))
   def currentLocal = initLocal.locals.head
   def theory = currentLocal.theory
   def context = currentLocal.context
   def push(t: Theory): GlobalEnvironment = push(LocalEnvironment(t))
-  def push(e: LocalEnvironment): GlobalEnvironment = copy(locals = e::locals)
-  def pop() = copy(locals = locals.tail)
-  def add(c: Context): GlobalEnvironment = initLocal.copy(locals = locals.head.append(c) :: locals.tail)
+  def push(e: LocalEnvironment): GlobalEnvironment = {
+    val il = initLocal
+    il.copy(locals = e::il.locals)
+  }
+  def pop() = {
+    val il = initLocal
+    il.copy(locals = il.locals.tail)
+  }
+  /** true if the local environment is given by the currentParent (as opposed to another one that we have pushed) */
+  def inPhysicalTheory = initLocal.locals.length == 1
+  def add(c: Context): GlobalEnvironment = {
+    val il = initLocal
+    il.copy(locals = il.locals.head.append(c) :: il.locals.tail)
+  }
   def add(vd: VarDecl): GlobalEnvironment = add(Context(vd))
 
-  def enter(n: String) = copy(currentParent = currentParent/n)
+  def enter(n: String) = copy(currentParent = currentParent/n, locals = Nil)
   def add(d: Declaration) = copy(voc = voc.addIn(currentParent,d))
   def parentDecl = voc.lookupModule(currentParent).getOrElse {throw Checker.Error(voc, "unknown parent")}
 }
@@ -176,7 +187,7 @@ object GlobalEnvironment {
 // ***************** Programs and Declarations **************************************
 
 /** top non-terminal; represents a set of declarations and an initial expression to evaluate */
-case class Program(voc: Module, main: Expression) extends SyntaxFragment {
+case class Program(voc: List[Declaration], main: Expression) extends SyntaxFragment {
   override def toString = voc + "\n" + main
 }
 
@@ -235,14 +246,17 @@ case class Module(name: String, closed: Boolean, decls: List[Declaration]) exten
 
   def append(d: Declaration) = copy(decls = decls ::: List(d))
 
-  /** dereferences a path inside this module */
-  def lookupPath(path: Path): Option[NamedDeclaration] = path.names match {
-    case Nil => Some(this)
+  /** dereferences a path inside this module, returns the result followed by its ancestors */
+  def lookupPathAndParents(path: Path, parents: List[NamedDeclaration]): Option[List[NamedDeclaration]] = path.names match {
+    case Nil => Some(this::parents)
     case hd::_ => lookupO(hd).flatMap {
-      case m:Module => m.lookupPath(path.tail)
+      case m:Module => m.lookupPathAndParents(path.tail, this::parents)
+      case d:NamedDeclaration if path.tail.names.isEmpty => Some(d::parents)
       case _ => None
     }
   }
+  def lookupPath(path: Path) = lookupPathAndParents(path, Nil).map(_.head)
+
   /** like lookupPath but with sharper return type, should also be called on checked paths */
   def lookupModule(path: Path): Option[Module] = lookupPath(path) match {
     case s@Some(m: Module) => Some(m)
@@ -286,10 +300,11 @@ case class Include(dom: Path, dfO: Option[Expression], realize: Boolean) extends
 /** parent class of all declarations that introduce symbols, e.g., type, function, predicate symbols */
 sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
   def kind: String // expression, type, ...
+  def tpSep: String // ":", "<", ...
   override def toString = {
-    val tpS = if (tp == null || tp == AnyType) "" else " <  " + tp.toString
+    val tpS = if (tp == null || tp == AnyType) "" else " " + tpSep + " " + tp.toString
     val dfOS = dfO match {case Some(t) => " = " + t case None => ""}
-    kind + name+tpS+dfOS
+    kind + " " + name+tpS+dfOS
   }
 }
 
@@ -298,6 +313,7 @@ sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
   */
 case class TypeDecl(name: String, tp: Type, dfO: Option[Type]) extends SymbolDeclaration {
   def kind = "type"
+  def tpSep = "<"
 }
 
 /** declares a typed symbol
@@ -305,6 +321,7 @@ case class TypeDecl(name: String, tp: Type, dfO: Option[Type]) extends SymbolDec
   */
 case class ExprDecl(name: String, tp: Type, dfO: Option[Expression]) extends SymbolDeclaration {
   def kind = "val"
+  def tpSep = ":"
 }
 
 // ***************** Theories **************************************
@@ -435,7 +452,7 @@ sealed abstract class TypeOperator(val children: List[Type]) extends Type
 
 /** functions (non-dependent) */
 case class FunType(ins: List[Type], out: Type) extends TypeOperator(ins:::List(out)) {
-  override def toString = ProdType(ins) + " -> " + out
+  override def toString = (if (ins.length == 1) ins.head else ProdType(ins)) + " -> " + out
 }
 
 /** tuples (non-dependent Cartesian product) */

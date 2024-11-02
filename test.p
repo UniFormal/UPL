@@ -9,8 +9,9 @@ module M {
     age = 5
     address = (if male "Mr" else "Mrs") + " " + name
   }
+  odd: int -> bool
   even = (x: int) -> if x == 0 true else if x>0 odd(x-1) else odd(-x-1)
-  odd: int -> bool = (x) -> x == 1 | even(x-1)
+  odd = (x) -> x == 1 | even(x-1)
   foreach : (list[int], int -> ()) -> () = (l,f) -> for i in l f(i)
   sum = (l: list[int]) -> {
     var x = 0

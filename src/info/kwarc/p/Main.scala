@@ -13,9 +13,9 @@ object Main {
     } else {
       UnitValue
     }
-    val prog = Program(Module.anonymous(decls), main)
+    val prog = Program(decls, main)
     val progC = Checker.checkProgram(prog)
-    val intp = new Interpreter(progC.voc)
+    val intp = new Interpreter(Module.anonymous(progC.voc))
     val res = intp.interpretExpression(progC.main)
     println(progC)
     println(res)
