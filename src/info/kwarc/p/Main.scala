@@ -13,7 +13,7 @@ object Main {
     } else {
       UnitValue
     }
-    val prog = Program(Vocabulary(decls), main)
+    val prog = Program(Module.anonymous(decls), main)
     val progC = Checker.checkProgram(prog)
     val intp = new Interpreter(progC.voc)
     val res = intp.interpretExpression(progC.main)

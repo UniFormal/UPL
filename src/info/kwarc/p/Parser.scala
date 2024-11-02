@@ -126,14 +126,14 @@ class Parser(file: File, input: String) {
   def parseInclude: Include = {
     implicit val ctx = Context.empty
     val rz = if (startsWithS("include")) false else {skip("realize"); true}
-    val dom = parseTheory
+    val dom = parsePath
     trim
     val dfO = if (!rz && startsWithS("=")) {
       Some(parseExpression)
     } else {
-      if (rz) Some(null) else None
+      None
     }
-    Include(dom, dfO)
+    Include(dom, dfO, rz)
   }
 
   def parseExprDecl: ExprDecl = {
@@ -177,7 +177,7 @@ class Parser(file: File, input: String) {
   def parseTheory(implicit ctx: Context): Theory = {
     trim
     val ps = parseList(parsePath, "+", "|")
-    Theory(ps.map(p => Inclusion(p)))
+    Theory(ps)
   }
 
   def parseExpressions(implicit ctx: Context) = {
@@ -194,7 +194,7 @@ class Parser(file: File, input: String) {
     while (true) {
       trim
       var exp = if (startsWithS(".")) {
-        SymbolRef(parsePath)
+        OpenRef(parsePath, None)
       } else if (startsWithS("{")) {
         var cs: List[Expression] = Nil
         var ctxL = ctx
@@ -277,7 +277,7 @@ class Parser(file: File, input: String) {
           val vds = es.map {
             case vd: VarDecl => vd
             case VarRef(n) => VarDecl(n, null)
-            case SymbolRef(p) if p.names.length == 1 => VarDecl(p.names.head, null)
+            case ClosedRef(n) => VarDecl(n, null)
             case _ => fail("not variable declaration")
           }
           val c = Context(vds)
@@ -293,29 +293,30 @@ class Parser(file: File, input: String) {
         ListValue(es)
       } else {
         //  symbol/variable reference
-        val n = parsePath
-        if (n.names.length == 1) {
+        val p = parsePath
+        if (p.names.length == 1) {
+          val n = p.names.head
           trim
           if (startsWith(":")) {
             // variable declaration
             skip(":")
             val tp = parseType
-            VarDecl(n.names.head,tp,None,false)
-          } else if (ctx.domain.contains(n.names.head)) {
+            VarDecl(n,tp,None,false)
+          } else if (ctx.domain.contains(n)) {
             // reference to bound variable
-            VarRef(n.names.head)
+            VarRef(n)
           } else
-            SymbolRef(n)
+            ClosedRef(n)
         } else
-          SymbolRef(n)
+          OpenRef(p, None)
       } // end exp =
       trim
       val strongPostops = List('.', '(')
       while (!atEnd && (strongPostops contains next)) {
         // TODO: clashes with path-separator
         if (startsWithS(".")) {
-          val n = parseName
-          exp = FieldRef(Some(exp),n)
+          val f = parseExpression
+          exp = OwnedExpr(exp, f)
         } else if (startsWith("(")) {
           val es = parseExpressions
           exp = Application(exp,es)
@@ -410,10 +411,11 @@ class Parser(file: File, input: String) {
       } else {
         val own = parseExpression
         if (startsWithS(".")) {
-          val f = parseName
-          TypeFieldRef(Some(own), f)
+          val tp = parseType
+          OwnedType(tp, own)
         } else own match {
-          case SymbolRef(p) => TypeRef(p).copyFrom(own)
+          case r: ClosedRef => r
+          case r: OpenRef => r
           case _ => fail("type expected")
         }
       }

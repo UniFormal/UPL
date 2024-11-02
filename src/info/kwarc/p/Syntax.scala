@@ -4,6 +4,16 @@ case class Location(file: File, from: Int, to: Int) {
   override def toString = file.getName + s"#$from:$to"
 }
 
+
+// ***************************** root classes and auxiliary data structures
+
+/** parent of all errors */
+abstract class PError(msg: String) extends Exception(msg)
+
+/** implementation errors */
+case class IError(msg: String) extends PError(msg)
+
+/** parent of all classes in the AST */
 sealed abstract class SyntaxFragment {
   private[p] var loc: Location = null // set by parser to remember location in source
   private[p] var redundant = false // can be used to mark to be removed later, e.g., when declarations are subsumed
@@ -24,9 +34,6 @@ object SyntaxFragment {
   }
 }
 
-abstract class PError(msg: String) extends Exception(msg)
-case class IError(msg: String) extends PError(msg)
-
 sealed trait MaybeNamed extends SyntaxFragment {
   def nameO: Option[String]
 }
@@ -43,13 +50,14 @@ sealed trait HasChildren[A <: MaybeNamed] extends SyntaxFragment {
   def lookup(name: String) = lookupO(name).get
 }
 
+/** identifiers */
 case class Path(names: List[String]) extends SyntaxFragment {
   override def toString = names.mkString(".")
   def head = names.head
   def tail = Path(names.tail)
   def /(n: String) = Path(names:::List(n))
   def /(p: Path) = Path(names:::p.names)
-  def up() = Path(names.init)
+  def up = Path(names.init)
   def isRoot = names.isEmpty
 }
 
@@ -60,29 +68,189 @@ object Path {
   def isIdChar(c: Char) = c.isLetter || c.isDigit || isCharClasses.contains(c.getType)
 }
 
-sealed abstract class Declaration extends SyntaxFragment with MaybeNamed {
-  def lookupPath(p: Path) = if (p.isRoot) Some(this) else None
+/** parent of all anonymous objects like types, expressions, formulas, etc. */
+sealed abstract class Object extends SyntaxFragment
+
+/** types */
+sealed trait Type extends Object
+
+/** typed expressions */
+sealed trait Expression extends Object {
+  def field(f: String) = OwnedExpr(this, ClosedRef(f))
 }
+
+/** parent of all structuring classes like module, symbol declarations */
+sealed abstract class Declaration extends SyntaxFragment with MaybeNamed
 sealed abstract class NamedDeclaration extends Declaration with Named
 sealed abstract class UnnamedDeclaration extends Declaration {
   val nameO = None
 }
 
 object Declaration {
-  def update(decls: List[Declaration], old: Declaration, nw: Declaration) = {
-    val (before,_ :: after) = decls.splitAt(decls.indexOf(old))
-    nw.copyFrom(old)
-    before ::: nw :: after
+  sealed abstract class Comparison
+  case object Identical extends Comparison
+  case object Independent extends Comparison
+  case object Subsumes extends Comparison
+  case object SubsumedBy extends Comparison
+  case object Clashing extends Comparison
+
+  def compare(d: Declaration, e: Declaration): Comparison = (d,e) match {
+    case (Include(p1,d1,r1),Include(p2,d2,r2)) =>
+      if (p1 != p2) {
+        Independent
+      } else {
+        if (d1.isEmpty && d2.isEmpty) {
+          // realize flags only matter if both includes are undefined
+          if (r1 == r2) Identical
+          else if (r1) Subsumes else SubsumedBy
+        } else {
+          compareOO(d1,d2)
+        }
+      }
+    case (sd1: SymbolDeclaration,sd2: SymbolDeclaration) =>
+      if (sd1.name != sd2.name) Independent
+      else if (sd1.kind != sd2.kind) Clashing
+      else if (sd1.tp == sd2.tp) compareOO(sd1.dfO,sd2.dfO)
+      else Clashing // TODO: check subtyping, check equality, try to merge
+    case _ => Independent
+  }
+  def compareOO(o1: Option[Object], o2: Option[Object]): Comparison = (o1,o2) match {
+    case (Some(_),None) => Subsumes
+    case (None,Some(_)) => SubsumedBy
+    case (Some(x),Some(y)) => if (x == y) Identical else Clashing
+    case (None,None) => Identical
   }
 }
 
-sealed trait NestingDeclaration[A <: Declaration] extends Declaration with HasChildren[Declaration] {
-  override def lookupPath(path: Path): Option[Declaration] = path.names match {
-    case Nil => Some(this)
-    case hd::_ => lookupO(hd).flatMap {d => d.lookupPath(path.tail)}
+// ************************************* Contexts *****************************
+
+/** object-level context: relative to a vocabulary and a choice of theory in it */
+case class Context(decls: List[VarDecl]) extends SyntaxFragment with HasChildren[VarDecl] {
+  override def toString = decls.mkString(", ")
+  def append(c: Context): Context = copy(decls = decls ::: c.decls)
+  def append(d: VarDecl): Context = append(Context(d))
+}
+object Context {
+  val empty = Context(Nil)
+  def apply(d: VarDecl): Context = Context(List(d))
+}
+
+/** declaration-level context: relative to a vocabulary, chooses a theory and an object-level context relative to it */
+case class LocalEnvironment(theory: Theory, context: Context) extends SyntaxFragment {
+  override def toString = s"$theory[$context]"
+  def append(c: Context): LocalEnvironment = copy(context = context.append(c))
+  def append(d: VarDecl): LocalEnvironment = append(Context(d))
+}
+object LocalEnvironment {
+  val empty = LocalEnvironment(Theory.empty,Context.empty)
+  def apply(thy: Theory): LocalEnvironment = LocalEnvironment(thy, Context.empty)
+}
+
+/** program-level context: provides the vocabulary and a local environment
+  *
+  * @param currentParent the path to the module in the vocabulary that current processing starts at;
+  *                      also the bottom element of the stack of local environments
+  * @param locals because checking must jump around between local environments, the letter are stored as a stack
+  */
+case class GlobalEnvironment(voc: Module,currentParent: Path,locals: List[LocalEnvironment]) {
+  private def initLocal = if (locals.nonEmpty) this else copy(locals = List(LocalEnvironment(Theory(currentParent))))
+  def currentLocal = initLocal.locals.head
+  def theory = currentLocal.theory
+  def context = currentLocal.context
+  def push(t: Theory): GlobalEnvironment = push(LocalEnvironment(t))
+  def push(e: LocalEnvironment): GlobalEnvironment = copy(locals = e::locals)
+  def pop() = copy(locals = locals.tail)
+  def add(c: Context): GlobalEnvironment = initLocal.copy(locals = locals.head.append(c) :: locals.tail)
+  def add(vd: VarDecl): GlobalEnvironment = add(Context(vd))
+
+  def enter(n: String) = copy(currentParent = currentParent/n)
+  def add(d: Declaration) = copy(voc = voc.addIn(currentParent,d))
+  def parentDecl = voc.lookupModule(currentParent).getOrElse {throw Checker.Error(voc, "unknown parent")}
+}
+object GlobalEnvironment {
+  def apply(n: String): GlobalEnvironment = GlobalEnvironment(Module(n, false, Nil))
+  def apply(m: Module): GlobalEnvironment = GlobalEnvironment(m, Path.empty, Nil)
+}
+
+
+// ***************** Programs and Declarations **************************************
+
+/** top non-terminal; represents a set of declarations and an initial expression to evaluate */
+case class Program(voc: Module, main: Expression) extends SyntaxFragment {
+  override def toString = voc + "\n" + main
+}
+
+/** A declaration that nests other declarations.
+  * It subsumes packages/namespaces, modules, classes, etc.
+  *
+  * Every module is closed or open relative to its base.
+  * The base of an open module is the union of its closed includes.
+  *
+  * A closed module corresponds to a class/theory.
+  * Closed modules encapsulate their body in a semantically meaningful way and
+  * the language access to the body is only possible through specific syntax.
+  * In particular, references to names in closed modules require an explicit include of the module.
+  * The module name is irrelevant, and the reference is made by name only.
+  *
+  * Open modules are always available if their base is.
+  * References to names in open modules are with [OpenRef] by path and do not require an explicit include.
+  * In particular, an open module with empty base corresponds to a package.
+  *
+  * An open module with non-empty base are ideal for definitional extensions to the base such as theorems.
+  * Name clashes are avoided because the module name is relevant.
+  */
+case class Module(name: String, closed: Boolean, decls: List[Declaration]) extends NamedDeclaration with HasChildren[Declaration] {
+  override def toString = {
+    val k = if (closed) "class" else "module"
+    s"$k $name {\n${decls.mkString("\n").indent(2)}}"
   }
-  // looks up par/p, par.up/p, par.up.up/p, ... , p and returns the first that exists
-  def lookupRelativePath(par: Path, p: Path): Option[(Path, Declaration)] = {
+
+  /** after checking: all included modules */
+  def supers = decls.collect {
+    case id: Include => id.dom
+  }
+  /** after checking: all undefined included modules */
+  def base = decls.collect {
+    case id: Include if id.dfO.isEmpty => id.dom
+  }
+  /** after checking: all undefined symbol declarations */
+  def undefined = decls.collect {
+    case sd: SymbolDeclaration if sd.dfO.isEmpty => sd
+  }
+
+  /** for efficient sequential building of declarations: prepends to the last module
+    * @param parent the path of the last module (not quite redundant when modules are nested)
+    */
+  private[p] def addIn(parent: Path, d: Declaration): Module = {
+    if (parent.isRoot) copy(decls = d::decls)
+    else {
+      decls.headOption match {
+        case Some(m: Module) if m.name.contains(parent.head) =>
+          val mA = m.addIn(parent.tail, d)
+          copy(decls = mA::decls.tail)
+        case _ => throw Checker.Error(d,"unexpected path")
+      }
+    }
+  }
+
+  def append(d: Declaration) = copy(decls = decls ::: List(d))
+
+  /** dereferences a path inside this module */
+  def lookupPath(path: Path): Option[NamedDeclaration] = path.names match {
+    case Nil => Some(this)
+    case hd::_ => lookupO(hd).flatMap {
+      case m:Module => m.lookupPath(path.tail)
+      case _ => None
+    }
+  }
+  /** like lookupPath but with sharper return type, should also be called on checked paths */
+  def lookupModule(path: Path): Option[Module] = lookupPath(path) match {
+    case s@Some(m: Module) => Some(m)
+    case _ => None
+  }
+
+  /** dereferences an ambiguous relative path: looks up par/p, par.up/p, par.up.up/p, ... , p and returns the first that exists */
+  def lookupRelativePath(par: Path, p: Path): Option[(Path, NamedDeclaration)] = {
     val pp = par/p
     lookupPath(pp) match {
       case Some(d) => Some((pp,d))
@@ -90,71 +258,59 @@ sealed trait NestingDeclaration[A <: Declaration] extends Declaration with HasCh
         if (par.isRoot)
           None
         else
-          lookupRelativePath(par.up(),p)
-    }
-  }
-  def lookupModule(path: Path): Option[Module] = lookupPath(path) match {
-    case s@Some(m: Module) => Some(m)
-    case _ => None
-  }
-
-  def update(old: Declaration, nw: Declaration): A
-  def update(p: Path, old: Declaration, nw: Declaration): A = {
-    if (p.isRoot) {
-      update(old,nw)
-    } else {
-      val parent = lookup(p.head)
-      parent match {
-        case mod: Module =>
-          val parentU = mod.update(p.tail,old,nw)
-          update(parent,parentU)
-        case _ => throw IError("not nestable")
-      }
+          lookupRelativePath(par.up,p)
     }
   }
 }
 
-sealed abstract class ExpressionOrType extends SyntaxFragment
+object Module {
+  def anonymous(decls: List[Declaration]) = Module("", false, decls)
+}
 
+/** parent of all declarations that do not nest other declarations */
 sealed trait AtomicDeclaration extends Declaration {
   def tp: Type
-  val dfO: Option[ExpressionOrType]
+  val dfO: Option[Object]
 }
 
-case class Vocabulary(decls: List[Declaration]) extends UnnamedDeclaration with NestingDeclaration[Vocabulary] {
-  override def toString = decls.mkString("\n")
-  def append(d: Declaration) = Vocabulary(decls ::: List(d))
-  def update(old: Declaration, nw: Declaration): Vocabulary = {
-    copy(decls = Declaration.update(decls, old, nw))
+/** include within a module */
+case class Include(dom: Path, dfO: Option[Expression], realize: Boolean) extends UnnamedDeclaration with AtomicDeclaration {
+  def tp = ClassType(Theory(dom))
+  override def toString = {
+    val kw = if (realize) "realize" else "include"
+    val dfS = dfO match {case None | Some(null) => "" case Some(d) => " = " + d.toString}
+    kw + " " + dom + dfS
   }
 }
 
-case class Context(decls: List[VarDecl]) extends SyntaxFragment with HasChildren[VarDecl] {
-  override def toString = decls.mkString(", ")
-  def append(c: Context) = Context(decls ::: c.decls)
-  def append(d: VarDecl) = Context(decls ::: List(d))
-}
-object Context {
-  val empty = Context(Nil)
-}
-
-case class Inclusion(path: Path, dfO: Option[Expression]) {
-  private[p] var redundant = false
-  def compose(that: Inclusion) = that.dfO match {
-    case None => this
-    case Some(andThen) => dfO match {
-      case None => copy(dfO = that.dfO)
-      case Some(df) =>
-        val dfC = OwnerSubstitutor(andThen,df)
-        copy(dfO = Some(dfC))
-    }
+/** parent class of all declarations that introduce symbols, e.g., type, function, predicate symbols */
+sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
+  def kind: String // expression, type, ...
+  override def toString = {
+    val tpS = if (tp == null || tp == AnyType) "" else " <  " + tp.toString
+    val dfOS = dfO match {case Some(t) => " = " + t case None => ""}
+    kind + name+tpS+dfOS
   }
 }
-object Inclusion {
-  def apply(p: Path): Inclusion = Inclusion(p, None)
+
+/** declares a type symbol
+  * @param tp the upper type bound, [AnyType] if unrestricted, null if to be inferred during checking
+  */
+case class TypeDecl(name: String, tp: Type, dfO: Option[Type]) extends SymbolDeclaration {
+  def kind = "type"
 }
 
-case class Theory(parts: List[Inclusion]) extends SyntaxFragment {
+/** declares a typed symbol
+  * @param tp the type, null if to be inferred during checking
+  */
+case class ExprDecl(name: String, tp: Type, dfO: Option[Expression]) extends SymbolDeclaration {
+  def kind = "val"
+}
+
+// ***************** Theories **************************************
+
+/** theories choose a scope within a diagram by describing the accessible modules */
+case class Theory(parts: List[Path]) extends SyntaxFragment {
   override def toString = parts.mkString(" + ")
   private[p] var isFlat = false
   override def copyFrom(sf: SyntaxFragment): this.type = {
@@ -175,132 +331,70 @@ case class Theory(parts: List[Inclusion]) extends SyntaxFragment {
 }
 object Theory {
   def empty = Theory(Nil)
-  def apply(p: Path): Theory = Theory(List(Inclusion(p)))
+  def apply(p: Path): Theory = Theory(List(p))
 }
 
-case class StaticEnvironment(voc: Vocabulary, parent: Path, scopes: List[(Theory,Context)]) {
-  def push(t: Theory) = copy(scopes = (t,Context.empty)::scopes)
-  def pop() = copy(scopes = scopes.tail)
-  def theory = scopes.head._1
-  def ctx = scopes.head._2
-  def add(c: Context): StaticEnvironment = copy(scopes = (theory, ctx.append(c))::scopes)
-  def add(vd: VarDecl): StaticEnvironment = add(Context(List(vd)))
-  def update(p: Path, old: Declaration, nw: Declaration) = {
-    if (old == nw) this else {
-      copy(voc = voc.update(p,old,nw))
-    }
-  }
-  def enter(n: String) = copy(parent = parent/n)
-  def leave = copy(parent = parent.up())
-  def parentDecl = voc.lookupPath(parent)
-}
-object StaticEnvironment {
-  def apply(p: Program): StaticEnvironment = StaticEnvironment(p.voc, Path(Nil), List((Theory.empty, Context.empty)))
-}
+// ************************** Types and Expressions ************************
 
-// ***************** Programs **************************************
-case class Program(voc: Vocabulary, main: Expression) extends SyntaxFragment {
-  override def toString = voc + "\n" + main
-}
+// Some classes dealing with symbol references and scoping are shared between types and expressions
 
-case class Module(name: String, closed: Boolean, decls: List[Declaration]) extends NamedDeclaration with NestingDeclaration[Module] {
+/** reference to a symbol from an open theory, via an implementation of its base (if non-trivial) */
+case class OpenRef(path: Path, via: Option[Expression]) extends Expression with Type {
   override def toString = {
-    val k = if (closed) "class" else "module"
-    s"$k $name {\n${decls.mkString("\n").indent(2)}}"
-  }
-  def update(old: Declaration, nw: Declaration) = {
-    val mC = copy(decls = Declaration.update(decls, old, nw))
-    mC.supers = supers
-    mC
-  }
-  // filled during type-checking
-  /** parent theory */
-  private[p] var supers: Theory = null
-  /** flat set of undefined fields that instances must define */
-  private[p] var flat: List[SymbolDeclaration] = null
-  private[p] def abstractFields = flat.collect {case sd if sd.dfO.isEmpty => sd.name}
-  /** realized parents */
-  private[p] var realizes: List[Path] = null
-  /** if thisPath is the path to this module, this module as a theory */
-  private[p] def theory(thisPath: Path) = Theory(Inclusion(thisPath)::supers.parts)
-  override def copyFrom(sf: SyntaxFragment) = {
-    super.copyFrom(sf)
-    sf match {
-      case m: Module =>
-        supers = m.supers
-        flat = m.flat
-        realizes = m.realizes
-      case _ =>
-    }
-    this
+    val viaS = via match {case Some(v) => "[" + v + "]" case None => ""}
+    path + viaS
   }
 }
 
-sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
-  def kind: String // expression, type, ...
-  override def toString = {
-    val tpS = if (tp == null || tp == AnyType) "" else " <  " + tp.toString
-    val dfOS = dfO match {case Some(t) => " = " + t case None => ""}
-    kind + name+tpS+dfOS
-  }
+/** reference to a symbol from an included theory */
+case class ClosedRef(n: String) extends Expression with Type {
+  override def toString = n
 }
 
-case class ExprDecl(name: String, tp: Type, dfO: Option[Expression]) extends SymbolDeclaration {
-  def kind = "val"
+/** an object from a different local environment that is translated by o into the current local environment
+  *
+  * written o.x
+  * If T |- o: S and S |- t : A : type, then T |- o.t : o.A : type
+  * In particular, x must be closed and relative to the domain of o, not relative to the current context.
+  * o must be a morphism into the current context, and o.x can be seen as the morphism application o(t).
+  */
+sealed trait OwnedObject extends Object {
+  /** the translation, must evaluate to an [[Instance]] */
+  def owner: Expression
+  /** the original object */
+  def owned: Object
+  override def toString = owner + "." + owned
 }
 
-case class TypeDecl(name: String, tp: Type, dfO: Option[Type]) extends SymbolDeclaration {
-  def kind = "type"
-}
+/**
+  * expressions translated into another context
+  *
+  * If t is ClosedRef(n), this is the usual field access o.n known from OOP. See also [[Expression.field]]
+  * By allowing arbitrary terms, we can delay traversing expressions, which might have to duplicate owner.
+  */
+case class OwnedExpr(owned: Expression, owner: Expression) extends Expression with OwnedObject
 
-case class Include(dom: Theory, dfO: Option[Expression]) extends UnnamedDeclaration with AtomicDeclaration {
-  def tp = ClassType(dom)
-  override def toString = {
-    val kw = if (realize) "realize" else "include"
-    val dfS = dfO match {case None | Some(null) => "" case Some(d) => " = " + d.toString}
-    kw + " " + dom + dfS
-  }
-  // we use Some(null) to track which includes must be fully defined when the containing module ends
-  def realize = dfO contains null
-}
-object Include {
-  def apply(p: Path, realize: Boolean = false): Include = Include(Theory(p), if (realize) Some(null) else None)
-}
-
-// case class Foreign(format: String, parts: List[(String, SyntaxFragment)], lastPart: String) extends UnnamedDeclaration
-
-// ***************** Types **************************************
-sealed abstract class Type extends ExpressionOrType
-
-case class TypeRef(path: Path) extends Type {
-  override def toString = path.toString
-}
-
-/* Defined types are known from the outside and normalize to their definiens.
- * Undefined types are abstract from the outside even after defining them during instance creation.
- * Accessing them requires a pure owner and returns an unknown type.
- * The only way to create values for it is by calling methods on an instance that is
- * statically known to be equal when restricted to the class declaring the type field.
- */
-// checker must ensure owner is Pure (Scala path types: owner must be variable to separate side effects from type field access.)
-// instance creation and field references must take type fields into account
+/** types translated to another environment
+  *
+  * Defined types are known from the outside and normalize to their definiens.
+  * Undefined types are abstract from the outside even after defining them during instance creation.
+  * Accessing them requires a pure owner and returns an unknown type.
+  * The only way to create values for it is by calling methods on an instance that is
+  * statically known to be equal when restricted to the class declaring the type field.
+  */
+// checker must ensure owner is Pure (compare Scala path types: owner must be variable to separate side effects from type field access.)
 // interpreter invariant: semantics should not depend on types other than class refs, computation of types should never be needed,
 // i.e., removing all types from declarations and type fields from modules/instances should be allowed
-case class TypeFieldRef(owner: Option[Expression], name: String) extends Type {
-  override def toString = {
-    val ownerS = owner match {
-      case None => ""
-      case Some(e) => e + "."
-    }
-    ownerS+name
-  }
-}
+case class OwnedType(owned: Type, owner: Expression) extends Type with OwnedObject
 
+// ***************** Types **************************************
+
+/** the type of instances of a theory */
 case class ClassType(domain: Theory) extends Type {
-  override def toString = "|" + domain.toString + "|"
+  override def toString = domain.toString
 }
 
-/** the type of instances of any class */
+/** the type of instances of any theory */
 object AnyStructure {
   def apply() = ClassType(Theory(Nil))
   def unapply(t: Type) = t match {
@@ -309,46 +403,64 @@ object AnyStructure {
   }
 }
 
-case class ExprsOver(scope: Theory, tp: Type) extends Type {
+/** type of quotations of terms of a given type from a different environment, e.g., for inductive types, polynomials
+  *
+  * can be seen as the variant of OwnedType without owner
+  */
+case class ExprsOver(scope: LocalEnvironment, tp: Type) extends Type {
   override def toString = s"<$scope>$tp"
 }
 
+/** atomic built-in base types */
 sealed abstract class BaseType(name: String) extends Type {
   override def toString = name
 }
+/** 0 elements */
 case object EmptyType extends BaseType("empty")
+/** 1 element */
 case object UnitType extends BaseType("unit")
+/** 2 elements */
 case object BoolType extends BaseType("bool")
+/** integer numbers */
 case object IntType extends BaseType("int")
+/** rationals numbers */
 case object RatType extends BaseType("rat")
+/** strings (exactly as implemented by Scala) */
 case object StringType extends BaseType("string")
+/** universal type of all expressions */
 case object AnyType extends BaseType("any")
 
+/** auxiliary class for built-in type operators */
 sealed abstract class TypeOperator(val children: List[Type]) extends Type
+
+/** functions (non-dependent) */
 case class FunType(ins: List[Type], out: Type) extends TypeOperator(ins:::List(out)) {
   override def toString = ProdType(ins) + " -> " + out
 }
+
+/** tuples (non-dependent Cartesian product) */
 case class ProdType(comps: List[Type]) extends TypeOperator(comps) {
   override def toString = comps.mkString("(",", ", ")")
 }
+/** homogeneous lists */
 case class ListType(elem: Type) extends TypeOperator(List(elem)) {
   override def toString = s"List[$elem]"
 }
+/** optional values */
 case class OptionType(elem: Type) extends TypeOperator(List(elem)) {
   override def toString = s"Option[$elem]"
 }
 
 // ***************** Expressions **************************************
-sealed abstract class Expression extends ExpressionOrType
 
-case class SymbolRef(path: Path) extends Expression {
-  override def toString = path.toString
-}
+// **************************** introduction/elimination forms for built-in types
 
-case class Instance(theory: Theory, decls: List[AtomicDeclaration]) extends Expression with HasChildren[Declaration] with MutableExpressionStore {
-  // non-null exactly for run-time instances
+/** instance of a theory, introduction form for [[ClassType]] */
+case class Instance(theory: Path, decls: List[AtomicDeclaration]) extends Expression with HasChildren[Declaration] with MutableExpressionStore {
+  /** non-null exactly for run-time instances, which additionally carry the current values of all fields */
   private[p] var fields: List[MutableExpression] = null
-  def isRuntime = fields != null
+  /** true if this is a run-time instance, e.g., has been initialized already */
+  private[p] def isRuntime = fields != null
   override def equals(that: Any): Boolean = {
     that match {
       case that: Instance =>
@@ -371,58 +483,16 @@ case class Instance(theory: Theory, decls: List[AtomicDeclaration]) extends Expr
   }
 }
 
-case class FieldRef(owner: Option[Expression], name: String) extends Expression {
-  override def toString = {
-    val ownerS = owner match {
-      case None => ""
-      case Some(e) => e + "."
-    }
-    ownerS+name
-  }
-}
-
-case class InstanceWith(exp: Expression, tp: Path) extends Expression {
-  override def toString = exp + "#" + tp
-}
-
-case class VarRef(name: String) extends Expression {
-  override def toString = name
-}
-
-case class VarDecl(name: String, tp: Type, value: Option[Expression], mutable: Boolean) extends Expression with Named {
-  def defined = value.isDefined
-  override def toString = {
-    val tpS = if (tp == null) "???" else tp.toString
-    val vlS = value match {case Some(v) => " = " + v.toString case None => ""}
-    s"$name: $tpS$vlS"
-  }
-}
-object VarDecl {
-  def apply(n: String, tp: Type): VarDecl = VarDecl(n, tp, None, false)
-}
-case class Assign(target: Expression, value: Expression) extends Expression {
-  override def toString = s"$target = $value"
-}
-
-case class ExprOver(scope: Theory, expr: Expression) extends Expression {
+/** a quoted expressions; introduction form of [[ExprsOver]] */
+case class ExprOver(scope: LocalEnvironment, expr: Expression) extends Expression {
   override def toString = s"<{$scope} $expr>"
 }
+/** backquote/evaluation inside a [[ExprsOver]] */
 case class Eval(syntax: Expression) extends Expression {
   override def toString = s"`$syntax`"
 }
 
-case class Block(exprs: List[Expression]) extends Expression {
-  override def toString = exprs.mkString("{", " ", "}")
-}
-case class IfThenElse(cond: Expression, thn: Expression, els: Option[Expression]) extends Expression {
-  override def toString = {
-    val elsS = els.map(e => " else " + e).getOrElse("")
-    s"if $cond $thn$elsS"
-  }
-}
-case class While(cond: Expression, body: Expression) extends Expression
-case class For(name: String, range: Expression, body: Expression) extends Expression
-
+/** anonymous function, introduction form for [[FunType]] */
 case class Lambda(ins: Context, body: Expression) extends Expression {
   // used at run-time to store the frame relative to which the body must be interpreted when the function is applied
   private[p] var frame: Frame = null
@@ -434,9 +504,10 @@ case class Lambda(ins: Context, body: Expression) extends Expression {
     }
     this
   }
-
   override def toString = s"($ins) -> $body"
 }
+
+/** function application, elimination form for [[FunType]] */
 case class Application(fun: Expression, args: List[Expression]) extends Expression {
   override def toString = {
     fun match {
@@ -447,33 +518,53 @@ case class Application(fun: Expression, args: List[Expression]) extends Expressi
   }
 }
 
+/** tuples, introduction form for [[ProdType]] */
 case class Tuple(comps: List[Expression]) extends Expression {
   override def toString = comps.mkString("(", ", ", ")")
 }
+
+/** projection, elimination form for [[ProdType]]
+  * @param index tuple component, starting at 1
+  */
 case class Projection(tuple: Expression, index: Int) extends Expression {
   override def toString = s"$tuple.$index"
 }
 
+/** lists, introduction form for [[ListType]] */
 case class ListValue(elems: List[Expression]) extends Expression {
   override def toString = s"List(${elems.mkString(",")})"
 }
+/** list elements access, elimination form for [[ListType]]
+  * @param position must evaluate to an [[IntValue]] between 0 and length-1; type-checking is undecidable and over-approximates
+  */
 case class ListElem(list: Expression, position: Expression) extends Expression {
   override def toString = s"$list($position)"
 }
 
+/** base values, introduction forms of [[BaseType]] */
 sealed abstract class BaseValue(val value: Any, val tp: BaseType) extends Expression
+
+/** element of [[UnitType]] */
 case object UnitValue extends BaseValue((), UnitType) {
   override def toString = "()"
 }
+
+/** elements of [[BoolType]] */
 case class BoolValue(v: Boolean) extends BaseValue(v, BoolType) {
   override def toString = value.toString
 }
+
+/** elements of [[IntType]] */
 case class IntValue(v: Int) extends BaseValue(v, IntType) {
   override def toString = value.toString
 }
+
+/** elements of [[RatType]] */
 case class RatValue(enum: Int, denom: Int) extends BaseValue(enum/denom, RatType) {
   override def toString = enum.toString + "/" + denom.toString
 }
+
+/** helper object to construct/pattern-match numbers such that [[IntType]] is a subtype of [[RatType]] */
 object IntOrRatValue {
   def apply(e:Int, d: Int): BaseValue = {
     val g = 1 // gcd(e,d)
@@ -487,29 +578,97 @@ object IntOrRatValue {
     case _ => None
   }
 }
+
+/** elements of [[StringType]] */
 case class StringValue(v: String) extends BaseValue(v, StringType) {
   override def toString = "\"" + String.escape(v) + "\""
 }
+
 object String {
   def escape(s:String) = s.replace("\\", "\\\\").replace("\"","\\\"")
 }
 
+/** built-in operators, bundles various elimination forms for the built-in types
+  * @param operator the operator
+  * @param tp its type (most operators are ad-hoc polymorphic), null if to be infered during checking
+  */
 case class BaseOperator(operator: Operator, tp: Type) extends Expression
 
+// ************************** Standard programming language objects
+
+/** local variable declaration */
+case class VarDecl(name: String, tp: Type, value: Option[Expression], mutable: Boolean) extends Expression with Named {
+  def defined = value.isDefined
+  override def toString = {
+    val tpS = if (tp == null) "???" else tp.toString
+    val vlS = value match {case Some(v) => " = " + v.toString case None => ""}
+    s"$name: $tpS$vlS"
+  }
+}
+object VarDecl {
+  def apply(n: String, tp: Type): VarDecl = VarDecl(n, tp, None, false)
+}
+/** reference to local variable */
+case class VarRef(name: String) extends Expression {
+  override def toString = name
+}
+/** assignment to mutable local variables */
+case class Assign(target: Expression, value: Expression) extends Expression {
+  override def toString = s"$target = $value"
+}
+
+/** sequence of expressions, ;-operator
+  *
+  * evaluates to its last element, variable declarations are in scope till the end of their block
+  */
+case class Block(exprs: List[Expression]) extends Expression {
+  override def toString = exprs.mkString("{", " ", "}")
+}
+
+/** if-then-else, ternary operators, can be seen as elimination form of [[BoolType]] */
+case class IfThenElse(cond: Expression, thn: Expression, els: Option[Expression]) extends Expression {
+  override def toString = {
+    val elsS = els.map(e => " else " + e).getOrElse("")
+    s"if $cond $thn$elsS"
+  }
+}
+
+/** for-loop, can be seen as elimination form of [[ListType]]
+  * @param range must evaluate to list
+  */
+case class For(name: String, range: Expression, body: Expression) extends Expression
+
+/** while-loop */
+case class While(cond: Expression, body: Expression) extends Expression
+
+// *********************************** Operators *****************************
+
+/** parent class of all operators
+  *
+  * Operators carry concrete syntax information so that their parsing/rendering is controlled by the operator,
+  * not by the parser/printer.
+  * For the latter to be able to access this information, all operators must be listed in the companion object [[Operator]] */
 sealed abstract class Operator(val symbol: String)
+/** operators with binary infix notation */
 sealed abstract class InfixOperator(s: String, val precedence: Int, val flexary: Boolean) extends Operator(s)
+/** operators with prefix notation */
 sealed abstract class PrefixOperator(s: String) extends Operator(s)
 
-trait Arithmetic
-trait Connective
-trait Comparison
-trait Equality
+/** arithmetic operators */
+sealed trait Arithmetic
+/** boolean connectives */
+sealed trait Connective
+/** comparison operators for base values */
+sealed trait Comparison
+/** polymorphpic (in)equality at any type */
+sealed trait Equality
 
 case object Plus extends InfixOperator("+", 0, false) with Arithmetic
 case object Minus extends InfixOperator("-", 0, false) with Arithmetic
 case object Times extends InfixOperator("*", 10, true) with Arithmetic
 case object Divide extends InfixOperator("/", 10, false) with Arithmetic
 case object Power extends InfixOperator("^", 20, false)
+
 case object And extends InfixOperator("&", -20, true) with Connective
 case object Or extends InfixOperator("|", -20, true) with Connective
 
@@ -517,6 +676,7 @@ case object Less extends InfixOperator("<", -10, false) with Comparison
 case object LessEq extends InfixOperator("<=", -10, false) with Comparison
 case object Greater extends InfixOperator(">", -10, false) with Comparison
 case object GreaterEq extends InfixOperator(">=", -10, false) with Comparison
+
 case object Equal extends InfixOperator("==", -10, false) with Equality
 case object Inequal extends InfixOperator("!=", -10, false) with Equality
 
@@ -524,6 +684,9 @@ case object UMinus extends PrefixOperator("-")
 case object Not extends PrefixOperator("!")
 
 object Operator {
-  val infixes = List(Plus, Minus, Times, Divide, Power, And, Or, Equal, Inequal, Less, LessEq, Greater, GreaterEq)
+  val infixes = List(Plus, Minus, Times, Divide, Power,
+                     And, Or,
+                     Less, LessEq, Greater, GreaterEq,
+                     Equal, Inequal)
   val prefixes = List(UMinus,Not)
 }

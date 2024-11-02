@@ -41,12 +41,13 @@ case class Frame(name: String, owner: Option[Instance], var fields: List[Mutable
   }
 }
 
-class Interpreter(vocInit: Vocabulary) {
-  /** unexpected error, typing error in input or expression does not simplify into value */
+class Interpreter(vocInit: Module) {
+  /** unexpected error, e.g., typing error in input or expression does not simplify into value */
   case class Error(stack: List[Frame], msg: String) extends PError(msg)
-  def fail(sf: SyntaxFragment, msg: String) = throw Error(stack, msg + ": " + sf)
-  /** run-time error */
+  def fail(msg: String)(implicit sf: SyntaxFragment) = throw Error(stack, msg + ": " + sf)
+  /** run-time error while processing well-formed input, e.g., index out of bounds */
   case class RuntimeError(msg: String) extends PError(msg)
+
   private var voc = vocInit
 
   private var stack = List(Frame("toplevel", None, Nil))
@@ -66,20 +67,49 @@ class Interpreter(vocInit: Vocabulary) {
     expI
   }
   def interpretExpression(exp: Expression): Expression = {
+    implicit val cause = exp
     exp match {
       case _: BaseValue => exp
       case _: BaseOperator => exp
-      case SymbolRef(p) => voc.lookupPath(p) match {
-        case Some(sd:ExprDecl) => sd.dfO match {
-          case None => fail(exp, "no definiens") //TODO allow this as an abstract declaration in a module; all elimination forms below must remain uninterpreted
-          case Some(v) => interpretExpression(v)
-        }
-        case _ => fail(p, "not a value")
+      case ClosedRef(n) => frame.owner match {
+        case None =>
+          fail("no definiens") //TODO allow this as an abstract declaration in a module; all elimination forms below must remain uninterpreted
+        case Some(inst) =>
+          inst.getO(n) match {
+            case Some(me) => me.value
+            case None => voc.lookupPath(inst.theory / n) match {
+              case Some(d: ExprDecl) => d.dfO match {
+                case Some(e) => e
+                case None => fail("no definiens")
+              }
+              case _ => fail("not an expression")
+            }
+          }
       }
+      case OpenRef(p, ownO) =>
+        voc.lookupPath(p) match {
+          case Some(sd:ExprDecl) => sd.dfO match {
+            case None => fail("no definiens") //TODO allow this as an abstract declaration in a module; all elimination forms below must remain uninterpreted
+            case Some(v) =>
+              ownO match {
+                case None =>
+                  // current owner interprets all closed references
+                  interpretExpression(v)
+                case Some(own) =>
+                  val ownI = interpretExpression(own) match {
+                    case i: Instance => i
+                    case _ => fail("not an instance")
+                  }
+                  val fr = Frame(p.toString,Some(ownI),Nil)
+                  interpretExpressionInFrame(fr,v)
+              }
+          }
+          case _ => fail("not an expression")
+        }
       case VarRef(n) => frame.get(n) // frame values are always interpreted
       case VarDecl(n,_, vl, _) =>
         val vlI = vl match {
-          case None => fail(exp, "uninitialized variable")
+          case None => fail("uninitialized variable")
           case Some(v) => interpretExpression(v)
         }
         frame.allocate(n, vlI)
@@ -88,14 +118,14 @@ class Interpreter(vocInit: Vocabulary) {
         val vI = interpretExpression(v)
         t match {
           case VarRef(n) => frame.set(n,vI)
-          case _ => fail(exp,"complex target unsupported")
+          case _ => fail("complex target unsupported")
         }
         UnitValue
       case ExprOver(v,q) =>
         val qI = EvalInterpreter(q)(0)
         ExprOver(v,qI)
       case Eval(_) =>
-        fail(exp, "eval outside quotation")
+        fail("eval outside quotation")
       case inst:Instance =>
         // if instance had already been created, this would not be reached
         val fsI = inst.decls.collect {
@@ -108,42 +138,26 @@ class Interpreter(vocInit: Vocabulary) {
         // execute the inherited field initializers in the context of this instance
         // variables available in the scope surrounding 'inst' are not visible
         push(Frame("new instance", Some(runtimeInst), Nil))
-        runtimeInst.theory.parts.foreach {i =>
-          val m = voc.lookupModule(i.path).getOrElse(fail(exp, "unknown module"))
-          // TODO: i.dfO
-          m.decls.foreach {
-            case sd: ExprDecl if sd.dfO.isDefined =>
-              val d = sd.dfO.get
-              val dI = interpretExpression(d)
-              if (!(d eq dI)) { // or sd.mutable
-                inst.fields ::= MutableExpression(sd.name, dI)
-              }
-            case _ =>
-          }
+        val mod = voc.lookupModule(runtimeInst.theory).getOrElse(fail("unknown module"))
+        // TODO: i.dfO
+        mod.decls.foreach {
+          case sd: ExprDecl if sd.dfO.isDefined =>
+            val d = sd.dfO.get
+            val dI = interpretExpression(d)
+            if (!(d eq dI)) { // or sd.mutable
+              inst.fields ::= MutableExpression(sd.name, dI)
+            }
+          case _ =>
         }
         pop()
         runtimeInst
-      case FieldRef(owO, n) =>
-        val owI = owO match {
-          case Some(ow) => interpretExpression(ow)
-          case None => frame.owner.getOrElse {
-            fail(exp,"missing owner")
-          }
-        }
-        owI match {
+      case OwnedExpr(own, e) =>
+        val ownI = interpretExpression(own)
+        ownI match {
           case inst: Instance if inst.isRuntime =>
-            inst.getO(n).map(_.value) getOrElse {
-              val (_,d) = Checker.lookupInTheory(StaticEnvironment(voc,Path.empty,Nil),inst.theory,n).getOrElse {
-                fail(exp,"unknown field")
-              }
-              d match {
-                case sd: ExprDecl =>
-                  val fr = Frame(sd.name, Some(inst), Nil)
-                  interpretExpressionInFrame(fr, sd.dfO.get)
-                case _ => fail(exp,"field not a symbol")
-              }
-            }
-          case _ => fail(exp,"owner not a runtime instance")
+            val fr = Frame(e.toString, Some(inst), Nil)
+            interpretExpressionInFrame(fr, e)
+          case _ => fail("owner not a runtime instance")
         }
       case Block(es) =>
         frame.enterBlock
@@ -163,14 +177,14 @@ class Interpreter(vocInit: Vocabulary) {
               case Some(e) => interpretExpression(e)
               case None => UnitValue
             }
-          case _ => fail(exp, "condition not a boolean")
+          case _ => fail("condition not a boolean")
         }
       case While(c,b) =>
         var break = false
         while (!break) {
           val cI = interpretExpression(c) match {
             case b: BoolValue => b.v
-            case _ => fail(exp, "condition not a boolean")
+            case _ => fail("condition not a boolean")
           }
           if (cI) interpretExpression(b) else break = true
         }
@@ -186,7 +200,7 @@ class Interpreter(vocInit: Vocabulary) {
               interpretExpression(b)
             }
             frame.leaveBlock
-            case _ => fail(exp, "range not a list")
+            case _ => fail("range not a list")
         }
         UnitValue
       case lam: Lambda =>
@@ -206,7 +220,7 @@ class Interpreter(vocInit: Vocabulary) {
             // names in lam.body are relative to that
             val r = applyFunction(f.toString, None, lam, asI)
             r
-          case _ => fail(f, "not a function")
+          case _ => fail("not a function")(f)
         }
       case Tuple(es) =>
         val esI = es map interpretExpression
@@ -215,7 +229,7 @@ class Interpreter(vocInit: Vocabulary) {
         val tI = interpretExpression(t)
         tI match {
           case Tuple(es) => es(i)
-          case _ => fail(exp, "owner not a tuple")
+          case _ => fail("owner not a tuple")(tI)
         }
       case ListValue(es) =>
         val esI = es map interpretExpression
@@ -223,11 +237,11 @@ class Interpreter(vocInit: Vocabulary) {
       case ListElem(l, i) =>
         val esI = interpretExpression(l) match {
           case ListValue(es) => es
-          case _ => fail(exp, "owner not a list")
+          case _ => fail("owner not a list")
         }
         val iI = interpretExpression(i) match {
           case IntValue(n) => n
-          case _ => fail(exp, "index not an integer")
+          case _ => fail("index not an integer")
         }
         if (iI < 0 || iI >= esI.length)
           throw RuntimeError("index out of bounds")
@@ -279,7 +293,7 @@ class Interpreter(vocInit: Vocabulary) {
           case (e: Equality,l: BaseValue,r: BaseValue) =>
             val b = ((e == Equal) == (l.value == r.value))
             BoolValue(b)
-          case _ => fail(o, "no case for operator evaluation")
+          case _ => fail("no case for operator evaluation")(o)
         }
     }
   }
@@ -291,7 +305,7 @@ class Interpreter(vocInit: Vocabulary) {
         val eI = interpretExpression(e)
         eI match {
           case ExprOver(_,q) => q
-          case _ => fail(eI, "evaluation result not an expression")
+          case _ => fail("evaluation result not an expression")(eI)
         }
       case _:Eval =>
         applyDefault(exp)(i-1)
