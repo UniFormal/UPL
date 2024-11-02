@@ -18,11 +18,11 @@ trait MutableExpressionStore {
   }
 }
 
-/** @param owner the object relative to which names are to be interpreted,
-  *  e.g., the class in which the currently interpreted function is declared
-  *        empty if some other function is interpreted
-  * @param vars the visible local variables
-  *  e.g., the arguments of the called function
+/** @param name frame name, only used for error reporting
+  * @param owner the [[Instance]] relative to which [[ClosedRef]]s are interpreted,
+  *  e.g., empty if we are in an open module
+  * @param fields the visible local variables
+  *  e.g., the (immutable) arguments of the called functions, and mutable local declarations
   */
 case class Frame(name: String, owner: Option[Instance], var fields: List[MutableExpression]) extends MutableExpressionStore {
   override def toString = name + ": " + owner + fields.mkString(", ")
@@ -42,7 +42,7 @@ case class Frame(name: String, owner: Option[Instance], var fields: List[Mutable
 }
 
 class Interpreter(vocInit: Module) {
-  private val debug = true
+  private val debug = false
   /** unexpected error, e.g., typing error in input or expression does not simplify into value */
   case class Error(stack: List[Frame], msg: String) extends PError(msg)
   def fail(msg: String)(implicit sf: SyntaxFragment) = throw Error(stack, msg + ": " + sf)
@@ -118,10 +118,7 @@ class Interpreter(vocInit: Module) {
         UnitValue
       case Assign(t, v) =>
         val vI = interpretExpression(v)
-        t match {
-          case VarRef(n) => frame.set(n,vI)
-          case _ => fail("complex target unsupported")
-        }
+        assign(t,vI)
         UnitValue
       case ExprOver(v,q) =>
         val qI = EvalInterpreter(q)(0)
@@ -249,6 +246,29 @@ class Interpreter(vocInit: Module) {
           throw RuntimeError("index out of bounds")
         esI(iI)
     } // end match
+  }
+
+  private def assign(target: Expression, value: Expression): Unit = {
+    (target,value) match {
+      case (VarRef(""), _) => // ignore value
+      case (VarRef(n),_) => frame.set(n,value)
+      case (ClosedRef(n),_) => frame.owner match {
+        case Some(inst) => inst.set(n, value)
+        case None => fail("mutable field without owner")(target)
+      }
+      case (Tuple(es),Tuple(vs)) => (es zip vs).foreach {case (e,v) => assign(e,v)}
+      case (ListValue(es), ListValue(vs)) =>
+        if (es.length != vs.length) throw RuntimeError("lists have inequal length")
+        (es zip vs).foreach {case (e,v) => assign(e,v)}
+      case (Application(OpenRef(r,None), es), Application(OpenRef(s,None), vs)) if r == s =>
+        (es zip vs) foreach {case (e,v) => assign(e,v)}
+      case (eo:ExprOver, vo: ExprOver) =>
+        val (es, eR) = EvalTraverser.replaceEvals(eo)
+        val (vs, vR) = EvalTraverser.replaceEvals(vo)
+        if (eR != vR) throw RuntimeError("shape of expressions does not match")
+        (es.decls zip vs.decls) foreach {case (e,v) => assign(e.dfO.get, v.dfO.get)}
+      case _ => fail("target unsupported")(target)
+    }
   }
 
   def applyFunction(name: String, owner: Option[Instance], lam: Lambda, args: List[Expression]) = {

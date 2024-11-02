@@ -35,7 +35,7 @@ class Parser(file: File, input: String) {
   // test for some strings, and if found, skip and trim
   def startsWithS(s: String): Boolean = {
     val b = startsWith(s)
-    if (b) skip(s)
+    if (b) {skip(s); trim}
     b
   }
 
@@ -94,10 +94,11 @@ class Parser(file: File, input: String) {
   }
 
   def parseDeclaration: Declaration = addRef {
-    if (startsWith("class") || startsWith(("module"))) parseModule
+    if (startsWith("class") || startsWith("module")) parseModule
     else if (startsWith("include") || startsWith("realize")) parseInclude
-    else if (startsWith("type")) parseTypeDecl
-    else if (next.isLetter) parseExprDecl
+    else if (startsWithS("type")) parseTypeDecl
+    else if (startsWithS("mutable")) parseExprDecl(true)
+    else if (next.isLetter) parseExprDecl(false)
     else fail("declaration expected")
   }
 
@@ -136,7 +137,7 @@ class Parser(file: File, input: String) {
     Include(dom, dfO, rz)
   }
 
-  def parseExprDecl: ExprDecl = {
+  def parseExprDecl(mutable: Boolean): ExprDecl = {
     val name = parseName
     trim
     val tp = if (startsWithS(":")) {
@@ -146,11 +147,10 @@ class Parser(file: File, input: String) {
     val vl = if (startsWithS("=")) {
       Some(parseExpression(Context.empty))
     } else None
-    ExprDecl(name, tp, vl)
+    ExprDecl(name, tp, vl, mutable)
   }
 
   def parseTypeDecl: TypeDecl = {
-    skipT("type")
     val name = parseName
     trim
     val (tp,df) = if (startsWithS("=")) {
@@ -272,8 +272,7 @@ class Parser(file: File, input: String) {
         // unit (), bracketed (e), or tuple (e,...,e)
         val es = parseExpressions
         trim
-        if (startsWith("->")) {
-          skip("->")
+        if (startsWithS("->")) {
           val vds = es.map {
             case vd: VarDecl => vd
             case VarRef(n) => VarDecl(n, null)
@@ -302,6 +301,10 @@ class Parser(file: File, input: String) {
             skip(":")
             val tp = parseType
             VarDecl(n,tp,None,false)
+          } else if (startsWithS("->")) {
+            val ins = Context(VarDecl(n,null))
+            val b = parseExpression(ctx.append(ins))
+            Lambda(ins, b)
           } else if (ctx.domain.contains(n)) {
             // reference to bound variable
             VarRef(n)

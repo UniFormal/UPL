@@ -188,7 +188,7 @@ object GlobalEnvironment {
 
 /** top non-terminal; represents a set of declarations and an initial expression to evaluate */
 case class Program(voc: List[Declaration], main: Expression) extends SyntaxFragment {
-  override def toString = voc + "\n" + main
+  override def toString = voc.mkString("\n") + "\n" + main
 }
 
 /** A declaration that nests other declarations.
@@ -319,7 +319,7 @@ case class TypeDecl(name: String, tp: Type, dfO: Option[Type]) extends SymbolDec
 /** declares a typed symbol
   * @param tp the type, null if to be inferred during checking
   */
-case class ExprDecl(name: String, tp: Type, dfO: Option[Expression]) extends SymbolDeclaration {
+case class ExprDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean) extends SymbolDeclaration {
   def kind = "val"
   def tpSep = ":"
 }
@@ -614,16 +614,16 @@ case class BaseOperator(operator: Operator, tp: Type) extends Expression
 // ************************** Standard programming language objects
 
 /** local variable declaration */
-case class VarDecl(name: String, tp: Type, value: Option[Expression], mutable: Boolean) extends Expression with Named {
-  def defined = value.isDefined
+case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean) extends Expression with Named {
+  def defined = dfO.isDefined
   override def toString = {
     val tpS = if (tp == null) "???" else tp.toString
-    val vlS = value match {case Some(v) => " = " + v.toString case None => ""}
+    val vlS = dfO match {case Some(v) => " = " + v.toString case None => ""}
     s"$name: $tpS$vlS"
   }
 }
 object VarDecl {
-  def apply(n: String, tp: Type): VarDecl = VarDecl(n, tp, None, false)
+  def apply(n: String, tp: Type, dfO: Option[Expression] = None): VarDecl = VarDecl(n, tp, dfO, false)
 }
 /** reference to local variable */
 case class VarRef(name: String) extends Expression {

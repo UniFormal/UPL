@@ -246,9 +246,9 @@ object Checker {
   def checkVarDecl(env: GlobalEnvironment,vd: VarDecl,allowDefinitions: Boolean,allowMutable: Boolean): VarDecl = {
     implicit val cause = vd
     if (vd.mutable && !allowMutable) fail("mutable variable not allowed here")
-    if (vd.value.isDefined && !allowDefinitions) fail("defined variable not allowed here")
+    if (vd.defined && !allowDefinitions) fail("defined variable not allowed here")
     if (vd.tp == null) {
-      vd.value match {
+      vd.dfO match {
         case Some(v) =>
           val (dfC,dfI) = inferExpression(env,v)
           VarDecl(vd.name,dfI, Some(dfC),vd.mutable)
@@ -256,7 +256,7 @@ object Checker {
       }
     } else {
       val tpC = checkType(env,vd.tp)
-      val dfC = vd.value map {d => checkExpression(env,d,vd.tp)}
+      val dfC = vd.dfO map {d => checkExpression(env,d,vd.tp)}
       VarDecl(vd.name,tpC,dfC,vd.mutable)
     }
   }
@@ -766,7 +766,7 @@ object Checker {
           eTp = eI
           eC match {
             case vd:VarDecl =>
-              val vdNoDef = if (vd.value.isDefined && vd.mutable) vd.copy(value = None) else vd
+              val vdNoDef = if (vd.defined && vd.mutable) vd.copy(dfO = None) else vd
               envL = envL.add(vdNoDef)
             case _ =>
           }
@@ -788,15 +788,10 @@ object Checker {
         }
         (VarDecl(n,tpC,vlC,mut),UnitType)
       case Assign(e,df) =>
-        val (eC,_) = inferExpression(env, e)
-        eC match {
-          case VarRef(n) =>
-            val vd = env.context.lookup(n)
-            if (!vd.mutable) fail("variable not mutable")(e)
-            val dfC = checkExpression(env,df,vd.tp)
-            (Assign(eC,dfC),UnitType)
-          case _ => fail("expression not assignable")(e)
-        }
+        val (eC,eI) = inferExpression(env, e)
+        val dfC = checkExpression(env,df,eI)
+        checkAssignable(env,e)
+        (Assign(eC,dfC),UnitType)
       case While(cond,bd) =>
         val condC = checkExpression(env, cond, BoolType)
         val bdC = checkExpression(env, bd, AnyType)
@@ -825,6 +820,32 @@ object Checker {
     }
     expC.copyFrom(exp)
     (expC,expI)
+  }
+
+  private def checkAssignable(env: GlobalEnvironment, target: Expression): Unit = {
+    def check(t: Expression) = checkAssignable(env, t)
+    implicit val cause = target
+    target match {
+      case VarRef("") => // anonyomous variable
+      case VarRef(n) =>
+        val vd = env.context.lookup(n)
+        if (!vd.mutable) fail("variable not mutable")
+      case ClosedRef(n) => lookupClosed(env,n) match {
+        case Some(ed: ExprDecl) =>
+          if (!ed.mutable) fail("assignment to immutable field")
+        case _ => fail("not an assignable field")
+      }
+      case Tuple(es) => es foreach check
+      case ListValue(es) => es foreach check
+      case eo: ExprOver => EvalTraverser(eo) {e => check(e); e}
+      case Application(OpenRef(r,None),es) =>
+        env.voc.lookupPath(r) match {
+          case Some(ed: ExprDecl) if ed.dfO.isEmpty =>
+          case _ => fail("function application not assignable")
+        }
+        es foreach check
+      case _ => fail("expression not assignable")
+    }
   }
 
   // ************ auxiliary functions for handling identifiers (sharing code for types and expressions)

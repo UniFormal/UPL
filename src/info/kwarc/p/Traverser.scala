@@ -26,7 +26,7 @@ abstract class Traverser[A] {
     case Module(n,op,ds) => Module(n, op, ds map apply)
     case Include(dm,df, r) => Include(apply(dm), df map apply, r)
     case TypeDecl(n, bd, dfO) => TypeDecl(n, apply(bd), dfO map apply)
-    case ExprDecl(n, tp, dfO) => ExprDecl(n, apply(tp), dfO map apply)
+    case ExprDecl(n, tp, dfO, m) => ExprDecl(n, apply(tp), dfO map apply, m)
   }
 
   def apply(tp: Type)(implicit a: A): Type = matchC(tp)(applyDefault _)
@@ -79,12 +79,24 @@ object IdentityTraverser extends StatelessTraverser
 class EvalTraverser(cont: Expression => Expression) extends Traverser[Int] {
   override def apply(exp: Expression)(implicit level: Int) = matchC(exp) {
     case ExprOver(s, t) => applyDefault(exp)(level+1)
-    case Eval(e) => if (level==1) cont(e) else applyDefault(exp)(level-1)
+    case Eval(e) => if (level==0) cont(e) else applyDefault(exp)(level-1)
     case _ => applyDefault(exp)
   }
 }
 object EvalTraverser {
-  def apply(e: ExprOver)(cont: Expression => Expression) = new EvalTraverser(cont).apply(e)(0)
+  def apply(e: ExprOver)(cont: Expression => Expression) = new EvalTraverser(cont).apply(e.expr)(0)
+  /** returns the quoted expression with all evals replaced by variables and context declaring the latter */
+  def replaceEvals(eo: ExprOver) = {
+    var evals : List[VarDecl] = Nil
+    var i = 0
+    val eoT = EvalTraverser(eo) {ev =>
+      val n = "EVAL__" + i.toString
+      i += 1
+      evals = VarDecl(n, null, Some(ev)) :: evals
+      VarRef(n)
+    }
+    (Context(evals.reverse), eoT)
+  }
 }
 
 class OwnerSubstitutor(shallow: Boolean) extends Traverser[List[Expression]] {
