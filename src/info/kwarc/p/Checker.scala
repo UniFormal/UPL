@@ -913,8 +913,9 @@ object Checker {
     (rC,pd)
   }
 
-  /** for replacing OwnedObj with Expr[s]Over because the parser cannot disambiguate these */
+  /** for replacing OwnedObj with Expr[s]Over or OpenRef because the parser cannot disambiguate these */
   // the type bound allows taking a Type or an Expression and returning the same
+  // TODO: this must still do the OpenRef part, probably by recursively checking the owners for open modules
   private def correctFreeOwner[A >: Type with Expression](env: GlobalEnvironment, o: A): Option[A] = o match {
     case o: OwnedObject =>
       val pO = o.owner match {

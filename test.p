@@ -32,4 +32,4 @@ module M {
     sum([1,2,3])
   }
 }
-main = M.test
+main = .M.test

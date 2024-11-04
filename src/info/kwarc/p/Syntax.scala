@@ -517,6 +517,7 @@ case class OptionType(elem: Type) extends TypeOperator(List(elem)) {
 // **************************** introduction/elimination forms for built-in types
 
 /** instance of a theory, introduction form for [[ClassType]] */
+// TODO: dependent modules, i.e., theory is an OwnedTerm(o,ClosedRef(m))
 case class Instance(theory: Path, decls: List[AtomicDeclaration]) extends Expression with HasChildren[Declaration] with MutableExpressionStore {
   /** non-null exactly for run-time instances, which additionally carry the current values of all fields */
   private[p] var fields: List[MutableExpression] = null
