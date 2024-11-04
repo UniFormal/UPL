@@ -52,7 +52,7 @@ abstract class Traverser[A] {
     case _: VarRef => exp
     case ClosedRef(n) => ClosedRef(n)
     case OpenRef(p, v) => OpenRef(apply(p), v map apply)
-    case OwnedExpr(e, o) => OwnedExpr(apply(e), apply(o))
+    case OwnedExpr(o, e) => OwnedExpr(apply(o), apply(e))
     case BaseOperator(o,tp) => BaseOperator(o, apply(tp))
     case Instance(thy, ds) => Instance(apply(thy), ds map {d => apply(d).asInstanceOf[SymbolDeclaration]})
     case VarDecl(n,t,d,m) => VarDecl(n,apply(t), d map apply, m)
@@ -69,6 +69,7 @@ abstract class Traverser[A] {
     case Projection(e,i) => Projection(apply(e), i)
     case ListValue(es) => ListValue(es map apply)
     case ListElem(l,p) => ListElem(apply(l), apply(p))
+    case OptionValue(e) => if (e == null) exp else OptionValue(apply(e))
   }
 }
 
@@ -101,7 +102,7 @@ object EvalTraverser {
 
 class OwnerSubstitutor(shallow: Boolean) extends Traverser[List[Expression]] {
   private def makeType(tp: Type)(implicit os: List[Expression]) = {
-    os.foldLeft(tp) {case (sofar,next) => OwnedType(sofar, next)}
+    os.foldLeft(tp) {case (sofar,next) => OwnedType(next, sofar)}
   }
   private def makeExpr(e: Expression)(implicit os: List[Expression]) = {
     os.foldLeft(e) {case (sofar,next) => OwnedExpr(sofar, next)}
@@ -109,7 +110,7 @@ class OwnerSubstitutor(shallow: Boolean) extends Traverser[List[Expression]] {
   override def apply(tp: Type)(implicit os: List[Expression]) = if (shallow) makeType(tp) else matchC(tp) {
     case c: ClosedRef => makeType(c)
     case e: ExprsOver => makeType(e)
-    case OwnedType(t,o) => apply(t)(o::os)
+    case OwnedType(o,t) => apply(t)(o::os)
     case _ => applyDefault(tp)
   }
   override def apply(exp: Expression)(implicit os: List[Expression]) = if (shallow) makeExpr(exp) else matchC(exp) {

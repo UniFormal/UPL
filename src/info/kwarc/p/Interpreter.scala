@@ -233,6 +233,8 @@ class Interpreter(vocInit: Module) {
       case ListValue(es) =>
         val esI = es map interpretExpression
         ListValue(esI)
+      case OptionValue(e) =>
+        if (e == null) exp else OptionValue(interpretExpression(e))
       case ListElem(l, i) =>
         val esI = interpretExpression(l) match {
           case ListValue(es) => es

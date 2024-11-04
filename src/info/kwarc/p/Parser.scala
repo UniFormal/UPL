@@ -19,20 +19,16 @@ package info.kwarc.p
    t?             option value
    ?              none value
    
-   M{decls}:      instance
+   M{decls}      instance
    Instance{exp}
    Instance{type}
    Instance.id    instance access (OwnedXXX)
 
-   if M not included (all parsed as OwnedXXX and disambiguated by Checker)
    M{type}
    M.id          quotation type, variables not available in the context are
    M{exp}
    M.id          quotation
-
-   TODO: disambiguate OwnedObj into Expr[s]Over based on whether the owner has ClassType or is a class
-   TODO: disambiguate any Ref based on whether its first part is a variable or ClosedRef of ClassType
-
+       (all parsed as OwnedXXX and disambiguated by Checker)
    `exp`:        eval
 
    not implemented yet
@@ -229,14 +225,20 @@ class Parser(file: File, input: String) {
     Theory(ps)
   }
 
-  def parseExpressions(bracketed: Boolean)(implicit ctxs: PContext) = {
-    if (bracketed) skip("(")
-    val es = parseList(parseExpression, ",", ")")
-    if (bracketed) skip(")")
+  def parseExpressions(open: String, close: String)(implicit ctxs: PContext) = {
+    skip(open)
+    val es = parseList(parseExpression, ",", close)
+    skip(close)
     es
   }
 
   def parseExpression(implicit ctxs: PContext): Expression = addRef {parseExpressionInner}
+  def parseBracketedExpression(implicit ctxs: PContext) = {
+    skip("(")
+    val e = parseExpression
+    skip(")")
+    e
+  }
   // needed because addRef does not work with return-statements
   private def parseExpressionInner(implicit ctxs: PContext): Expression = {
     var seen: List[(Expression,InfixOperator)] = Nil
@@ -266,18 +268,20 @@ class Parser(file: File, input: String) {
         trim
         parseVarDecl(false)
       } else if (startsWithS("while")) {
-        val c = parseExpression
+        val c = parseBracketedExpression
         val b = parseExpression
         While(c,b)
       } else if (startsWithS("for")) {
+        skipT("(")
         val v = parseName
         trim
         skipT("in")
         val r = parseExpression
+        skipT(")")
         val b = parseExpression(ctxs.append(VarDecl(v,Type.unknown)))
         For(v,r,b)
       } else if (startsWithS("if")) {
-        val c = parseExpression
+        val c = parseBracketedExpression
         val th = parseExpression
         trim
         val el = if (startsWithS("else")) {
@@ -319,7 +323,7 @@ class Parser(file: File, input: String) {
         IntValue(s.toInt)
       } else if (startsWith("(")) {
         // unit (), bracketed (e), or tuple (e,...,e)
-        val es = parseExpressions(true)
+        val es = parseExpressions("(",")")
         trim
         if (startsWithS("->")) {
           val vds = es.map {
@@ -336,9 +340,8 @@ class Parser(file: File, input: String) {
           case List(e) => e
           case es => Tuple(es)
         }
-      } else if (startsWithS("[")) {
-        val es = parseExpressions(false)
-        skip("]")
+      } else if (startsWith("[")) {
+        val es = parseExpressions("[","]")
         ListValue(es)
       } else if (startsWithS("`")) {
         if (ctxs.contexts.length <= 1) fail("eval outside quotation")
@@ -393,9 +396,9 @@ class Parser(file: File, input: String) {
       while (!atEnd && (strongPostops contains next)) {
         if (startsWithS(".")) {
           val n = parseName
-          exp = OwnedExpr(ClosedRef(n), exp)
+          exp = OwnedExpr(exp, ClosedRef(n))
         } else if (startsWith("(")) {
-          val es = parseExpressions(true)
+          val es = parseExpressions("(",")")
           exp = Application(exp,es)
         } else if (startsWithS("[")) {
           val e = parseExpression
@@ -403,7 +406,7 @@ class Parser(file: File, input: String) {
           exp = ListElem(exp, e)
         } else if (startsWithS("{")) {
           val e = parseExpression(ctxs.push()) // in e{q}, q is a closed expression in a different theory
-          exp = OwnedExpr(e, exp)
+          exp = OwnedExpr(exp, e)
           skip("}")
         } else if (startsWithS("?")) {
           exp = OptionValue(exp)
@@ -487,13 +490,15 @@ class Parser(file: File, input: String) {
         }
       } else {
         val own = parseExpression
-        if (startsWithS(".")) {
+        if (own == ClosedRef("_")) {
+          Type.unknown()
+        } else if (startsWithS(".")) {
           val n = parseName
-          OwnedType(ClosedRef(n), own)
+          OwnedType(own, ClosedRef(n))
         } else if (startsWithS("{")) {
           val tp = parseType
           skip("}")
-          OwnedType(tp,own)
+          OwnedType(own, tp)
         } else own match {
           case r: ClosedRef => r
           case r: OpenRef => r

@@ -9,7 +9,7 @@ object Main {
     val main = if (args.length > 1) {
       val s = args(1)
       val parserM = new Parser(path, s)
-      parserM.parseExpression(Context.empty)
+      parserM.parseExpression(PContext.empty)
     } else {
       UnitValue
     }

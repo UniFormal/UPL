@@ -152,6 +152,7 @@ case class LocalEnvironment(theory: Theory, context: Context) extends SyntaxFrag
 object LocalEnvironment {
   val empty = LocalEnvironment(Theory.empty,Context.empty)
   def apply(thy: Theory): LocalEnvironment = LocalEnvironment(thy, Context.empty)
+  def apply(p: Path): LocalEnvironment = LocalEnvironment(Theory(p))
 }
 
 /** program-level context: provides the vocabulary and a local environment
@@ -367,7 +368,7 @@ object Theory {
 case class OpenRef(path: Path, via: Option[Expression]) extends Expression with Type {
   override def toString = {
     val viaS = via match {case Some(v) => "[" + v + "]" case None => ""}
-    path + viaS
+    "." + path + viaS
   }
 }
 
@@ -397,7 +398,7 @@ sealed trait OwnedObject extends Object {
   * If t is ClosedRef(n), this is the usual field access o.n known from OOP. See also [[Expression.field]]
   * By allowing arbitrary terms, we can delay traversing expressions, which might have to duplicate owner.
   */
-case class OwnedExpr(owned: Expression, owner: Expression) extends Expression with OwnedObject
+case class OwnedExpr(owner: Expression, owned: Expression) extends Expression with OwnedObject
 
 /** types translated to another environment
   *
@@ -410,7 +411,7 @@ case class OwnedExpr(owned: Expression, owner: Expression) extends Expression wi
 // checker must ensure owner is Pure (compare Scala path types: owner must be variable to separate side effects from type field access.)
 // interpreter invariant: semantics should not depend on types other than class refs, computation of types should never be needed,
 // i.e., removing all types from declarations and type fields from modules/instances should be allowed
-case class OwnedType(owned: Type, owner: Expression) extends Type with OwnedObject
+case class OwnedType(owner: Expression, owned: Type) extends Type with OwnedObject
 
 // ***************** Types **************************************
 
@@ -702,10 +703,14 @@ case class IfThenElse(cond: Expression, thn: Expression, els: Option[Expression]
 /** for-loop, can be seen as elimination form of [[ListType]]
   * @param range must evaluate to list
   */
-case class For(name: String, range: Expression, body: Expression) extends Expression
+case class For(name: String, range: Expression, body: Expression) extends Expression {
+  override def toString = s"for $name in $range $body"
+}
 
 /** while-loop */
-case class While(cond: Expression, body: Expression) extends Expression
+case class While(cond: Expression, body: Expression) extends Expression {
+  override def toString = s"while $cond $body"
+}
 
 // *********************************** Operators *****************************
 

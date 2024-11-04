@@ -275,6 +275,7 @@ object Checker {
   }
   def checkType(env: GlobalEnvironment, tpA: Type): Type = {
     implicit val cause = tpA
+    correctFreeOwner(env, tpA).foreach {corrected => return checkType(env, corrected)}
     // tp != tA only if tpA is an unresolved reference
     val (tpR, sdCached) = resolveName(env, tpA)
     val tp = tpR match {
@@ -301,13 +302,13 @@ object Checker {
           case Some(_: TypeDecl) => tp
           case _ => fail("not a type")
         }
-      case OwnedType(tp, owner) =>
+      case OwnedType(owner, tp) =>
         val (ownerC, ownerI) = inferExpression(env, owner)
         ownerI match {
           case ClassType(d) =>
             val envO = env.push(d)
             val tpC = checkType(envO, tp)
-            OwnedType(tpC, ownerC)
+            OwnedType(ownerC, tpC)
           case _ => fail("owner must be an instance")
         }
       case _: BaseType => tp
@@ -328,62 +329,6 @@ object Checker {
           fail("uninferred omitted type")
     }
   }
-
-/*
-  /** closure under inheritance, in depth-first order
-    * invariant: closure(result:::ps.flatten) is unchanged by recursion; result is closed
-    * ps:List[_] would suffice; but ps:List[List[_]] allows constant-time prepending
-    */
-  private def flatten(env: GlobalEnvironment, result: List[Inclusion], ps: List[List[Inclusion]])
-                     (implicit cause: SyntaxFragment): List[Inclusion] = {
-    ps match {
-      case Nil => result.filterNot(_.redundant).reverse
-      case Nil::tl => flatten(env, result, tl)
-      case (hd::tl)::tls =>
-        result.find(_.path == hd.path) match {
-          case Some(i) =>
-            // include of hd.path already exists
-            val resultH = if (i.dfO == hd.dfO || hd.dfO.isEmpty) {
-              // redundant: drop hd
-              result
-            } else if (i.dfO.isEmpty) {
-              // no definiens so far: add hd, remove old include later
-              i.redundant = true
-              hd::result
-            } else {
-              // TODO: check equality, then drop
-              fail("conflicting definitions")
-            }
-            flatten(env,resultH,tl :: tls)
-          case None =>
-            // new include, add it and recurse into its supers
-            env.voc.lookupPath(hd.path) match {
-              case Some(md: Module) =>
-                val incls = md.decls collect {
-                  case i: Include => i.dom.parts.map(_.compose(hd))
-                }
-                flatten(env, hd::result, incls:::tl::tls)
-              case Some(_) => fail(s"${hd.path} not a class")
-              case None => fail(s"${hd.path} undefined")
-            }
-        }
-    }
-  }
-  /** closure under inheritance for theories */
-  def flatten(env: GlobalEnvironment, thy: Theory)(implicit cause: SyntaxFragment): Theory = {
-    if (thy.isFlat) return thy // optimization to avoid repeated flattening
-    val partsF = flatten(env, Nil, List(thy.parts))
-    val thyF = Theory(partsF)
-    thyF.isFlat = true
-    thyF
-  }
-  /** unite a flat theory and another one without reflattening the former */
-  def relativeFlatten(env: GlobalEnvironment, flatThy: Theory, other: Theory)(implicit cause: SyntaxFragment): Theory = {
-    val union = Theory(flatten(env, flatThy.parts, List(other.parts)))
-    union.isFlat = true
-    union
-  }
-*/
 
   /** sub subtype of sup */
   def checkSubtype(env: GlobalEnvironment,sub: Type,sup: Type)(implicit cause: SyntaxFragment): Unit = {
@@ -514,13 +459,13 @@ object Checker {
             case None => tp
             case Some(df) =>
               var d = df
-              ownO foreach {o => d = OwnedType(d, o)}
+              ownO foreach {o => d = OwnedType(o,d)}
               n(d)
           }
           case _ => fail("illegal type")(tp) // impossible if tp is checked
         }
       case OwnedType(own, t) =>
-        val tpS = OwnerSubstitutor(t, own)
+        val tpS = OwnerSubstitutor(own, t)
         if (tpS != tp) typeNormalize(env, tpS) else tpS
       case _: BaseType => tp
       case FunType(as,a) => FunType(as map n, n(a))
@@ -543,6 +488,8 @@ object Checker {
     */
   def checkExpression(env: GlobalEnvironment,exp: Expression,tp: Type): Expression = {
     implicit val cause = exp
+    correctFreeOwner(env, exp).foreach {corrected => return checkExpression(env, corrected, tp)}
+    correctFreeOwner(env, tp).foreach {corrected => return checkExpression(env, exp, corrected)}
     val tpN = typeNormalize(env, tp)
     val eC = (exp,tpN) match {
       case (ListValue(es),ListType(t)) =>
@@ -565,12 +512,12 @@ object Checker {
         val insC = checkContext(env,insG,false,false)
         val outC = checkExpression(env.add(insC),outG,outE)
         Lambda(insC,outC)
-      case (OwnedExpr(e, oe), OwnedType(tp, ot)) if oe == ot =>
+      case (OwnedExpr(oe, e), OwnedType(ot, tp)) if oe == ot =>
         val (oC,oI) = inferExpression(env, oe)
         oI match {
           case ClassType(d) =>
             val eC = checkExpression(env.push(d), e, tp)
-            OwnedExpr(eC, oC)
+            OwnedExpr(oC, eC)
           case _ => fail("owner must be class type")
         }
       case (ExprOver(scE,e), ExprsOver(scT, tp)) =>
@@ -631,6 +578,7 @@ object Checker {
       case e: Expression => e
       case _ => fail("not an expression")
     }
+    correctFreeOwner(env, expA).foreach {corrected => return inferExpression(env, corrected)}
     // check exp and infer its type
     val (expC,expI) = exp match {
       case e: BaseValue => (e,e.tp)
@@ -654,7 +602,7 @@ object Checker {
           case ed: ExprDecl =>
             val rI = rC.via match {
               case None => ed.tp
-              case Some(v) => OwnedType(ed.tp, v)
+              case Some(v) => OwnedType(v, ed.tp)
             }
             (rC, rI)
           case _ => fail(s"$r is not an expression")
@@ -664,13 +612,13 @@ object Checker {
           case Some(ed: ExprDecl) => (exp, ed.tp)
           case _ => fail("not an expression")
         }
-      case OwnedExpr(e, owner) =>
+      case OwnedExpr(owner, e) =>
         val (ownerC, ownerI) = inferExpression(env, owner)
         ownerI match {
           case ClassType(d) =>
             val envO = env.push(d)
             val (eC, eI) = inferExpression(envO, e)
-            (OwnedExpr(eC, ownerC), OwnedType(eI, ownerC))
+            (OwnedExpr(ownerC, eC), OwnedType(ownerC, eI))
           case _ => fail("owner must be an instance")
         }
       case VarRef(n) =>
@@ -778,7 +726,12 @@ object Checker {
             (mf.listElement.insert(lC, List(pC)), a)
           case _ => fail("not a list")
         }
-
+      case OptionValue(e) =>
+         if (e == null) (exp, OptionType(EmptyType))
+         else {
+           val (eC,eI) = inferExpression(env, e)
+           (OptionValue(eC), OptionType(eI))
+         }
       case Block(es) =>
         var envL = env // local environment, includes variables seen in the block so far
         var eTp: Type = UnitType // type of the last seen expression in the block
@@ -924,7 +877,7 @@ object Checker {
             (OpenRef(p,None),Some(d))
           case None =>
             // give up
-            fail("unknown identifier")
+            fail("unknown identifier " + n)
         }
       case _ => (obj,None)
     }
@@ -958,6 +911,29 @@ object Checker {
     }
     val rC = OpenRef(pC, viaOC)
     (rC,pd)
+  }
+
+  /** for replacing OwnedObj with Expr[s]Over because the parser cannot disambiguate these */
+  // the type bound allows taking a Type or an Expression and returning the same
+  private def correctFreeOwner[A >: Type with Expression](env: GlobalEnvironment, o: A): Option[A] = o match {
+    case o: OwnedObject =>
+      val pO = o.owner match {
+        case OpenRef(p,None) => env.voc.lookupModule(p).map {
+          _ => p
+        }
+        case ClosedRef(n) => env.theory.parts.map(_/n).find {p =>
+          env.voc.lookupModule(p).isDefined
+        }
+        case _ => None
+      }
+      pO map {p =>
+        val le = LocalEnvironment(p)
+        o match {
+          case o: OwnedType => ExprsOver(le,o.owned).copyFrom(o).asInstanceOf[A] // guaranteed to work, but needed by Scala compiler
+          case o: OwnedExpr => ExprOver(le,o.owned).copyFrom(o).asInstanceOf[A]
+        }
+      }
+    case _ => None
   }
 
   def inferOperator(env: GlobalEnvironment,op: Operator,ins: List[Type])(implicit cause: Expression): Type = {
