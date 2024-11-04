@@ -729,6 +729,13 @@ object Checker {
             val (fC,fI) = inferExpressionNorm(env,f)
             val (fM,ins,out) = fI match {
               case FunType(i,o) => (fC,i,o)
+              case ProdType(ys) =>
+                as match {
+                  case List(IntValue(i)) =>
+                    // projections are parsed as applications
+                    return inferExpression(env, Projection(f,i).copyFrom(exp))
+                  case _ => fail("not a function")
+                }
               case u: UnknownType if !u.known =>
                 val uis = as.map(_ => Type.unknown())
                 val uo = Type.unknown()

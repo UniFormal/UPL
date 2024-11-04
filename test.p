@@ -14,10 +14,10 @@ module M {
   id = x -> x
   id0 = id(0)
   odd = x -> x == 1 | even(x-1)
-  foreach : (list[int], int -> ()) -> () = (l,f) -> for i in l f(i)
-  map = (l: list[int]) -> f -> {
-    var r: list[int] = list()
-    for x in l {r = list(f(x)) + r}
+  foreach : ([int], int -> ()) -> () = (l,f) -> for i in l f(i)
+  map = (l: [int]) -> f -> {
+    var r: [int] = []
+    for x in l {r = [f(x)] + r}
     r
   }
   sum = l -> {
@@ -29,7 +29,7 @@ module M {
     x
   }
   test = {
-    sum(list(1,2,3))
+    sum([1,2,3])
   }
 }
 main = M.test

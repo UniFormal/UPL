@@ -462,6 +462,7 @@ object BaseType {
   val R = RatType
   val S = StringType
   def L(e: Type) = ListType(e)
+  def O(e: Type) = OptionType(e)
 }
 /** 0 elements */
 case object EmptyType extends BaseType("empty")
@@ -492,7 +493,7 @@ case class ProdType(comps: List[Type]) extends TypeOperator(comps) {
 }
 /** homogeneous lists */
 case class ListType(elem: Type) extends TypeOperator(List(elem)) {
-  override def toString = s"List[$elem]"
+  override def toString = s"[$elem]"
 }
 /** matches a list type, possibly specializing an [[UnknownType]] */
 object ListOrUnknownType {
@@ -507,7 +508,7 @@ object ListOrUnknownType {
 }
 /** optional values */
 case class OptionType(elem: Type) extends TypeOperator(List(elem)) {
-  override def toString = s"Option[$elem]"
+  override def toString = elem + "?"
 }
 
 // ***************** Expressions **************************************
@@ -591,13 +592,19 @@ case class Projection(tuple: Expression, index: Int) extends Expression {
 
 /** lists, introduction form for [[ListType]] */
 case class ListValue(elems: List[Expression]) extends Expression {
-  override def toString = s"List(${elems.mkString(",")})"
+  override def toString = elems.mkString("[", ",", "]")
 }
 /** list elements access, elimination form for [[ListType]]
   * @param position must evaluate to an [[IntValue]] between 0 and length-1; type-checking is undecidable and over-approximates
   */
 case class ListElem(list: Expression, position: Expression) extends Expression {
-  override def toString = s"$list($position)"
+  override def toString = s"$list[$position]"
+}
+
+/** optional value, null-value for empty option */
+case class OptionValue(value: Expression) extends Expression {
+  def get = Option(value)
+  override def toString = if (value == null) "?" else value + "?"
 }
 
 /** base values, introduction forms of [[BaseType]] */
