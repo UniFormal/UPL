@@ -415,10 +415,19 @@ case class OwnedType(owned: Type, owner: Expression) extends Type with OwnedObje
 // ***************** Types **************************************
 
 /** an omitted type that is to be filled in during type inference */
-sealed class UnknownType(var tp: Type) extends Type {
-  override def known = tp != null
-  override def skipUnknown: Type = if (known) tp.skipUnknown else this
-  override def toString = if (known) tp.toString else "???"
+sealed class UnknownType(private var _tp: Type) extends Type {
+  def tp = if (known) _tp.skipUnknown else null
+  override def known = _tp != null && _tp.known
+  def set(t: Type): Unit = {
+    if (known) throw IError("type already inferred")
+    if (_tp == null) _tp = t
+    else _tp match {
+      case u:UnknownType => u.set(t)
+      case _ => throw IError("impossible case")
+    }
+  }
+  override def skipUnknown: Type = if (known) _tp.skipUnknown else this
+  override def toString = if (known) _tp.toString else "???"
 }
 
 /** the type of instances of a theory */
@@ -491,7 +500,7 @@ object ListOrUnknownType {
     case ListType(e) => Some(e)
     case u:UnknownType =>
       val e = Type.unknown
-      u.tp = ListType(e)
+      u.set(ListType(e))
       Some(e)
     case _ => None
   }
@@ -672,7 +681,7 @@ case class Assign(target: Expression, value: Expression) extends Expression {
   * evaluates to its last element, variable declarations are in scope till the end of their block
   */
 case class Block(exprs: List[Expression]) extends Expression {
-  override def toString = exprs.mkString("{", " ", "}")
+  override def toString = exprs.mkString("{", "; ", "}")
 }
 
 /** if-then-else, ternary operators, can be seen as elimination form of [[BoolType]] */
@@ -703,7 +712,7 @@ sealed abstract class Operator(val symbol: String) {
   def polyTypes(u: UnknownType): List[FunType] = Nil
 }
 
-/** operators with binary infix notation */
+/** operators with binary infix notation (flexary flag not supported yet) */
 sealed abstract class InfixOperator(s: String, val precedence: Int, val flexary: Boolean) extends Operator(s)
 /** operators with prefix notation */
 sealed abstract class PrefixOperator(s: String) extends Operator(s)
@@ -725,10 +734,11 @@ sealed trait Comparison {
 /** polymorphic (in)equality at any type */
 sealed trait Equality extends Operator {
   def types = Nil
-  override def polyTypes(u: UnknownType) = List(u<--(u,u))
+  override def polyTypes(u: UnknownType) = List(B<--(u,u))
 }
 
-case object Plus extends InfixOperator("+", 0, false) with Arithmetic {
+case object Plus extends InfixOperator("+", 0, true) with Arithmetic {
+  override val types = (S<--(S,S))::Times.types
   override def polyTypes(u: UnknownType) = List(L(u)<--(L(u),L(u)))
 }
 case object Minus extends InfixOperator("-", 0, false) with Arithmetic

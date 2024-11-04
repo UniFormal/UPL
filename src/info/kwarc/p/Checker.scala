@@ -557,7 +557,7 @@ object Checker {
         (insG.decls zip insE).foreach {case (inG,inE) =>
           inG.tp match {
             case u: UnknownType =>
-              u.tp = inE
+              u.set(inE)
             case _ =>
               checkSubtype(env, inE, inG.tp)
           }
@@ -590,16 +590,19 @@ object Checker {
           case u: UnknownType =>
             val outI = inferOperator(env,op,ins)
             checkSubtype(env,outI,out)
-            u.tp = tpN
+            u.set(tpN)
           case _ =>
             checkSubtype(env,opTp,tpN)
         }
         BaseOperator(op,tpN)
       case _ =>
         val (eC,eI) = inferExpression(env,exp)
-        tpN match {
-          case u: UnknownType =>
-            u.tp = eI // infer unknown type
+        matchTypes(eI,tpN) match {
+          case Some(us) =>
+            // infer unknown types
+            us.distinct.foreach {case (u,a) =>
+              u.set(a)
+            }
           case _ =>
             checkSubtype(env,eI,tpN)
         }
@@ -729,7 +732,7 @@ object Checker {
               case u: UnknownType if !u.known =>
                 val uis = as.map(_ => Type.unknown())
                 val uo = Type.unknown()
-                u.tp = FunType(uis,uo)
+                u.set(FunType(uis,uo))
                 (fC,uis,uo)
               case mf.application(_,FunType(i,o)) => (mf.application.insert(fC,as),i,o)
               case _ => fail("not a function")(f)
@@ -951,31 +954,36 @@ object Checker {
   }
 
   def inferOperator(env: GlobalEnvironment,op: Operator,ins: List[Type])(implicit cause: Expression): Type = {
-    // possible types
-    val matchingTypings = (op.types:::op.polyTypes(Type.unknown)).flatMap {case f@FunType(expected,_) =>
-      matchTypes(ProdType(ins), ProdType(expected)).map((f,_)).toList
+    val possibleTypes = op.types:::op.polyTypes(Type.unknown)
+    val matchResults = possibleTypes.map {case f@FunType(expected,_) =>
+      matchTypes(ProdType(expected), ProdType(ins)).map((f,_))
     }
-    if (matchingTypings.length == 0) fail("ill-typed operator")
-    if (matchingTypings.length > 1) fail("cannot disambiguate operator")
-    val (tp,us) = matchingTypings.head
-    us.foreach {case (u: UnknownType, a) =>
-      val ua = if (u.known) typeUnion(env, u.tp, a) else a // better take union than file for equality and + on lists
-      if (u.known && ua == AnyType) fail("incompatible types")
-      u.tp = a
+    val matchingTypes = matchResults.flatMap(_.toList)
+    if (matchingTypes.length == 0)
+      fail("ill-typed operator")
+    if (matchingTypes.length > 1)
+      fail("cannot disambiguate operator")
+    val (tp,us) = matchingTypes.head
+    us.distinct.foreach {case (u: UnknownType, a) =>
+      val ua = if (u.known) typeUnion(env, u.tp, a) else a // better take union than fail because of equality and + on lists
+      if (u.known && ua == AnyType)
+        fail("incompatible types")
+      u.set(a)
     }
     tp.out
   }
 
   /** if the types can be made equal, by assigning to unknowns, the assignments */
-  private def matchTypes(a: Type, b: Type): Option[List[(UnknownType,Type)]] = (a,b) match {
-    case (u: UnknownType, _) if !u.known => Some(List((u,b)))
+  private def matchTypes(a: Type, b: Type): Option[List[(UnknownType,Type)]] = (a.skipUnknown,b.skipUnknown) match {
+    case (u: UnknownType, k) if !u.known => Some(List((u,k)))
+    case (k, u: UnknownType) if k.known && !u.known => Some(List((u,k)))
     case (a: TypeOperator, b: TypeOperator) =>
       if (a.getClass == b.getClass && a.children.length == b.children.length) {
         val mcs = (a.children zip b.children).map{case (c,d) => matchTypes(c,d)}
         if (mcs.forall(_.isDefined)) Some(mcs.flatMap(_.get)) else None
       } else
         None
-    case _ => if (a == b) Some(Nil) else None
+    case (a,b) => if (a == b) Some(Nil) else None
   }
 }
 

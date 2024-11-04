@@ -10,15 +10,17 @@ module M {
     address = (if male "Mr" else "Mrs") + " " + name
   }
   odd: int -> bool
-  even = (x: int) -> if x == 0 true else if x>0 odd(x-1) else odd(-x-1)
-  odd = (x) -> x == 1 | even(x-1)
+  even = x -> if x == 0 true else if x>0 odd(x-1) else odd(-x-1)
+  id = x -> x
+  id0 = id(0)
+  odd = x -> x == 1 | even(x-1)
   foreach : (list[int], int -> ()) -> () = (l,f) -> for i in l f(i)
-  map = (l: list[int]) -> (f: int -> int) -> {
+  map = (l: list[int]) -> f -> {
     var r: list[int] = list()
     for x in l {r = list(f(x)) + r}
     r
   }
-  sum = (l: list[int]) -> {
+  sum = l -> {
     var x = 0
     val f = (y:int) -> {
       x = x+y; ()
@@ -27,6 +29,7 @@ module M {
     x
   }
   test = {
-   sum(list(1,2,3))
+    sum(list(1,2,3))
+  }
 }
 main = M.test
