@@ -167,7 +167,7 @@ object Checker {
         if (abs.dfO.isDefined) fail("name is inherited and already defined")
         // Abstract: inherit type
         val expectedTp = abs.tp
-        val tpC = if (sd.tp == null) {
+        val tpC = if (!sd.tp.known) {
           // type = Omitted: use expected type
           abs.tp
         } else {
@@ -191,11 +191,11 @@ object Checker {
         // No: check declaration without inherited type
         sd match {
           case td: TypeDecl =>
-            val tpC = if (td.tp == null) AnyType else checkType(env,td.tp)
+            val tpC = checkType(env,td.tp)
             val dfOC = td.dfO map {df => checkType(env,df,tpC)}
             td.copy(tp = tpC,dfO = dfOC)
           case sd: ExprDecl =>
-            val (tpC,dfC) = if (sd.tp == null) {
+            val (tpC,dfC) = if (!sd.tp.known) {
               sd.dfO match {
                 case None => fail("untyped declaration")
                 case Some(df) =>
@@ -247,18 +247,11 @@ object Checker {
     implicit val cause = vd
     if (vd.mutable && !allowMutable) fail("mutable variable not allowed here")
     if (vd.defined && !allowDefinitions) fail("defined variable not allowed here")
-    if (vd.tp == null) {
-      vd.dfO match {
-        case Some(v) =>
-          val (dfC,dfI) = inferExpression(env,v)
-          VarDecl(vd.name,dfI, Some(dfC),vd.mutable)
-        case None => fail("untyped variable")
-      }
-    } else {
-      val tpC = checkType(env,vd.tp)
-      val dfC = vd.dfO map {d => checkExpression(env,d,vd.tp)}
-      VarDecl(vd.name,tpC,dfC,vd.mutable)
-    }
+    val tpC = if (vd.tp.known) {
+      checkType(env,vd.tp)
+    } else vd.tp
+    val dfC = vd.dfO map {d => checkExpression(env,d,tpC)}
+    VarDecl(vd.name,tpC.skipUnknown,dfC,vd.mutable)
   }
 
   /** theory a subsumbed by b */
@@ -328,6 +321,11 @@ object Checker {
         val thyC = checkEnvironment(env, thy)
         val qC = checkType(env.push(thy), q)
         ExprsOver(thyC, qC)
+      case u: UnknownType =>
+        if (u.known)
+          checkType(env, u.tp)
+        else
+          fail("uninferred omitted type")
     }
   }
 
@@ -533,8 +531,7 @@ object Checker {
       case ExprsOver(sc, t) =>
         val thyN = f(sc.theory)
         ExprsOver(LocalEnvironment(thyN, sc.context), n(t))
-      case null =>
-        null // should be impossible, only for debugging
+      case u: UnknownType => if (u.known) n(u.tp) else u
     }
   }
 
@@ -555,18 +552,18 @@ object Checker {
         if (es.length != ts.length) fail("wrong number of components in tuple")
         val esC = (es zip ts) map {case (e,t) => checkExpression(env,e,t)}
         Tuple(esC)
-      case (Lambda(ins,out),FunType(inTps,outTp)) =>
-        if (ins.decls.length != inTps.length) fail("wrong number of variables in lambda")
-        val insT = (ins.decls zip inTps).map {case (invd,intp) =>
-          if (invd.tp == null) {
-            invd.copy(tp = intp)
-          } else {
-            checkSubtype(env, intp, invd.tp)
-            invd
+      case (Lambda(insG,outG),FunType(insE,outE)) =>
+        if (insG.decls.length != insE.length) fail("wrong number of variables in lambda")
+        (insG.decls zip insE).foreach {case (inG,inE) =>
+          inG.tp match {
+            case u: UnknownType =>
+              u.tp = inE
+            case _ =>
+              checkSubtype(env, inE, inG.tp)
           }
         }
-        val insC = checkContext(env,Context(insT),false,false)
-        val outC = checkExpression(env.add(insC),out,outTp)
+        val insC = checkContext(env,insG,false,false)
+        val outC = checkExpression(env.add(insC),outG,outE)
         Lambda(insC,outC)
       case (OwnedExpr(e, oe), OwnedType(tp, ot)) if oe == ot =>
         val (oC,oI) = inferExpression(env, oe)
@@ -583,21 +580,29 @@ object Checker {
         }
         val eC = checkExpression(env.push(scTC), e, tp)
         ExprOver(scTC, eC)
-      case (Application(op: BaseOperator,args),_) if op.tp == null =>
+      case (Application(op: BaseOperator,args),_) if !op.tp.known =>
         val (argsC,argsI) = args.map(a => inferExpression(env,a)).unzip
         val opTp = FunType(argsI,tpN)
         val opC = checkExpression(env,op,opTp)
         Application(opC,argsC)
       case (BaseOperator(op,opTp),FunType(ins,out)) =>
-        if (opTp != null) {
-          checkSubtype(env,opTp,tpN)
+        opTp match {
+          case u: UnknownType =>
+            val outI = inferOperator(env,op,ins)
+            checkSubtype(env,outI,out)
+            u.tp = tpN
+          case _ =>
+            checkSubtype(env,opTp,tpN)
         }
-        val outI = inferOperator(env, op, ins)
-        checkSubtype(env,outI,out)
         BaseOperator(op,tpN)
       case _ =>
         val (eC,eI) = inferExpression(env,exp)
-        checkSubtype(env,eI,tpN)
+        tpN match {
+          case u: UnknownType =>
+            u.tp = eI // infer unknown type
+          case _ =>
+            checkSubtype(env,eI,tpN)
+        }
         eC
     }
     eC.copyFrom(exp)
@@ -627,8 +632,9 @@ object Checker {
     val (expC,expI) = exp match {
       case e: BaseValue => (e,e.tp)
       case op: BaseOperator =>
-        if (op.tp == null)
+        if (!op.tp.known) {
           fail("cannot infer type of operator")
+        }
         val ft = typeNormalize(env,op.tp) match {
           case ft: FunType => ft
           case _ => fail("operator type not a function")
@@ -710,7 +716,7 @@ object Checker {
         (Lambda(insC,bdC),FunType(inTypes,bdI))
       case Application(f,as) =>
         f match {
-          case op: BaseOperator if op.tp == null =>
+          case op: BaseOperator if !op.tp.known =>
             // for an operator of unknown type, we need to infer the argument types first
             val (asC,asI) = as.map(a => inferExpression(env,a)).unzip
             val out = inferOperator(env,op.operator,asI)
@@ -720,6 +726,11 @@ object Checker {
             val (fC,fI) = inferExpressionNorm(env,f)
             val (fM,ins,out) = fI match {
               case FunType(i,o) => (fC,i,o)
+              case u: UnknownType if !u.known =>
+                val uis = as.map(_ => Type.unknown())
+                val uo = Type.unknown()
+                u.tp = FunType(uis,uo)
+                (fC,uis,uo)
               case mf.application(_,FunType(i,o)) => (mf.application.insert(fC,as),i,o)
               case _ => fail("not a function")(f)
             }
@@ -740,7 +751,7 @@ object Checker {
             (Projection(tupC,p), ts(p))
           case mfp(_,a) =>
             (mfp.insert(tupC, List(IntValue(p))), a)
-          case _ => fail("not a list")
+          case _ => fail("not a tuple")
         }
       case ListValue(es) =>
         val (esC,esI) = es.map(e => inferExpression(env,e)).unzip
@@ -750,7 +761,7 @@ object Checker {
         val (lC,lI) = inferExpressionNorm(env, l)
         val pC = checkExpression(env, p, IntType)
         lI match {
-          case ListType(t) =>
+          case ListOrUnknownType(t) =>
             // list index bound unchecked
             (ListElem(lC,pC), t)
           case mf.listElement(_,FunType(List(IntType),a)) =>
@@ -774,7 +785,7 @@ object Checker {
         }
         (Block(esC), eTp)
       case VarDecl(n, tp, vlO, mut) =>
-        val (tpC,vlC) = if (tp == null) {
+        val (tpC,vlC) = if (!tp.known) {
           vlO match {
             case None => fail("untyped variables")
             case Some(vl) =>
@@ -811,7 +822,7 @@ object Checker {
       case For(n, range, bd) =>
         val (rangeC,rangeI) = inferExpressionNorm(env, range)
         val (rangeM, nTp) = rangeI match {
-          case ListType(t) => (rangeC, t)
+          case ListOrUnknownType(t) => (rangeC, t)
           case mf.iteration(_,ListType(t)) => (mf.iteration.insert(rangeC, Nil), t)
           case _ => fail("not iterable")
         }
@@ -905,7 +916,7 @@ object Checker {
             // give up
             fail("unknown identifier")
         }
-      case _ => (obj,null)
+      case _ => (obj,None)
     }
   }
 
@@ -940,35 +951,31 @@ object Checker {
   }
 
   def inferOperator(env: GlobalEnvironment,op: Operator,ins: List[Type])(implicit cause: Expression): Type = {
-    if (ins.isEmpty) fail("operator needs arguments")
-    op match {
-      case p: PrefixOperator =>
-        if (ins.length != 1) fail("wrong number of arguments")
-        (p, ins.head) match {
-          case (UMinus, s@(IntType|RatType)) => s
-          case (Not, BoolType) => BoolType
-          case _ => fail("ill-typed arguments")
-        }
-      case inf: InfixOperator =>
-        if (ins.length != 2) fail("wrong number of arguments")
-        (inf, ins(0), ins(1)) match {
-          case (Divide, IntType, IntType) => RatType
-          case (_: Arithmetic, s@(IntType|RatType), t@(IntType|RatType)) => typeUnion(env, s,t)
-          case (Plus, StringType, StringType) => StringType
-          case (Plus, ListType(s), ListType(t)) if s == t =>
-            val u = typeUnion(env,s,t)
-            if (u == AnyType) fail("incompatible lists")
-            ListType(u)
-          case (_:Connective, BoolType, BoolType) => BoolType
-          case (_:Comparison, s@(BoolType|StringType), t@(BoolType|StringType)) if s == t => BoolType
-          case (_:Comparison, s@(IntType|RatType), t@(IntType|RatType)) => BoolType
-          case (_:Equality, s, t)  =>
-            val u = typeUnion(env, s, t)
-            if (u == AnyType) fail("comparison of incompatible types")
-            BoolType
-          case _ => fail("ill-typed operator")
-        }
+    // possible types
+    val matchingTypings = (op.types:::op.polyTypes(Type.unknown)).flatMap {case f@FunType(expected,_) =>
+      matchTypes(ProdType(ins), ProdType(expected)).map((f,_)).toList
     }
+    if (matchingTypings.length == 0) fail("ill-typed operator")
+    if (matchingTypings.length > 1) fail("cannot disambiguate operator")
+    val (tp,us) = matchingTypings.head
+    us.foreach {case (u: UnknownType, a) =>
+      val ua = if (u.known) typeUnion(env, u.tp, a) else a // better take union than file for equality and + on lists
+      if (u.known && ua == AnyType) fail("incompatible types")
+      u.tp = a
+    }
+    tp.out
+  }
+
+  /** if the types can be made equal, by assigning to unknowns, the assignments */
+  private def matchTypes(a: Type, b: Type): Option[List[(UnknownType,Type)]] = (a,b) match {
+    case (u: UnknownType, _) if !u.known => Some(List((u,b)))
+    case (a: TypeOperator, b: TypeOperator) =>
+      if (a.getClass == b.getClass && a.children.length == b.children.length) {
+        val mcs = (a.children zip b.children).map{case (c,d) => matchTypes(c,d)}
+        if (mcs.forall(_.isDefined)) Some(mcs.flatMap(_.get)) else None
+      } else
+        None
+    case _ => if (a == b) Some(Nil) else None
   }
 }
 

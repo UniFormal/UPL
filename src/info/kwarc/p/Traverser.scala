@@ -32,7 +32,7 @@ abstract class Traverser[A] {
   def apply(tp: Type)(implicit a: A): Type = matchC(tp)(applyDefault _)
 
   protected final def applyDefault(tp: Type)(implicit a: A): Type = tp match {
-    case null => null // in case we traverse before inferring types
+    case u: UnknownType => if (u.known) applyDefault(u.tp) else u // traversal eliminates unknown-wrappers
     case ClosedRef(n) => ClosedRef(n)
     case OpenRef(p,v) => OpenRef(apply(p), v map apply)
     case OwnedType(e, o) => OwnedType(apply(e), apply(o))

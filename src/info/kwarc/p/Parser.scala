@@ -142,7 +142,7 @@ class Parser(file: File, input: String) {
     trim
     val tp = if (startsWithS(":")) {
       parseType(Context.empty)
-    } else null
+    } else Type.unknown
     trim
     val vl = if (startsWithS("=")) {
       Some(parseExpression(Context.empty))
@@ -154,11 +154,11 @@ class Parser(file: File, input: String) {
     val name = parseName
     trim
     val (tp,df) = if (startsWithS("=")) {
-      (null,Some(parseType(Context.empty)))
+      (Type.unbounded,Some(parseType(Context.empty)))
     } else if (startsWithS("<")) {
       (parseType(Context.empty), None)
     } else
-      (null, None)
+      (Type.unbounded, None)
     TypeDecl(name, tp, df)
   }
 
@@ -167,7 +167,7 @@ class Parser(file: File, input: String) {
     trim
     val tp = if (startsWithS(":")) {
       parseType
-    } else null
+    } else Type.unknown
     val vl = if (startsWithS("=")) {
       Some(parseExpression)
     } else None
@@ -225,7 +225,7 @@ class Parser(file: File, input: String) {
         trim
         skipT("in")
         val r = parseExpression
-        val b = parseExpression(ctx.append(VarDecl(v,null)))
+        val b = parseExpression(ctx.append(VarDecl(v,Type.unknown)))
         For(v,r,b)
       } else if (startsWithS("if")) {
         val c = parseExpression
@@ -239,7 +239,7 @@ class Parser(file: File, input: String) {
         val o = Operator.prefixes.find(o => startsWith(o.symbol)).get
         skip(o.symbol)
         val e = parseExpression
-        Application(BaseOperator(o,null),List(e))
+        Application(BaseOperator(o,Type.unknown),List(e))
       } else if (startsWithS("\"")) {
         val begin = index
         while (next != '"') index += 1
@@ -275,8 +275,8 @@ class Parser(file: File, input: String) {
         if (startsWithS("->")) {
           val vds = es.map {
             case vd: VarDecl => vd
-            case VarRef(n) => VarDecl(n, null)
-            case ClosedRef(n) => VarDecl(n, null)
+            case VarRef(n) => VarDecl(n, Type.unknown)
+            case ClosedRef(n) => VarDecl(n, Type.unknown)
             case _ => fail("not variable declaration")
           }
           val c = Context(vds)
@@ -302,7 +302,7 @@ class Parser(file: File, input: String) {
             val tp = parseType
             VarDecl(n,tp,None,false)
           } else if (startsWithS("->")) {
-            val ins = Context(VarDecl(n,null))
+            val ins = Context(VarDecl(n,Type.unknown))
             val b = parseExpression(ctx.append(ins))
             Lambda(ins, b)
           } else if (ctx.domain.contains(n)) {
@@ -356,7 +356,7 @@ class Parser(file: File, input: String) {
         case Nil =>
           // reduce on the right: before e o | last ---> before | (e o last)
           val (e,o) = shifted.head
-          val eolast = Application(BaseOperator(o,null),List(e,last))
+          val eolast = Application(BaseOperator(o,Type.unknown),List(e,last))
           shifted = shifted.tail
           last = eolast
         case (e2,o2) :: tl =>
@@ -367,7 +367,7 @@ class Parser(file: File, input: String) {
             // before e1 o1 | e2 o2 tl last
             if (o1.precedence >= o2.precedence) {
               // reduce on the left: ---> before (e1 o1 e2) o2 | tl last
-              val e1o1e2 = Application(BaseOperator(o1,null),List(e1,e2))
+              val e1o1e2 = Application(BaseOperator(o1,Type.unknown),List(e1,e2))
               shifted = (e1o1e2,o2) :: shifted.tail
               rest = tl
             } else if (o1.precedence < o2.precedence) {

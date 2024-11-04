@@ -72,7 +72,15 @@ object Path {
 sealed abstract class Object extends SyntaxFragment
 
 /** types */
-sealed trait Type extends Object
+sealed trait Type extends Object {
+  def known = true
+  def skipUnknown = this
+  def <--(ins:Type*) = FunType(ins.toList,this)
+}
+object Type {
+  def unknown() = new UnknownType(null)
+  val unbounded = AnyType
+}
 
 /** typed expressions */
 sealed trait Expression extends Object {
@@ -406,6 +414,13 @@ case class OwnedType(owned: Type, owner: Expression) extends Type with OwnedObje
 
 // ***************** Types **************************************
 
+/** an omitted type that is to be filled in during type inference */
+sealed class UnknownType(var tp: Type) extends Type {
+  override def known = tp != null
+  override def skipUnknown: Type = if (known) tp.skipUnknown else this
+  override def toString = if (known) tp.toString else "???"
+}
+
 /** the type of instances of a theory */
 case class ClassType(domain: Theory) extends Type {
   override def toString = domain.toString
@@ -429,8 +444,15 @@ case class ExprsOver(scope: LocalEnvironment, tp: Type) extends Type {
 }
 
 /** atomic built-in base types */
-sealed abstract class BaseType(name: String) extends Type {
+sealed abstract class BaseType(name: String) extends Type {self =>
   override def toString = name
+}
+object BaseType {
+  val B = BoolType
+  val I = IntType
+  val R = RatType
+  val S = StringType
+  def L(e: Type) = ListType(e)
 }
 /** 0 elements */
 case object EmptyType extends BaseType("empty")
@@ -462,6 +484,17 @@ case class ProdType(comps: List[Type]) extends TypeOperator(comps) {
 /** homogeneous lists */
 case class ListType(elem: Type) extends TypeOperator(List(elem)) {
   override def toString = s"List[$elem]"
+}
+/** matches a list type, possibly specializing an [[UnknownType]] */
+object ListOrUnknownType {
+  def unapply(t: Type) = t match {
+    case ListType(e) => Some(e)
+    case u:UnknownType =>
+      val e = Type.unknown
+      u.tp = ListType(e)
+      Some(e)
+    case _ => None
+  }
 }
 /** optional values */
 case class OptionType(elem: Type) extends TypeOperator(List(elem)) {
@@ -662,29 +695,50 @@ case class While(cond: Expression, body: Expression) extends Expression
 
 /** parent class of all operators
   *
-  * Operators carry concrete syntax information so that their parsing/rendering is controlled by the operator,
-  * not by the parser/printer.
+  * Operators carry concrete syntax and typing information so that their processing is controlled by the operator,
+  * not by the parser/checker/printer.
   * For the latter to be able to access this information, all operators must be listed in the companion object [[Operator]] */
-sealed abstract class Operator(val symbol: String)
+sealed abstract class Operator(val symbol: String) {
+  def types: List[FunType]
+  def polyTypes(u: UnknownType): List[FunType] = Nil
+}
+
 /** operators with binary infix notation */
 sealed abstract class InfixOperator(s: String, val precedence: Int, val flexary: Boolean) extends Operator(s)
 /** operators with prefix notation */
 sealed abstract class PrefixOperator(s: String) extends Operator(s)
 
+// for type abbreviations
+import BaseType._
 /** arithmetic operators */
-sealed trait Arithmetic
+sealed trait Arithmetic {
+  val types = List(I<--(I,I), R<--(R,R), R<--(I,R), R<--(R,I))
+}
 /** boolean connectives */
-sealed trait Connective
+sealed trait Connective {
+  val types = List(B<--(B,B))
+}
 /** comparison operators for base values */
-sealed trait Comparison
-/** polymorphpic (in)equality at any type */
-sealed trait Equality
+sealed trait Comparison {
+  val types = List(B<--(I,I), B<--(R,R), B<--(I,R), B<--(R,I), B<--(S,S), B<--(B,B))
+}
+/** polymorphic (in)equality at any type */
+sealed trait Equality extends Operator {
+  def types = Nil
+  override def polyTypes(u: UnknownType) = List(u<--(u,u))
+}
 
-case object Plus extends InfixOperator("+", 0, false) with Arithmetic
+case object Plus extends InfixOperator("+", 0, false) with Arithmetic {
+  override def polyTypes(u: UnknownType) = List(L(u)<--(L(u),L(u)))
+}
 case object Minus extends InfixOperator("-", 0, false) with Arithmetic
 case object Times extends InfixOperator("*", 10, true) with Arithmetic
-case object Divide extends InfixOperator("/", 10, false) with Arithmetic
-case object Power extends InfixOperator("^", 20, false)
+case object Divide extends InfixOperator("/", 10, false) {
+  val types = List(R<--(I,I), R<--(R,R), R<--(I,R), R<--(R,I))
+}
+case object Power extends InfixOperator("^", 20, false) {
+  val types = List(I<--(I,I), R<--(R,R), R<--(I,R), R<--(R,I))
+}
 
 case object And extends InfixOperator("&", -20, true) with Connective
 case object Or extends InfixOperator("|", -20, true) with Connective
@@ -697,8 +751,12 @@ case object GreaterEq extends InfixOperator(">=", -10, false) with Comparison
 case object Equal extends InfixOperator("==", -10, false) with Equality
 case object Inequal extends InfixOperator("!=", -10, false) with Equality
 
-case object UMinus extends PrefixOperator("-")
-case object Not extends PrefixOperator("!")
+case object UMinus extends PrefixOperator("-") {
+  val types = List(I<--I, R<--R)
+}
+case object Not extends PrefixOperator("!") {
+  val types = List(B<--B)
+}
 
 object Operator {
   val infixes = List(Plus, Minus, Times, Divide, Power,
