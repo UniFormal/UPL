@@ -34,7 +34,7 @@ abstract class Traverser[A] {
   protected final def applyDefault(tp: Type)(implicit a: A): Type = tp match {
     case u: UnknownType => if (u.known) applyDefault(u.tp) else u // traversal eliminates unknown-wrappers
     case ClosedRef(n) => ClosedRef(n)
-    case OpenRef(p,v) => OpenRef(apply(p), v map apply)
+    case OpenRef(p) => OpenRef(apply(p))
     case OwnedType(e, o) => OwnedType(apply(e), apply(o))
     case b: BaseType => b
     case ClassType(thy) => ClassType(apply(thy))
@@ -51,7 +51,7 @@ abstract class Traverser[A] {
     case _: BaseValue => exp
     case _: VarRef => exp
     case ClosedRef(n) => ClosedRef(n)
-    case OpenRef(p, v) => OpenRef(apply(p), v map apply)
+    case OpenRef(p) => OpenRef(apply(p))
     case OwnedExpr(o, e) => OwnedExpr(apply(o), apply(e))
     case BaseOperator(o,tp) => BaseOperator(o, apply(tp))
     case Instance(thy, ds) => Instance(apply(thy), ds map {d => apply(d).asInstanceOf[SymbolDeclaration]})

@@ -6,7 +6,8 @@ object Checker {
   private val debug = true
 
   case class Error(cause: SyntaxFragment,msg: String) extends PError(cause.loc + ": " + msg + " while checking " + cause.toString)
-  def fail(m: String)(implicit cause: SyntaxFragment) = throw Error(cause,m)
+  def fail(m: String)(implicit cause: SyntaxFragment) =
+    throw Error(cause,m)
 
   def checkProgram(p: Program): Program = matchC(p) {
     case Program(voc,mn) =>
@@ -195,19 +196,9 @@ object Checker {
             val dfOC = td.dfO map {df => checkType(env,df,tpC)}
             td.copy(tp = tpC,dfO = dfOC)
           case sd: ExprDecl =>
-            val (tpC,dfC) = if (!sd.tp.known) {
-              sd.dfO match {
-                case None => fail("untyped declaration")
-                case Some(df) =>
-                  val (c,i) = inferExpression(env,df)
-                  (i,Some(c))
-              }
-            } else {
-              val tC = checkType(env,sd.tp)
-              val dC = sd.dfO map {d =>
-                checkExpression(env,d,tC)
-              }
-              (tC,dC)
+            val tpC = checkType(env,sd.tp)
+            val dfC = sd.dfO map {d =>
+              checkExpression(env,d,tpC)
             }
             sd.copy(tp = tpC,dfO = dfC)
         }
@@ -247,9 +238,7 @@ object Checker {
     implicit val cause = vd
     if (vd.mutable && !allowMutable) fail("mutable variable not allowed here")
     if (vd.defined && !allowDefinitions) fail("defined variable not allowed here")
-    val tpC = if (vd.tp.known) {
-      checkType(env,vd.tp)
-    } else vd.tp
+    val tpC = checkType(env,vd.tp)
     val dfC = vd.dfO map {d => checkExpression(env,d,tpC)}
     VarDecl(vd.name,tpC.skipUnknown,dfC,vd.mutable)
   }
@@ -290,8 +279,7 @@ object Checker {
         }
         rd match {
           case td: TypeDecl => tp
-          case m: Module if r.via.isEmpty =>
-            // todo: pushout if via.isDefined
+          case m: Module =>
             // indeterminate use of module as type interpreted as class type
             if (!m.closed) fail("open module not a type")
             ClassType(Theory(rC.path))
@@ -326,22 +314,45 @@ object Checker {
         if (u.known)
           checkType(env, u.tp)
         else
-          fail("uninferred omitted type")
+          u // must be infered from later declarations
     }
   }
 
-  /** sub subtype of sup */
-  def checkSubtype(env: GlobalEnvironment,sub: Type,sup: Type)(implicit cause: SyntaxFragment): Unit = {
-    val union = typeUnion(env,sub,sup)
-    if (union != sup) // Theory overrides equals
-      fail(s"found: $sub; expected: $sup")
+  /** a <: b */
+  def checkSubtype(env: GlobalEnvironment, a: Type, b: Type)(implicit cause: SyntaxFragment): Unit = {
+    val equated = equateTypes(a,b)
+    if (equated) return
+    (a,b) match {
+      case (_,AnyType) => AnyType
+      case (EmptyType,_) =>
+      case (IntType,RatType) =>
+      case (ListType(x),ListType(y)) => checkSubtype(env,x,y)
+      case (ProdType(as),ProdType(bs)) if as.length == bs.length =>
+        (as zip bs).foreach {case (x,y) => checkSubtype(env,x,y)}
+      case (FunType(as,o),FunType(bs,p)) if as.length == bs.length =>
+        (as zip bs).foreach {case (x,y) => checkSubtype(env,y,x)}
+        checkSubtype(env,o,b)
+      case (ExprsOver(aT,u),ExprsOver(bT,v)) =>
+        if (!isSubenvironment(aT,bT)) fail("not quoted in the same context")
+        checkSubtype(env.push(aT),u,v)
+      case (ClassType(aT),ClassType(bT)) =>
+        // model of aT or model of bT, i.e., model of intersection
+        if (!isSubtheory(bT,aT)) // larger theory = smaller type
+          fail("subtype must be larger theory")
+      case _ =>
+        fail(s"found: $a; expected: $b")
+    }
   }
 
   /** flattened if the inputs are */
   def typeUnion(env: GlobalEnvironment,tps: List[Type])(implicit cause: SyntaxFragment): Type = {
-    var res: Type = EmptyType
-    tps.foreach {tp => res = typeUnion(env,res,tp)}
-    res
+    if (tps.isEmpty) {
+      EmptyType
+    } else {
+      var res: Type = tps.head
+      tps.tail.foreach {tp => res = typeUnion(env,res,tp)}
+      res
+    }
   }
 
   /** least common supertype
@@ -349,8 +360,11 @@ object Checker {
     */
     //TODO type bounds
   def typeUnion(env: GlobalEnvironment,a: Type,b: Type)(implicit cause: SyntaxFragment): Type = {
+    // equality, possibly by inference
+    val equated = equateTypes(a,b)
+    if (equated) return a
+    // proper subtyping
     (a,b) match {
-      case (a,b) if a == b => a
       case (AnyType,_) | (_,AnyType) => AnyType
       case (EmptyType,t) => t
       case (t,EmptyType) => t
@@ -391,8 +405,9 @@ object Checker {
     */
    //TODO type bounds
   def typeIntersection(env: GlobalEnvironment, a: Type, b: Type)(implicit cause: SyntaxFragment): Type = {
+     val equated = equateTypes(a,b)
+     if (equated) return a
     (a,b) match {
-      case (a,b) if a == b => a
       case (AnyType,t) => t
       case (t,AnyType) => t
       case (EmptyType,_) | (_,EmptyType) => EmptyType
@@ -453,14 +468,11 @@ object Checker {
         }
         case _ => fail("illegal type")(tp) // impossible if tp is checked
       }
-      case OpenRef(p, ownO) =>
+      case OpenRef(p) =>
         env.voc.lookupPath(p) match {
           case Some(td: TypeDecl) => td.dfO match {
             case None => tp
-            case Some(df) =>
-              var d = df
-              ownO foreach {o => d = OwnedType(o,d)}
-              n(d)
+            case Some(df) => n(df)
           }
           case _ => fail("illegal type")(tp) // impossible if tp is checked
         }
@@ -544,14 +556,9 @@ object Checker {
         BaseOperator(op,tpN)
       case _ =>
         val (eC,eI) = inferExpression(env,exp)
-        matchTypes(eI,tpN) match {
-          case Some(us) =>
-            // infer unknown types
-            us.distinct.foreach {case (u,a) =>
-              u.set(a)
-            }
-          case _ =>
-            checkSubtype(env,eI,tpN)
+        val equated = equateTypes(eI,tpN)
+        if (!equated) {
+          checkSubtype(env,eI,tpN)
         }
         eC
     }
@@ -600,11 +607,7 @@ object Checker {
         }
         rd match {
           case ed: ExprDecl =>
-            val rI = rC.via match {
-              case None => ed.tp
-              case Some(v) => OwnedType(v, ed.tp)
-            }
-            (rC, rI)
+            (rC, ed.tp)
           case _ => fail(s"$r is not an expression")
         }
       case ClosedRef(n) =>
@@ -772,12 +775,12 @@ object Checker {
         (While(condC, bdC), UnitType)
       case IfThenElse(cond,thn, elsO) =>
         val condC = checkExpression(env, cond, BoolType)
-        val (thnC,thnI) = inferExpression(env, thn)
+        val (thnC,thnI) = inferExpressionNorm(env, thn)
         val (elsOC, eI) = elsO match {
           case Some(els) =>
-            val (elsC, elsI) = inferExpression(env, els)
+            val (elsC, elsI) = inferExpressionNorm(env, els)
             val u = typeUnion(env, thnI, elsI)
-            if (u == AnyType) fail("branches have incompatible types")
+            if (u == AnyType) fail(s"branches have incompatible types: $thnI vs. $elsI")
             (Some(elsC), u)
           case None => (None,UnitType)
         }
@@ -812,7 +815,7 @@ object Checker {
       case Tuple(es) => es foreach check
       case ListValue(es) => es foreach check
       case eo: ExprOver => EvalTraverser(eo) {e => check(e); e}
-      case Application(OpenRef(r,None),es) =>
+      case Application(OpenRef(r),es) =>
         env.voc.lookupPath(r) match {
           case Some(ed: ExprDecl) if ed.dfO.isEmpty =>
           case _ => fail("function application not assignable")
@@ -860,7 +863,7 @@ object Checker {
               return (obj,Some(d))
             case Some(d :: _) =>
               // if the current module is open, we must change this to an open reference
-              return (OpenRef(p,None),Some(d))
+              return (OpenRef(p),Some(d))
             case _ =>
           }
         }
@@ -874,7 +877,7 @@ object Checker {
         env.voc.lookupRelativePath(env.currentParent,Path(List(n))) match {
           case Some((p,d)) =>
             // open reference n in parent theory
-            (OpenRef(p,None),Some(d))
+            (OpenRef(p),Some(d))
           case None =>
             // give up
             fail("unknown identifier " + n)
@@ -904,12 +907,8 @@ object Checker {
 
   private def checkOpenRef(env: GlobalEnvironment, r: OpenRef)(implicit cause: SyntaxFragment) = {
     val (pC, pd) = resolvePath(env, r.path)
-    val viaOC = r.via map {v =>
-      val base = env.voc.lookupModule(pC.up).get.base
-      // TODO empty viaO must be treated like identity morphism
-      checkExpression(env, v, ClassType(Theory(base)))
-    }
-    val rC = OpenRef(pC, viaOC)
+    // TODO check that base of open module is included into current scope
+    val rC = OpenRef(pC)
     (rC,pd)
   }
 
@@ -919,7 +918,7 @@ object Checker {
   private def correctFreeOwner[A >: Type with Expression](env: GlobalEnvironment, o: A): Option[A] = o match {
     case o: OwnedObject =>
       val pO = o.owner match {
-        case OpenRef(p,None) => env.voc.lookupModule(p).map {
+        case OpenRef(p) => env.voc.lookupModule(p).map {
           _ => p
         }
         case ClosedRef(n) => env.theory.parts.map(_/n).find {p =>
@@ -938,27 +937,32 @@ object Checker {
   }
 
   def inferOperator(env: GlobalEnvironment,op: Operator,ins: List[Type])(implicit cause: Expression): Type = {
-    val possibleTypes = op.types:::op.polyTypes(Type.unknown)
+    val param = Type.unknown()
+    val possibleTypes = op.types:::op.polyTypes(param)
     val matchResults = possibleTypes.map {case f@FunType(expected,_) =>
       matchTypes(ProdType(expected), ProdType(ins)).map((f,_))
     }
     val matchingTypes = matchResults.flatMap(_.toList)
     if (matchingTypes.length == 0)
       fail("ill-typed operator")
-    if (matchingTypes.length > 1)
-      fail("cannot disambiguate operator")
-    val (tp,us) = matchingTypes.head
-    us.distinct.foreach {case (u: UnknownType, a) =>
-      val ua = if (u.known) typeUnion(env, u.tp, a) else a // better take union than fail because of equality and + on lists
-      if (u.known && ua == AnyType)
-        fail("incompatible types")
-      u.set(a)
-    }
-    tp.out
+    val outs = matchingTypes.map(_._1.out).distinct
+    // infer return type if all possible types agree
+    val out = if (outs.length == 1) outs.head else fail("cannot disambiguate operator")
+    // find all unknowns that all possible types agree on
+    var commonAssignments: TypeAssignments = matchingTypes.head._2
+    matchingTypes.tail.foreach {case (_,next) => commonAssignments = commonAssignments intersect next}
+    // if we found multiple assignments for the parameter of this operator, take their union
+    val (paramAssignments, otherAssignments) = commonAssignments.partition(_._1 == param)
+    val paramAssignment = if (paramAssignments.isEmpty) Nil else List((param, typeUnion(env, paramAssignments.map(_._2))))
+    // better take union than fail because of equality and + on lists
+    assignAsMatched(paramAssignment:::otherAssignments)
+    out
   }
 
-  /** if the types can be made equal, by assigning to unknowns, the assignments */
-  private def matchTypes(a: Type, b: Type): Option[List[(UnknownType,Type)]] = (a.skipUnknown,b.skipUnknown) match {
+  private type TypeAssignments = List[(UnknownType,Type)]
+  /** checks if the types can be made equal by assigning to unknowns, returns those assignments */
+  private def matchTypes(a: Type, b: Type): Option[TypeAssignments] = (a.skipUnknown,b.skipUnknown) match {
+    case (a,b) if a == b => Some(Nil)
     case (u: UnknownType, k) if !u.known => Some(List((u,k)))
     case (k, u: UnknownType) if k.known && !u.known => Some(List((u,k)))
     case (a: TypeOperator, b: TypeOperator) =>
@@ -967,7 +971,16 @@ object Checker {
         if (mcs.forall(_.isDefined)) Some(mcs.flatMap(_.get)) else None
       } else
         None
-    case (a,b) => if (a == b) Some(Nil) else None
+    case _ => None
+  }
+  /** applies assignments returned by matchTypes */
+  private def assignAsMatched(as: TypeAssignments) = as.distinct.foreach {case (u,a) =>
+    u.set(a)
+  }
+  /** like matchTypes, but makes the assignments right away if matching is possible */
+  private def equateTypes(a: Type, b: Type) = matchTypes(a,b) match {
+    case Some(uas) => assignAsMatched(uas); true
+    case None => false
   }
 }
 

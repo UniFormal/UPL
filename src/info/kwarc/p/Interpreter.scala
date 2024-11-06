@@ -88,23 +88,11 @@ class Interpreter(vocInit: Module) {
             }
           }
       }
-      case OpenRef(p, ownO) =>
+      case OpenRef(p) =>
         voc.lookupPath(p) match {
           case Some(sd:ExprDecl) => sd.dfO match {
             case None => fail("no definiens") //TODO allow this as an abstract declaration in a module; all elimination forms below must remain uninterpreted
-            case Some(v) =>
-              ownO match {
-                case None =>
-                  // current owner interprets all closed references
-                  interpretExpression(v)
-                case Some(own) =>
-                  val ownI = interpretExpression(own) match {
-                    case i: Instance => i
-                    case _ => fail("not an instance")
-                  }
-                  val fr = Frame(p.toString,Some(ownI),Nil)
-                  interpretExpressionInFrame(fr,v)
-              }
+            case Some(v) => interpretExpression(v)
           }
           case _ => fail("not an expression")
         }
@@ -262,7 +250,7 @@ class Interpreter(vocInit: Module) {
       case (ListValue(es), ListValue(vs)) =>
         if (es.length != vs.length) throw RuntimeError("lists have inequal length")
         (es zip vs).foreach {case (e,v) => assign(e,v)}
-      case (Application(OpenRef(r,None), es), Application(OpenRef(s,None), vs)) if r == s =>
+      case (Application(OpenRef(r), es), Application(OpenRef(s), vs)) if r == s =>
         (es zip vs) foreach {case (e,v) => assign(e,v)}
       case (eo:ExprOver, vo: ExprOver) =>
         val (es, eR) = EvalTraverser.replaceEvals(eo)

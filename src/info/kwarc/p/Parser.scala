@@ -132,7 +132,7 @@ class Parser(file: File, input: String) {
   def parseName: String = {
     trim
     val begin = index
-    while (!atEnd && next.isLetterOrDigit) index += 1
+    while (!atEnd && (next.isLetterOrDigit || next == '_')) index += 1
     input.substring(begin,index)
   }
 
@@ -249,7 +249,7 @@ class Parser(file: File, input: String) {
       trim
       val expBeginAt = index
       var exp: Expression = if (startsWithS(".")) {
-        OpenRef(parsePath,None)
+        OpenRef(parsePath)
       } else if (startsWithS("{")) {
         var cs: List[Expression] = Nil
         var ctxL = ctxs

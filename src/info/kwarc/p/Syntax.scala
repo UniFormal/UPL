@@ -78,7 +78,8 @@ sealed trait Type extends Object {
   def <--(ins:Type*) = FunType(ins.toList,this)
 }
 object Type {
-  def unknown() = new UnknownType(null)
+  private var unknownCounter = -1
+  def unknown() = {unknownCounter += 1; new UnknownType(unknownCounter, null)}
   val unbounded = AnyType
 }
 
@@ -213,7 +214,7 @@ case class Program(voc: List[Declaration], main: Expression) extends SyntaxFragm
   * The module name is irrelevant, and the reference is made by name only.
   *
   * Open modules are always available if their base is.
-  * References to names in open modules are with [OpenRef] by path and do not require an explicit include.
+  * References to names in open modules are with [[OpenRef]] by path and do not require an explicit include.
   * In particular, an open module with empty base corresponds to a package.
   *
   * An open module with non-empty base are ideal for definitional extensions to the base such as theorems.
@@ -364,11 +365,10 @@ object Theory {
 
 // Some classes dealing with symbol references and scoping are shared between types and expressions
 
-/** reference to a symbol from an open theory, via an implementation of its base (if non-trivial) */
-case class OpenRef(path: Path, via: Option[Expression]) extends Expression with Type {
+/** reference to a symbol from an open theory */
+case class OpenRef(path: Path) extends Expression with Type {
   override def toString = {
-    val viaS = via match {case Some(v) => "[" + v + "]" case None => ""}
-    "." + path + viaS
+    "." + path
   }
 }
 
@@ -416,19 +416,23 @@ case class OwnedType(owner: Expression, owned: Type) extends Type with OwnedObje
 // ***************** Types **************************************
 
 /** an omitted type that is to be filled in during type inference */
-sealed class UnknownType(private var _tp: Type) extends Type {
+sealed class UnknownType(private var id: Int, private var _tp: Type) extends Type {
   def tp = if (known) _tp.skipUnknown else null
-  override def known = _tp != null && _tp.known
+  override def known = {_tp != null && _tp.known}
   def set(t: Type): Unit = {
-    if (known) throw IError("type already inferred")
-    if (_tp == null) _tp = t
-    else _tp match {
-      case u:UnknownType => u.set(t)
+    if (known)
+      throw IError("type already inferred")
+    if (_tp == null) {
+      // println(s"solving $this as $t")
+      _tp = t.skipUnknown
+    } else _tp match {
+      case u:UnknownType =>
+        u.set(t)
       case _ => throw IError("impossible case")
     }
   }
   override def skipUnknown: Type = if (known) _tp.skipUnknown else this
-  override def toString = if (known) _tp.toString else "???"
+  override def toString = if (known) _tp.toString else "???"+id
 }
 
 /** the type of instances of a theory */
