@@ -2,6 +2,8 @@ package info.kwarc.p
 
 import SyntaxFragment.matchC
 
+// ****************************** environments
+
 case class MutableExpression(name: String, var value: Expression) {
   override def toString = name + " = " + value
 }
@@ -18,16 +20,23 @@ trait MutableExpressionStore {
   }
 }
 
+case class LocalEnvironment(var fields: List[MutableExpression]) extends MutableExpressionStore
+
+object LocalEnvironment {
+  def empty = LocalEnvironment(Nil)
+}
+
 /** @param name frame name, only used for error reporting
   * @param owner the [[Instance]] relative to which [[ClosedRef]]s are interpreted,
   *  e.g., empty if we are in an open module
   * @param fields the visible local variables
   *  e.g., the (immutable) arguments of the called functions, and mutable local declarations
   */
-case class Frame(name: String, owner: Option[Instance], var fields: List[MutableExpression]) extends MutableExpressionStore {
-  override def toString = name + ": " + owner + fields.mkString(", ")
+case class RegionalEnvironment(name: String, region: Option[Instance], local: LocalEnvironment) {
+  override def toString = name + ": " + region + fields.mkString(", ")
+  def fields = local.fields
   def allocate(n: String, vl: Expression) {
-    fields ::= MutableExpression(n, vl)
+    local.fields ::= MutableExpression(n, vl)
     addedInBlock = (addedInBlock.head + 1) :: addedInBlock.tail
   }
 
@@ -36,35 +45,45 @@ case class Frame(name: String, owner: Option[Instance], var fields: List[Mutable
     addedInBlock ::= 0
   }
   def leaveBlock {
-    fields = fields.drop(addedInBlock.head)
+    local.fields = local.fields.drop(addedInBlock.head)
     addedInBlock = addedInBlock.tail
   }
 }
 
+object RegionalEnvironment {
+  def apply(name: String, reg: Option[Instance] = None): RegionalEnvironment = RegionalEnvironment(name, reg, LocalEnvironment.empty)
+}
+
+class GlobalEnvironment(var voc: Module) {
+  var regions = List(RegionalEnvironment("toplevel", None, LocalEnvironment.empty))
+  def frame = regions.head
+  def push(f: RegionalEnvironment) {regions::=f}
+  def pop() {regions = regions.tail}
+}
+
+// ********************************* interpretation
+
 class Interpreter(vocInit: Module) {
   private val debug = false
   /** unexpected error, e.g., typing error in input or expression does not simplify into value */
-  case class Error(stack: List[Frame], msg: String) extends PError(msg)
+  case class Error(stack: List[RegionalEnvironment], msg: String) extends PError(msg)
   def fail(msg: String)(implicit sf: SyntaxFragment) = throw Error(stack, msg + ": " + sf)
   /** run-time error while processing well-formed input, e.g., index out of bounds */
   case class RuntimeError(msg: String) extends PError(msg)
 
-  private var voc = vocInit
-
-  private var stack = List(Frame("toplevel", None, Nil))
+  private val env = new GlobalEnvironment(vocInit)
+  private def stack = env.regions
   private def frame = stack.head
-  private def push(f: Frame) {stack::=f}
-  private def pop() {stack = stack.tail}
 
   def interpretDeclaration(d: Declaration) {
     // TODO
-    voc = voc.append(d)
+    env.voc = env.voc.append(d)
   }
 
-  def interpretExpressionInFrame(f: Frame, exp: Expression) = {
-    push(f)
+  def interpretExpressionInFrame(f: RegionalEnvironment, exp: Expression) = {
+    env.push(f)
     val expI = interpretExpression(exp)
-    pop()
+    env.pop()
     expI
   }
   def interpretExpression(exp: Expression): Expression = {
@@ -73,13 +92,13 @@ class Interpreter(vocInit: Module) {
     exp match {
       case _: BaseValue => exp
       case _: BaseOperator => exp
-      case ClosedRef(n) => frame.owner match {
+      case ClosedRef(n) => frame.region match {
         case None =>
           fail("no owner for closed references") //TODO allow this as an abstract declaration in a module; all elimination forms below must remain uninterpreted
         case Some(inst) =>
           inst.getO(n) match {
             case Some(me) => me.value
-            case None => voc.lookupPath(inst.theory / n) match {
+            case None => env.voc.lookupPath(inst.theory / n) match {
               case Some(d: ExprDecl) => d.dfO match {
                 case Some(e) => e
                 case None => fail("no definiens")
@@ -89,14 +108,14 @@ class Interpreter(vocInit: Module) {
           }
       }
       case OpenRef(p) =>
-        voc.lookupPath(p) match {
+        env.voc.lookupPath(p) match {
           case Some(sd:ExprDecl) => sd.dfO match {
             case None => fail("no definiens") //TODO allow this as an abstract declaration in a module; all elimination forms below must remain uninterpreted
             case Some(v) => interpretExpression(v)
           }
           case _ => fail("not an expression")
         }
-      case VarRef(n) => frame.get(n) // frame values are always interpreted
+      case VarRef(n) => frame.local.get(n) // frame values are always interpreted
       case VarDecl(n,_, vl, _) =>
         val vlI = vl match {
           case None => fail("uninitialized variable")
@@ -124,8 +143,8 @@ class Interpreter(vocInit: Module) {
         runtimeInst.fields = fsI.reverse
         // execute the inherited field initializers in the context of this instance
         // variables available in the scope surrounding 'inst' are not visible
-        push(Frame("new instance", Some(runtimeInst), Nil))
-        val mod = voc.lookupModule(runtimeInst.theory).getOrElse(fail("unknown module"))
+        env.push(RegionalEnvironment("new instance", Some(runtimeInst)))
+        val mod = env.voc.lookupModule(runtimeInst.theory).getOrElse(fail("unknown module"))
         // TODO: i.dfO
         mod.decls.foreach {
           case sd: ExprDecl if sd.dfO.isDefined =>
@@ -136,13 +155,13 @@ class Interpreter(vocInit: Module) {
             }
           case _ =>
         }
-        pop()
+        env.pop()
         runtimeInst
       case OwnedExpr(own, e) =>
         val ownI = interpretExpression(own)
         ownI match {
           case inst: Instance if inst.isRuntime =>
-            val fr = Frame(e.toString, Some(inst), Nil)
+            val fr = RegionalEnvironment(e.toString, Some(inst))
             interpretExpressionInFrame(fr, e)
           case _ => fail("owner not a runtime instance")
         }
@@ -183,7 +202,7 @@ class Interpreter(vocInit: Module) {
             frame.enterBlock
             frame.allocate(i, null) // irrelevant value
             vs.foreach {v =>
-              frame.set(i, v)
+              frame.local.set(i, v)
               interpretExpression(b)
             }
             frame.leaveBlock
@@ -241,8 +260,8 @@ class Interpreter(vocInit: Module) {
   private def assign(target: Expression, value: Expression): Unit = {
     (target,value) match {
       case (VarRef(""), _) => // ignore value
-      case (VarRef(n),_) => frame.set(n,value)
-      case (ClosedRef(n),_) => frame.owner match {
+      case (VarRef(n),_) => frame.local.set(n,value)
+      case (ClosedRef(n),_) => frame.region match {
         case Some(inst) => inst.set(n, value)
         case None => fail("mutable field without owner")(target)
       }
@@ -263,7 +282,7 @@ class Interpreter(vocInit: Module) {
 
   def applyFunction(name: String, owner: Option[Instance], lam: Lambda, args: List[Expression]) = {
     val fes = (lam.ins.decls zip args) map {case (i,a) => MutableExpression(i.name,a)}
-    val fr = Frame(name, owner, fes:::lam.frame.fields)
+    val fr = RegionalEnvironment(name, owner, LocalEnvironment(fes:::lam.frame.fields))
     interpretExpressionInFrame(fr, lam.body)
   }
 

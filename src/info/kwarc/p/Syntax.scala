@@ -133,64 +133,69 @@ object Declaration {
 
 // ************************************* Contexts *****************************
 
+abstract class Context[A] extends SyntaxFragment with HasChildren[VarDecl] {
+  def append(c: LocalContext): A
+  def append(vd: VarDecl): A = append(LocalContext(vd))
+  def local: LocalContext
+  def decls = local.variables
+}
+
 /** object-level context: relative to a vocabulary and a choice of theory in it */
-case class Context(decls: List[VarDecl]) extends SyntaxFragment with HasChildren[VarDecl] {
-  override def toString = decls.mkString(", ")
-  def append(c: Context): Context = copy(decls = decls ::: c.decls)
-  def append(d: VarDecl): Context = append(Context(d))
+case class LocalContext(variables: List[VarDecl]) extends Context[LocalContext] {
+  override def toString = variables.mkString(", ")
+  def local = this
+  def append(c: LocalContext) = copy(variables = variables ::: c.variables)
 }
-object Context {
-  val empty = Context(Nil)
-  def apply(d: VarDecl): Context = Context(List(d))
-}
-
-/** declaration-level context: relative to a vocabulary, chooses a theory and an object-level context relative to it */
-case class LocalEnvironment(theory: Theory, context: Context) extends SyntaxFragment {
-  override def toString = s"$theory[$context]"
-  def append(c: Context): LocalEnvironment = copy(context = context.append(c))
-  def append(d: VarDecl): LocalEnvironment = append(Context(d))
-}
-object LocalEnvironment {
-  val empty = LocalEnvironment(Theory.empty,Context.empty)
-  def apply(thy: Theory): LocalEnvironment = LocalEnvironment(thy, Context.empty)
-  def apply(p: Path): LocalEnvironment = LocalEnvironment(Theory(p))
+object LocalContext {
+  val empty = LocalContext(Nil)
+  def apply(d: VarDecl): LocalContext = LocalContext(List(d))
 }
 
-/** program-level context: provides the vocabulary and a local environment
+/** declaration-level context: relative to a vocabulary, chooses a theory and an object-level lc relative to it */
+case class RegionalContext(theory: Theory, local: LocalContext) extends Context[RegionalContext] {
+  override def toString = s"$theory[$local]"
+  def append(c: LocalContext) = copy(local = local.append(c))
+}
+object RegionalContext {
+  val empty = RegionalContext(Theory.empty,LocalContext.empty)
+  def apply(thy: Theory): RegionalContext = RegionalContext(thy, LocalContext.empty)
+  def apply(p: Path): RegionalContext = RegionalContext(Theory(p))
+}
+
+/** program-level lc: provides the vocabulary and a local environment
   *
   * @param currentParent the path to the module in the vocabulary that current processing starts at;
   *                      also the bottom element of the stack of local environments
   * @param locals because checking must jump around between local environments, the letter are stored as a stack
   */
-case class GlobalEnvironment(voc: Module, currentParent: Path,locals: List[LocalEnvironment]) {
-  private def initLocal = if (locals.nonEmpty) this else copy(locals = List(LocalEnvironment(Theory(currentParent))))
-  def currentLocal = initLocal.locals.head
-  def theory = currentLocal.theory
-  def context = currentLocal.context
-  def push(t: Theory): GlobalEnvironment = push(LocalEnvironment(t))
-  def push(e: LocalEnvironment): GlobalEnvironment = {
-    val il = initLocal
-    il.copy(locals = e::il.locals)
+case class GlobalContext(voc: Module, currentParent: Path, regions: List[RegionalContext]) extends Context[GlobalContext] {
+  private def initRegion = if (regions.nonEmpty) this else copy(regions = List(RegionalContext(Theory(currentParent))))
+  def currentRegion = initRegion.regions.head
+  def theory = currentRegion.theory
+  def local = currentRegion.local
+  def push(t: Theory): GlobalContext = push(RegionalContext(t))
+  def push(e: RegionalContext): GlobalContext = {
+    val il = initRegion
+    il.copy(regions = e::il.regions)
   }
   def pop() = {
-    val il = initLocal
-    il.copy(locals = il.locals.tail)
+    val il = initRegion
+    il.copy(regions = il.regions.tail)
   }
   /** true if the local environment is given by the currentParent (as opposed to another one that we have pushed) */
-  def inPhysicalTheory = initLocal.locals.length == 1
-  def add(c: Context): GlobalEnvironment = {
-    val il = initLocal
-    il.copy(locals = il.locals.head.append(c) :: il.locals.tail)
+  def inPhysicalTheory = initRegion.regions.length == 1
+  def append(c: LocalContext) = {
+    val il = initRegion
+    il.copy(regions = il.regions.head.append(c) :: il.regions.tail)
   }
-  def add(vd: VarDecl): GlobalEnvironment = add(Context(vd))
 
-  def enter(n: String) = copy(currentParent = currentParent/n, locals = Nil)
+  def enter(n: String) = copy(currentParent = currentParent/n, regions = Nil)
   def add(d: Declaration) = copy(voc = voc.addIn(currentParent,d))
   def parentDecl = voc.lookupModule(currentParent).getOrElse {throw Checker.Error(voc, "unknown parent")}
 }
-object GlobalEnvironment {
-  def apply(n: String): GlobalEnvironment = GlobalEnvironment(Module(n, false, Nil))
-  def apply(m: Module): GlobalEnvironment = GlobalEnvironment(m, Path.empty, Nil)
+object GlobalContext {
+  def apply(n: String): GlobalContext = GlobalContext(Module(n, false, Nil))
+  def apply(m: Module): GlobalContext = GlobalContext(m, Path.empty, Nil)
 }
 
 
@@ -381,8 +386,8 @@ case class ClosedRef(n: String) extends Expression with Type {
   *
   * written o.x
   * If T |- o: S and S |- t : A : type, then T |- o.t : o.A : type
-  * In particular, x must be closed and relative to the domain of o, not relative to the current context.
-  * o must be a morphism into the current context, and o.x can be seen as the morphism application o(t).
+  * In particular, x must be closed and relative to the domain of o, not relative to the current lc.
+  * o must be a morphism into the current lc, and o.x can be seen as the morphism application o(t).
   */
 sealed trait OwnedObject extends Object {
   /** the translation, must evaluate to an [[Instance]] */
@@ -393,7 +398,7 @@ sealed trait OwnedObject extends Object {
 }
 
 /**
-  * expressions translated into another context
+  * expressions translated into another lc
   *
   * If t is ClosedRef(n), this is the usual field access o.n known from OOP. See also [[Expression.field]]
   * By allowing arbitrary terms, we can delay traversing expressions, which might have to duplicate owner.
@@ -453,7 +458,7 @@ object AnyStructure {
   *
   * can be seen as the variant of OwnedType without owner
   */
-case class ExprsOver(scope: LocalEnvironment, tp: Type) extends Type {
+case class ExprsOver(scope: RegionalContext, tp: Type) extends Type {
   override def toString = s"<$scope>$tp"
 }
 
@@ -550,7 +555,7 @@ case class Instance(theory: Path, decls: List[AtomicDeclaration]) extends Expres
 }
 
 /** a quoted expressions; introduction form of [[ExprsOver]] */
-case class ExprOver(scope: LocalEnvironment, expr: Expression) extends Expression {
+case class ExprOver(scope: RegionalContext, expr: Expression) extends Expression {
   override def toString = s"<{$scope} $expr>"
 }
 /** backquote/evaluation inside a [[ExprsOver]] */
@@ -559,9 +564,9 @@ case class Eval(syntax: Expression) extends Expression {
 }
 
 /** anonymous function, introduction form for [[FunType]] */
-case class Lambda(ins: Context, body: Expression) extends Expression {
+case class Lambda(ins: LocalContext, body: Expression) extends Expression {
   // used at run-time to store the frame relative to which the body must be interpreted when the function is applied
-  private[p] var frame: Frame = null
+  private[p] var frame: RegionalEnvironment = null
   override def copyFrom(sf: SyntaxFragment): this.type = {
     super.copyFrom(sf)
     sf match {

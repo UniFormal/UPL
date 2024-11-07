@@ -35,14 +35,14 @@ package info.kwarc.p
    I@q:          instance-quotation pair 
  */
 
-case class PContext(contexts: List[Context]) {
-  def append(vd: VarDecl): PContext = append(Context(vd))
-  def append(ctx: Context): PContext = PContext(contexts.head.append(ctx)::contexts.tail)
+case class PContext(contexts: List[LocalContext]) {
+  def append(vd: VarDecl): PContext = append(LocalContext(vd))
+  def append(ctx: LocalContext): PContext = PContext(contexts.head.append(ctx)::contexts.tail)
   def pop() = PContext(contexts.tail)
-  def push() = PContext(Context.empty::contexts)
+  def push() = PContext(LocalContext.empty::contexts)
 }
 object PContext {
-  def empty = PContext(List(Context.empty))
+  def empty = PContext(List(LocalContext.empty))
 }
 
 class Parser(file: File, input: String) {
@@ -336,7 +336,7 @@ class Parser(file: File, input: String) {
             case ClosedRef(n) => VarDecl(n,Type.unknown)
             case _ => fail("not variable declaration")
           }
-          val c = Context(vds)
+          val c = LocalContext(vds)
           val b = parseExpression(ctxs.append(c))
           Lambda(c,b)
         } else es match {
@@ -363,7 +363,7 @@ class Parser(file: File, input: String) {
           val tp = parseType
           VarDecl(n,tp,None,false)
         } else if (startsWithS("->")) {
-          val ins = Context(VarDecl(n,Type.unknown))
+          val ins = LocalContext(VarDecl(n,Type.unknown))
           val b = parseExpression(ctxs.append(ins))
           Lambda(ins, b)
         } else if (ctxs.contexts.head.domain.contains(n)) {

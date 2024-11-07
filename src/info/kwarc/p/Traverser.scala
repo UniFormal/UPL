@@ -14,11 +14,11 @@ abstract class Traverser[A] {
       Theory(psT)
     }
   }
-  def apply(ctx: Context)(implicit a:A): Context = matchC(ctx) {ctx =>
+  def apply(ctx: LocalContext)(implicit a:A): LocalContext = matchC(ctx) {ctx =>
     val vdsT = ctx.decls map {case VarDecl(n,tp,df,m) => VarDecl(n, apply(tp), df map apply, m)}
-    Context(vdsT)
+    LocalContext(vdsT)
   }
-  def apply(env: LocalEnvironment)(implicit a:A): LocalEnvironment = LocalEnvironment(apply(env.theory), apply(env.context))
+  def apply(rc: RegionalContext)(implicit a:A): RegionalContext = RegionalContext(apply(rc.theory), apply(rc.local))
 
   def apply(d: Declaration)(implicit a: A): Declaration = matchC(d)(applyDefault _)
 
@@ -96,7 +96,7 @@ object EvalTraverser {
       evals = VarDecl(n, null, Some(ev)) :: evals
       VarRef(n)
     }
-    (Context(evals.reverse), eoT)
+    (LocalContext(evals.reverse), eoT)
   }
 }
 
