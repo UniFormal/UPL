@@ -283,7 +283,7 @@ class Parser(file: File, input: String) {
         val r = parseExpression
         skipT(")")
         val b = parseExpression(ctxs.append(VarDecl(v,Type.unknown)))
-        For(v,r,b)
+        For(VarDecl(v,Type.unknown),r,b)
       } else if (startsWithS("if")) {
         val c = parseBracketedExpression
         val th = parseExpression

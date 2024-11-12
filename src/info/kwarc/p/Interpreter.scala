@@ -128,7 +128,8 @@ class Interpreter(vocInit: Module) {
         assign(t,vI)
         UnitValue
       case ExprOver(v,q) =>
-        val qI = EvalInterpreter(q)(0)
+        val gc = GlobalContext("").push(v)
+        val qI = EvalInterpreter(q)(gc,())
         ExprOver(v,qI)
       case Eval(_) =>
         fail("eval outside quotation")
@@ -195,14 +196,14 @@ class Interpreter(vocInit: Module) {
           if (cI) interpretExpression(b) else break = true
         }
         UnitValue
-      case For(i, r, b) =>
+      case For(vd, r, b) =>
         val rI = interpretExpression(r)
         rI match {
           case ListValue(vs) =>
             frame.enterBlock
-            frame.allocate(i, null) // irrelevant value
+            frame.allocate(vd.name, null) // irrelevant value
             vs.foreach {v =>
-              frame.local.set(i, v)
+              frame.local.set(vd.name, v)
               interpretExpression(b)
             }
             frame.leaveBlock
@@ -219,7 +220,7 @@ class Interpreter(vocInit: Module) {
         val asI = as map interpretExpression
         fI match {
           case o: BaseOperator =>
-            applyOperator(o, asI)
+            Operator.simplify(o.operator, asI)
           case lam: Lambda =>
             // is.decls.length == asI.length by type-checking
             // interpretation of lam has recorded the frame at abstraction time because
@@ -251,10 +252,57 @@ class Interpreter(vocInit: Module) {
           case IntValue(n) => n
           case _ => fail("index not an integer")
         }
-        if (iI < 0 || iI >= esI.length)
+        if (iI < 0 || iI >= esI.length) {
           throw RuntimeError("index out of bounds")
-        esI(iI)
+        }
+        esI(iI.toInt)
+      case Quantifier(q, ctx, bd) =>
+        val vds = ctx.variables
+        val its = vds.map {vd => makeIterator(vd.tp)}
+        vds.foreach {vd => frame.allocate(vd.name, null)} // initial value irrelevant
+        val it = Enumeration.product(its)
+        it.take(100).foreach {es =>
+          (vds zip es).foreach {case (v,e) => frame.local.set(v.name,e)}
+          val bdI = interpretExpression(bd)
+          if (bdI == BoolValue(!q)) return bdI
+        }
+        BoolValue(q) // only correct if we've tried all values
     } // end match
+  }
+
+  private object TypeInterpreter extends StatelessTraverser {
+    override def apply(e: Expression)(implicit gc:GlobalContext, a: Unit) = interpretExpression(e)
+  }
+
+  private def makeIterator(tp: Type): Iterator[Expression] = {
+    val tpN = Checker.typeNormalize(GlobalContext(env.voc), tp)
+    val tpI = TypeInterpreter(tpN)(null,())
+    tpI match {
+      case EmptyType => Iterator.empty
+      case UnitType => Iterator(UnitValue)
+      case BoolType => Iterator(BoolValue(true), BoolValue(false))
+      case IntType => Enumeration.Integers.map(i => IntValue(i))
+      case ProdType(ts) => Enumeration.product(ts map makeIterator).map(es => Tuple(es))
+      case OptionType(t) => Iterator(OptionValue(null)) ++ makeIterator(t)
+      case ListType(t) => Enumeration.Naturals flatMap {n =>
+        val it = makeIterator(t.power(n.toInt))
+        it.map(l => ListValue(l.asInstanceOf[Tuple].comps))
+      }
+      case iv: IntervalType =>
+        val (begin,end,step) = (iv.lower,iv.upper) match {
+          case (Some(IntValue(i)),Some(IntValue(j))) => (i,Some(j),1)
+          case (Some(IntValue(i)),None) => (i,None,1)
+          case (None,Some(IntValue(j))) => (j,None,-1)
+          case (None,None) => return Iterator.empty
+          case _ => fail("cannot iterate")(tp)
+        }
+        new Iterator[Expression] {
+          var current = begin
+          def hasNext = end.isEmpty || current <= end.get
+          def next = {val n = current; current += step; IntValue(n)}
+        }
+      case _ => fail("cannot iterate")(tp)
+    }
   }
 
   private def assign(target: Expression, value: Expression): Unit = {
@@ -286,63 +334,65 @@ class Interpreter(vocInit: Module) {
     interpretExpressionInFrame(fr, lam.body)
   }
 
-  def applyOperator(o: BaseOperator, as: List[Expression]): Expression = {
-    o.operator match {
-      case pf: PrefixOperator =>
-        ((pf,as.head)) match {
-          case (UMinus,(IntOrRatValue(x,y))) => IntOrRatValue(-x,y)
-          case (Not,BoolValue(b)) => BoolValue(!b)
-        }
-      case inf: InfixOperator =>
-        (inf,as(0),as(1)) match {
-          case (Plus,IntOrRatValue(u,v),IntOrRatValue(x,y)) => IntOrRatValue(u * y + v * x,v * y)
-          case (Minus,IntOrRatValue(u,v),IntOrRatValue(x,y)) => IntOrRatValue(u * y - v * x,v * y)
-          case (Times,IntOrRatValue(u,v),IntOrRatValue(x,y)) => IntOrRatValue(u * x,v * y)
-          case (Divide,IntOrRatValue(u,v),IntOrRatValue(x,y)) =>
-            if (x == 0) throw RuntimeError("division by 0") else IntOrRatValue(u * y,v * x)
-          case (c: Comparison,IntOrRatValue(u,v),IntOrRatValue(x,y)) =>
-            val d = u * y - v * x
-            val s = if (d > 0) 1 else if (d < 0) -1 else 0
-            (s,c) match {
-              case (-1,Less | LessEq) |
-                   (1,Greater | GreaterEq) |
-                   (0,LessEq | GreaterEq) => BoolValue(true)
-              case _ => BoolValue(false)
-            }
-          case (c: Comparison,BoolValue(l),BoolValue(r)) =>
-            val b = c match {
-              case Less => !l && r
-              case LessEq => !l || r
-              case Greater => l && !r
-              case GreaterEq => l || !r
-            }
-            BoolValue(b)
-          case (And,BoolValue(l),BoolValue(r)) => BoolValue(l && r)
-          case (Or,BoolValue(l),BoolValue(r)) => BoolValue(l || r)
-          case (Plus,StringValue(l),StringValue(r)) => StringValue(l + r)
-          case (Plus,ListValue(l),ListValue(r)) => ListValue(l ::: r)
-          case (e: Equality,l: BaseValue,r: BaseValue) =>
-            val b = ((e == Equal) == (l.value == r.value))
-            BoolValue(b)
-          case _ => fail("no case for operator evaluation")(o)
-        }
-    }
-  }
-
   /** interpret the bodies of Eval, leave AST unchanged otherwise */
-  object EvalInterpreter extends Traverser[Int] {
-    override def apply(exp: Expression)(implicit i: Int) = matchC(exp) {
-      case Eval(e) if i == 0 =>
+  object EvalInterpreter extends StatelessTraverser {
+    override def apply(exp: Expression)(implicit gc: GlobalContext, a: Unit) = matchC(exp) {
+      case Eval(e) if gc.inPhysicalTheory =>
         val eI = interpretExpression(e)
         eI match {
           case ExprOver(_,q) => q
           case _ => fail("evaluation result not an expression")(eI)
         }
-      case _:Eval =>
-        applyDefault(exp)(i-1)
-      case _:ExprOver =>
-        applyDefault(exp)(i+1)
       case _ => applyDefault(exp)
     }
   }
+}
+
+/** iterates over all pairs of values from two iterators
+  * order: (a1,b1), (a2,b1), (b2,a2), (b2, a1), (a3,b2), (a3,b1), ...
+  */
+
+class ProductIterator[A,B](aI: Iterator[A], bI: Iterator[B]) extends Iterator[(A,B)] {
+  private var as: List[A] = Nil
+  private var bs: List[B] = Nil
+  private var current: Iterator[(A,B)] = Iterator.empty
+  private var nextFromA = true
+  def hasNext = current.hasNext || aI.hasNext || bI.hasNext
+  def next = {
+    if (!current.hasNext) {
+      if (nextFromA && aI.hasNext) {
+        val a = aI.next
+        as ::= a
+        current = bs.iterator.map(b => (a,b))
+        if (bI.hasNext) nextFromA = false
+      } else if (bI.hasNext) {
+        val b = bI.next
+        bs ::= b
+        current = as.iterator.map(a => (a,b))
+        if (aI.hasNext) nextFromA = true
+      }
+    }
+    current.next
+  }
+}
+
+object Enumeration {
+  def product(its: List[Iterator[Expression]]): Iterator[List[Expression]] = {
+    if (its.isEmpty) Iterator.empty
+    else {
+      its.init.foldRight(its.last.map(x => List(x))) {case (next,sofar) =>
+        new ProductIterator(next,sofar).map {case (x,l) => x :: l}
+      }
+    }
+  }
+
+  object Naturals extends Iterator[BigInt] {
+    private var current = -1
+    def hasNext = true
+    def next = {
+      current += 1;
+      current
+    }
+  }
+  val Integers: Iterator[BigInt] = Iterator(BigInt(0)) ++ Naturals.flatMap(n => Iterator(n,-n))
 }

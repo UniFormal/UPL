@@ -57,7 +57,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/info/kwarc/p/Checker.scala</url>
-          <line>882</line>
+          <line>1012</line>
           <option name="timeStamp" value="25" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
@@ -72,7 +72,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/info/kwarc/p/Syntax.scala</url>
-          <line>758</line>
+          <line>817</line>
           <option name="timeStamp" value="36" />
         </line-breakpoint>
       </breakpoints>

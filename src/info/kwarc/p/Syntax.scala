@@ -13,6 +13,9 @@ abstract class PError(msg: String) extends Exception(msg)
 /** implementation errors */
 case class IError(msg: String) extends PError(msg)
 
+/** run-time errors */
+case class DivisionByZero() extends PError("")
+
 /** parent of all classes in the AST */
 sealed abstract class SyntaxFragment {
   private[p] var loc: Location = null // set by parser to remember location in source
@@ -76,6 +79,11 @@ sealed trait Type extends Object {
   def known = true
   def skipUnknown = this
   def <--(ins:Type*) = FunType(ins.toList,this)
+  /** true if this type is definitely finite (in complex cases, this may be false for finite types)
+    * only reliable for fully normalized types
+    */
+  def finite: Boolean
+  def power(n: Int) = ProdType(Range(1,n).toList.map(_ => this))
 }
 object Type {
   private var unknownCounter = -1
@@ -140,25 +148,36 @@ abstract class Context[A] extends SyntaxFragment with HasChildren[VarDecl] {
   def decls = local.variables
 }
 
-/** object-level context: relative to a vocabulary and a choice of theory in it */
+/** object-level context: relative to a vocabulary and a choice of theory in it
+  * inner-most variables occur first and are found first by lookup
+  */
 case class LocalContext(variables: List[VarDecl]) extends Context[LocalContext] {
   override def toString = variables.mkString(", ")
   def local = this
-  def append(c: LocalContext) = copy(variables = variables ::: c.variables)
+  def append(c: LocalContext) = copy(variables = c.variables.reverse ::: variables)
+  def substitute(es: List[Expression]) = {
+    if (variables.length != es.length) throw IError("unexpected number of values")
+    val defs = (variables zip es.reverse).map {case (vd,e) => VarDecl(vd.name, null, Some(e))}
+    Substitution(defs)
+  }
 }
 object LocalContext {
   val empty = LocalContext(Nil)
   def apply(d: VarDecl): LocalContext = LocalContext(List(d))
 }
 
+case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
+  def append(n: String, e: Expression) = Substitution(VarDecl(n,null,Some(e))::decls)
+}
+
 /** declaration-level context: relative to a vocabulary, chooses a theory and an object-level lc relative to it */
-case class RegionalContext(theory: Theory, local: LocalContext) extends Context[RegionalContext] {
-  override def toString = s"$theory[$local]"
+case class RegionalContext(theory: Theory, owner: Option[Expression], local: LocalContext) extends Context[RegionalContext] {
+  override def toString = owner.getOrElse(theory).toString + s"{$local}"
   def append(c: LocalContext) = copy(local = local.append(c))
 }
 object RegionalContext {
-  val empty = RegionalContext(Theory.empty,LocalContext.empty)
-  def apply(thy: Theory): RegionalContext = RegionalContext(thy, LocalContext.empty)
+  val empty = RegionalContext(Theory.empty,None, LocalContext.empty)
+  def apply(thy: Theory, owner: Option[Expression] = None): RegionalContext = RegionalContext(thy, owner, LocalContext.empty)
   def apply(p: Path): RegionalContext = RegionalContext(Theory(p))
 }
 
@@ -173,7 +192,7 @@ case class GlobalContext(voc: Module, currentParent: Path, regions: List[Regiona
   def currentRegion = initRegion.regions.head
   def theory = currentRegion.theory
   def local = currentRegion.local
-  def push(t: Theory): GlobalContext = push(RegionalContext(t))
+  def push(t: Theory, owner: Option[Expression]): GlobalContext = push(RegionalContext(t,owner))
   def push(e: RegionalContext): GlobalContext = {
     val il = initRegion
     il.copy(regions = e::il.regions)
@@ -375,11 +394,13 @@ case class OpenRef(path: Path) extends Expression with Type {
   override def toString = {
     "." + path
   }
+  def finite = false
 }
 
 /** reference to a symbol from an included theory */
 case class ClosedRef(n: String) extends Expression with Type {
   override def toString = n
+  def finite = false
 }
 
 /** an object from a different local environment that is translated by o into the current local environment
@@ -416,7 +437,9 @@ case class OwnedExpr(owner: Expression, owned: Expression) extends Expression wi
 // checker must ensure owner is Pure (compare Scala path types: owner must be variable to separate side effects from type field access.)
 // interpreter invariant: semantics should not depend on types other than class refs, computation of types should never be needed,
 // i.e., removing all types from declarations and type fields from modules/instances should be allowed
-case class OwnedType(owner: Expression, owned: Type) extends Type with OwnedObject
+case class OwnedType(owner: Expression, owned: Type) extends Type with OwnedObject {
+  def finite = false
+}
 
 // ***************** Types **************************************
 
@@ -438,11 +461,13 @@ sealed class UnknownType(private var id: Int, private var _tp: Type) extends Typ
   }
   override def skipUnknown: Type = if (known) _tp.skipUnknown else this
   override def toString = if (known) _tp.toString else "???"+id
+  def finite = if (known) skipUnknown.finite else false
 }
 
 /** the type of instances of a theory */
 case class ClassType(domain: Theory) extends Type {
   override def toString = domain.toString
+  def finite = false
 }
 
 /** the type of instances of any theory */
@@ -460,6 +485,7 @@ object AnyStructure {
   */
 case class ExprsOver(scope: RegionalContext, tp: Type) extends Type {
   override def toString = s"<$scope>$tp"
+  def finite = false
 }
 
 /** atomic built-in base types */
@@ -475,19 +501,38 @@ object BaseType {
   def O(e: Type) = OptionType(e)
 }
 /** 0 elements */
-case object EmptyType extends BaseType("empty")
+case object EmptyType extends BaseType("empty") {
+  def finite = true
+}
 /** 1 element */
-case object UnitType extends BaseType("unit")
+case object UnitType extends BaseType("unit") {
+  def finite = true
+}
 /** 2 elements */
-case object BoolType extends BaseType("bool")
+case object BoolType extends BaseType("bool") {
+  def finite = true
+}
 /** integer numbers */
-case object IntType extends BaseType("int")
+case object IntType extends BaseType("int") {
+  def finite = false
+}
 /** rationals numbers */
-case object RatType extends BaseType("rat")
+case object RatType extends BaseType("rat") {
+  def finite = false
+}
 /** strings (exactly as implemented by Scala) */
-case object StringType extends BaseType("string")
+case object StringType extends BaseType("string") {
+  def finite = false
+}
 /** universal type of all expressions */
-case object AnyType extends BaseType("any")
+case object AnyType extends BaseType("any") {
+  def finite = false
+}
+
+/** interval of integers, unbounded if bounds absent, including lower and upper bound if present */
+case class IntervalType(lower: Option[Expression], upper: Option[Expression]) extends Type {
+  def finite = lower.isDefined && upper.isDefined
+}
 
 /** auxiliary class for built-in type operators */
 sealed abstract class TypeOperator(val children: List[Type]) extends Type
@@ -495,15 +540,18 @@ sealed abstract class TypeOperator(val children: List[Type]) extends Type
 /** functions (non-dependent) */
 case class FunType(ins: List[Type], out: Type) extends TypeOperator(ins:::List(out)) {
   override def toString = (if (ins.length == 1) ins.head else ProdType(ins)) + " -> " + out
+  def finite = (out::ins).forall(_.finite)
 }
 
 /** tuples (non-dependent Cartesian product) */
 case class ProdType(comps: List[Type]) extends TypeOperator(comps) {
   override def toString = comps.mkString("(",", ", ")")
+  def finite = comps.forall(_.finite)
 }
 /** homogeneous lists */
 case class ListType(elem: Type) extends TypeOperator(List(elem)) {
   override def toString = s"[$elem]"
+  def finite = false
 }
 /** matches a list type, possibly specializing an [[UnknownType]] */
 object ListOrUnknownType {
@@ -519,6 +567,7 @@ object ListOrUnknownType {
 /** optional values */
 case class OptionType(elem: Type) extends TypeOperator(List(elem)) {
   override def toString = elem + "?"
+  def finite = elem.finite
 }
 
 // ***************** Expressions **************************************
@@ -618,6 +667,11 @@ case class OptionValue(value: Expression) extends Expression {
   override def toString = if (value == null) "?" else value + "?"
 }
 
+case class Quantifier(univ: Boolean, vars: LocalContext, body: Expression) extends Expression {
+  def binder = if (univ) "forall" else "exists"
+  override def toString = "(" + binder + vars + ". " + body + ")"
+}
+
 /** base values, introduction forms of [[BaseType]] */
 sealed abstract class BaseValue(val value: Any, val tp: BaseType) extends Expression
 
@@ -632,25 +686,25 @@ case class BoolValue(v: Boolean) extends BaseValue(v, BoolType) {
 }
 
 /** elements of [[IntType]] */
-case class IntValue(v: Int) extends BaseValue(v, IntType) {
+case class IntValue(v: BigInt) extends BaseValue(v, IntType) {
   override def toString = value.toString
 }
 
 /** elements of [[RatType]] */
-case class RatValue(enum: Int, denom: Int) extends BaseValue(enum/denom, RatType) {
+case class RatValue(enum: BigInt, denom: BigInt) extends BaseValue(enum/denom, RatType) {
   override def toString = enum.toString + "/" + denom.toString
 }
 
 /** helper object to construct/pattern-match numbers such that [[IntType]] is a subtype of [[RatType]] */
 object IntOrRatValue {
-  def apply(e:Int, d: Int): BaseValue = {
-    val g = 1 // gcd(e,d)
+  def apply(e:BigInt, d: BigInt): BaseValue = {
+    val g = e gcd d
     val eg = e/g
     val dg = d/g
     if (dg == 1) IntValue(e) else RatValue(eg,dg)
   }
   def unapply(e: Expression) = e match {
-    case IntValue(i) => Some((i,1))
+    case IntValue(i) => Some((i,BigInt(1)))
     case RatValue(i,j) => Some((i,j))
     case _ => None
   }
@@ -713,8 +767,8 @@ case class IfThenElse(cond: Expression, thn: Expression, els: Option[Expression]
 /** for-loop, can be seen as elimination form of [[ListType]]
   * @param range must evaluate to list
   */
-case class For(name: String, range: Expression, body: Expression) extends Expression {
-  override def toString = s"for $name in $range $body"
+case class For(vd: VarDecl, range: Expression, body: Expression) extends Expression {
+  override def toString = s"for ${vd.name} in $range $body"
 }
 
 /** while-loop */
@@ -732,12 +786,17 @@ case class While(cond: Expression, body: Expression) extends Expression {
 sealed abstract class Operator(val symbol: String) {
   def types: List[FunType]
   def polyTypes(u: UnknownType): List[FunType] = Nil
+  def makeExpr(args: List[Expression]) = Application(BaseOperator(this, Type.unknown), args)
 }
 
 /** operators with binary infix notation (flexary flag not supported yet) */
-sealed abstract class InfixOperator(s: String, val precedence: Int, val flexary: Boolean) extends Operator(s)
+sealed abstract class InfixOperator(s: String, val precedence: Int, val flexary: Boolean) extends Operator(s) {
+  def apply(l: Expression, r: Expression) = makeExpr(List(l,r))
+}
 /** operators with prefix notation */
-sealed abstract class PrefixOperator(s: String) extends Operator(s)
+sealed abstract class PrefixOperator(s: String) extends Operator(s) {
+  def apply(e: Expression) = makeExpr(List(e))
+}
 
 // for type abbreviations
 import BaseType._
@@ -768,6 +827,9 @@ case object Times extends InfixOperator("*", 10, true) with Arithmetic
 case object Divide extends InfixOperator("/", 10, false) {
   val types = List(R<--(I,I), R<--(R,R), R<--(I,R), R<--(R,I))
 }
+case object Minimum extends InfixOperator("min", 10, true) with Arithmetic
+case object Maximum extends InfixOperator("max", 10, true) with Arithmetic
+
 case object Power extends InfixOperator("^", 20, false) {
   val types = List(I<--(I,I), R<--(R,R), R<--(I,R), R<--(R,I))
 }
@@ -791,9 +853,54 @@ case object Not extends PrefixOperator("!") {
 }
 
 object Operator {
-  val infixes = List(Plus, Minus, Times, Divide, Power,
+  val infixes = List(Plus, Minus, Times, Divide, Power, Minimum, Maximum,
                      And, Or,
                      Less, LessEq, Greater, GreaterEq,
                      Equal, Inequal)
   val prefixes = List(UMinus,Not)
+
+  def simplify(o: Operator, as: List[Expression]): Expression = {
+    o match {
+      case pf: PrefixOperator =>
+        ((pf,as.head)) match {
+          case (UMinus,(IntOrRatValue(x,y))) => IntOrRatValue(-x,y)
+          case (Not,BoolValue(b)) => BoolValue(!b)
+        }
+      case inf: InfixOperator =>
+        (inf,as(0),as(1)) match {
+          case (Plus,IntOrRatValue(u,v),IntOrRatValue(x,y)) => IntOrRatValue(u * y + v * x,v * y)
+          case (Minus,IntOrRatValue(u,v),IntOrRatValue(x,y)) => IntOrRatValue(u * y - v * x,v * y)
+          case (Times,IntOrRatValue(u,v),IntOrRatValue(x,y)) => IntOrRatValue(u * x,v * y)
+          case (Minimum, IntOrRatValue(u,v), IntOrRatValue(x,y)) => IntOrRatValue((u*y) min (v*x), v*y)
+          case (Maximum, IntOrRatValue(u,v), IntOrRatValue(x,y)) => IntOrRatValue((u*y) max (v*x), v*y)
+          case (Divide,IntOrRatValue(u,v),IntOrRatValue(x,y)) =>
+            if (x == 0) throw DivisionByZero() else IntOrRatValue(u * y,v * x)
+          case (c: Comparison,IntOrRatValue(u,v),IntOrRatValue(x,y)) =>
+            val d = u * y - v * x
+            val s = if (d > 0) 1 else if (d < 0) -1 else 0
+            (s,c) match {
+              case (-1,Less | LessEq) |
+                   (1,Greater | GreaterEq) |
+                   (0,LessEq | GreaterEq) => BoolValue(true)
+              case _ => BoolValue(false)
+            }
+          case (c: Comparison,BoolValue(l),BoolValue(r)) =>
+            val b = c match {
+              case Less => !l && r
+              case LessEq => !l || r
+              case Greater => l && !r
+              case GreaterEq => l || !r
+            }
+            BoolValue(b)
+          case (And,BoolValue(l),BoolValue(r)) => BoolValue(l && r)
+          case (Or,BoolValue(l),BoolValue(r)) => BoolValue(l || r)
+          case (Plus,StringValue(l),StringValue(r)) => StringValue(l + r)
+          case (Plus,ListValue(l),ListValue(r)) => ListValue(l ::: r)
+          case (e: Equality,l: BaseValue,r: BaseValue) =>
+            val b = ((e == Equal) == (l.value == r.value))
+            BoolValue(b)
+          case _ => throw IError("no case for operator evaluation")
+        }
+    }
+  }
 }
