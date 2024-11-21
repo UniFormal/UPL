@@ -98,7 +98,9 @@ class Interpreter(vocInit: Module) {
         case Some(inst) =>
           inst.getO(n) match {
             case Some(me) => me.value
-            case None => env.voc.lookupPath(inst.theory / n) match {
+            case None =>
+              val ExtendedTheory(instD,_) = inst.theory
+              env.voc.lookupPath(instD / n) match {
               case Some(d: ExprDecl) => d.dfO match {
                 case Some(e) => e
                 case None => fail("no definiens")
@@ -133,26 +135,38 @@ class Interpreter(vocInit: Module) {
         ExprOver(v,qI)
       case Eval(_) =>
         fail("eval outside quotation")
+      case inst: Instance if inst.isRuntime =>
+        // instance reference
+        inst
       case inst:Instance =>
-        // if instance had already been created, this would not be reached
-        val fsI = inst.decls.collect {
+        // instance creation
+        val runtimeInst = inst.copy() // create new Java object for every new instance
+        val initDecls = inst.theory.decls
+        // TODO: replace all references to the current frame in initDecls with their current values
+        // otherwise, we would have to keep those frames around; including in lambdas
+        val initDeclsAbsolute = initDecls
+        val re = RegionalEnvironment("new instance", Some(runtimeInst))
+        env.push(re)
+        // execute the constructor arguments in the context of this instance
+        initDeclsAbsolute.foreach {
           case sd: ExprDecl =>
             val dfI = interpretExpression(sd.dfO.get)
-            MutableExpression(sd.name, dfI)
+            runtimeInst.fields ::= MutableExpression(sd.name, dfI)
+          case _ =>
         }
-        val runtimeInst = inst.copy() // create new Java object for every new instance
-        runtimeInst.fields = fsI.reverse
-        // execute the inherited field initializers in the context of this instance
-        // variables available in the scope surrounding 'inst' are not visible
-        env.push(RegionalEnvironment("new instance", Some(runtimeInst)))
-        val mod = env.voc.lookupModule(runtimeInst.theory).getOrElse(fail("unknown module"))
+        // execute inherited field initializers
+        val instDom = inst.theory match {
+          case PhysicalTheory(p) => p
+          case _ => fail("non-atomic instance")
+        }
+        val mod = env.voc.lookupModule(instDom).getOrElse(fail("unknown module"))
         // TODO: i.dfO
         mod.decls.foreach {
           case sd: ExprDecl if sd.dfO.isDefined =>
             val d = sd.dfO.get
             val dI = interpretExpression(d)
-            if (!(d eq dI)) { // or sd.mutable
-              inst.fields ::= MutableExpression(sd.name, dI)
+            if (!(d eq dI) || sd.mutable) {
+              runtimeInst.fields ::= MutableExpression(sd.name, dI)
             }
           case _ =>
         }
@@ -282,19 +296,22 @@ class Interpreter(vocInit: Module) {
       case UnitType => Iterator(UnitValue)
       case BoolType => Iterator(BoolValue(true), BoolValue(false))
       case IntType => Enumeration.Integers.map(i => IntValue(i))
+      case RatType =>
+        val it = new ProductIterator(Enumeration.Integers, Enumeration.Naturals)
+        it.filter {case (i,n) => n != 0 && i.gcd(n) == 1}.map {case (i,n) => RatValue(i,n)}
       case ProdType(ts) => Enumeration.product(ts map makeIterator).map(es => Tuple(es))
       case OptionType(t) => Iterator(OptionValue(null)) ++ makeIterator(t)
       case ListType(t) => Enumeration.Naturals flatMap {n =>
         val it = makeIterator(t.power(n.toInt))
         it.map(l => ListValue(l.asInstanceOf[Tuple].comps))
       }
-      case iv: IntervalType =>
+      case iv: IntervalType if iv.concrete =>
         val (begin,end,step) = (iv.lower,iv.upper) match {
           case (Some(IntValue(i)),Some(IntValue(j))) => (i,Some(j),1)
           case (Some(IntValue(i)),None) => (i,None,1)
           case (None,Some(IntValue(j))) => (j,None,-1)
           case (None,None) => return Iterator.empty
-          case _ => fail("cannot iterate")(tp)
+          case _ => throw IError("impossible")
         }
         new Iterator[Expression] {
           var current = begin

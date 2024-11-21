@@ -10,7 +10,7 @@ abstract class Traverser[A] {
   def apply(p: Path)(implicit gc: GlobalContext, a: A): Path = matchC(p) {p => p}
   def apply(thy: Theory)(implicit gc: GlobalContext, a: A): Theory = matchC(thy) {thy =>
     if (thy == null) null else {
-      val psT = thy.parts map apply
+      val psT = thy.decls map apply
       Theory(psT)
     }
   }
@@ -20,7 +20,7 @@ abstract class Traverser[A] {
   }
 
   def apply(rc: RegionalContext)(implicit gc: GlobalContext, a:A): RegionalContext =
-    RegionalContext(apply(rc.theory), rc.owner map apply, apply(rc.local))
+    RegionalContext(apply(rc.theory), rc.owner map apply, apply(rc.local), rc.returnType map apply)
 
   def apply(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = matchC(d)(applyDefault _)
 
@@ -57,7 +57,7 @@ abstract class Traverser[A] {
     case OpenRef(p) => OpenRef(apply(p))
     case OwnedExpr(o, e) => OwnedExpr(apply(o), apply(e)(gc.push(RegionalContext(null,Some(o))),a))
     case BaseOperator(o,tp) => BaseOperator(o, apply(tp))
-    case Instance(thy, ds) => Instance(apply(thy), ds map {d => apply(d).asInstanceOf[SymbolDeclaration]})
+    case Instance(thy) => Instance(apply(thy))
     case VarDecl(n,t,d,m) => VarDecl(n,apply(t), d map apply, m)
     case Assign(k,v) => Assign(apply(k), apply(v))
     case ExprOver(t,e) => ExprOver(apply(t), apply(e)(gc.push(t),a))
@@ -78,6 +78,7 @@ abstract class Traverser[A] {
     case For(v,r,b) =>
       val vT = apply(v).asInstanceOf[VarDecl]
       For(vT, apply(r), apply(b)(gc.append(v),a))
+    case Return(e) => Return(apply(e))
     case Lambda(is,b) =>
       val isT = apply(is)
       Lambda(isT, apply(b)(gc.append(is),a))
@@ -124,7 +125,7 @@ object EvalTraverser {
 
 class OwnerSubstitutor(shallow: Boolean) extends StatelessTraverser {
   private def owners(implicit gc: GlobalContext) = gc.regions.collect {
-    case r if r.owner.isDefined => r.owner.get
+    case r if r._2.owner.isDefined => r._2.owner.get
   }
   private def makeType(tp: Type)(implicit gc: GlobalContext) = {
     owners.foldLeft(tp) {case (sofar,next) => OwnedType(next, sofar)}

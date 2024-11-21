@@ -141,11 +141,21 @@ class Parser(file: File, input: String) {
     Path(ns)
   }
 
+  object Keywords {
+    val openModule = "module"
+    val closedModule = "class"
+    val include = "include"
+    val totalInclude = "realize"
+    val mutableExprDecl = "mutable"
+    val typeDecl = "type"
+  }
+  import Keywords._
+
   def parseDeclaration: Declaration = addRef {
-    if (startsWith("class") || startsWith("module")) parseModule
-    else if (startsWith("include") || startsWith("realize")) parseInclude
-    else if (startsWithS("type")) parseTypeDecl
-    else if (startsWithS("mutable")) parseExprDecl(true)
+    if (startsWith(closedModule) || startsWith(openModule)) parseModule
+    else if (startsWith(include) || startsWith(totalInclude)) parseInclude
+    else if (startsWithS(typeDecl)) parseTypeDecl
+    else if (startsWithS(mutableExprDecl)) parseExprDecl(true)
     else if (next.isLetter) parseExprDecl(false)
     else fail("declaration expected")
   }
@@ -156,13 +166,16 @@ class Parser(file: File, input: String) {
     while (!break) {
       trim
       if (atEnd || startsWith("}")) {break = true}
-      else decls ::= parseDeclaration
+      else {
+        if (startsWith(",")) skip(",")
+        decls ::= parseDeclaration
+      }
     }
     decls.reverse
   }
 
   def parseModule: Module = {
-    val closed = if (startsWithS("class")) true else {skipT("module"); false}
+    val closed = if (startsWithS(closedModule)) true else {skipT(openModule); false}
     val name = parseName
     trim
     skip("{")
@@ -174,7 +187,7 @@ class Parser(file: File, input: String) {
 
   def parseInclude: Include = {
     implicit val ctx = PContext.empty
-    val rz = if (startsWithS("include")) false else {skip("realize"); true}
+    val rz = if (startsWithS(include)) false else {skipT(totalInclude); true}
     val dom = parsePath
     trim
     val dfO = if (!rz && startsWithS("=")) {
@@ -225,7 +238,7 @@ class Parser(file: File, input: String) {
   def parseTheory(implicit ctxs: PContext): Theory = {
     trim
     val ps = parseList(parsePath, "+", "|")
-    Theory(ps)
+    Theory(ps.map(p => Include(p)))
   }
 
   def parseExpressions(open: String, close: String)(implicit ctxs: PContext) = {
@@ -271,6 +284,12 @@ class Parser(file: File, input: String) {
       } else if (startsWithS("val")) {
         trim
         parseVarDecl(false)
+      } else if (startsWith("exists") || startsWith("forall")) {
+        val univ = if (startsWithS("forall")) true else {skip("exists"); false}
+        val vars = parseList(parseVarDecl(false), ",", true)
+        skipT(".")
+        val body = parseExpression
+        Quantifier(univ, LocalContext(vars), body)
       } else if (startsWithS("while")) {
         val c = parseBracketedExpression
         val b = parseExpression
@@ -292,6 +311,9 @@ class Parser(file: File, input: String) {
           Some(parseExpression)
         } else None
         IfThenElse(c,th,el)
+      } else if (startsWithS("return")) {
+        val r = parseExpression
+        Return(r)
       } else if (Operator.prefixes.exists(o => startsWith(o.symbol))) {
         val o = Operator.prefixes.find(o => startsWith(o.symbol)).get
         skip(o.symbol)
@@ -395,15 +417,18 @@ class Parser(file: File, input: String) {
           // check if there was a Path before
           def asPath(e: Expression): Option[Path] = e match {
             case OwnedExpr(e,ClosedRef(n)) => asPath(e).map(_/n)
+            case ClosedRef(n) => Some(Path(List(n)))
             case _ => None
           }
           var looksLikeInstanceOf = asPath(exp)
           if (looksLikeInstanceOf.isDefined) {
             // check if a declaration follows
             val backtrackPoint = index
-            parseName
-            trim
-            val isDecl = startsWith(":") && startsWith("=")
+            val isDecl = startsWith(typeDecl) || startsWith(mutableExprDecl) || {
+              parseName
+              trim
+              startsWith(":") || startsWith("=")
+            }
             if (!isDecl) looksLikeInstanceOf = None
             index = backtrackPoint
           }
@@ -415,7 +440,7 @@ class Parser(file: File, input: String) {
                 case sd: SymbolDeclaration => sd
                 case _ => fail("symbol declaration expected")
               }
-              Instance(p.copyFrom(exp),sds)
+              Instance(ExtendedTheory(p,sds).copyFrom(exp))
             case None =>
               val e = parseExpression(ctxs.push()) // in e{q}, q is a closed expression in a different theory
               OwnedExpr(exp,e)
@@ -423,6 +448,7 @@ class Parser(file: File, input: String) {
           skip("}")
         }
       } // end while
+      trim
       Operator.infixes.find(o => startsWith(o.symbol)) match {
         case None =>
           if (startsWithS("=")) {
@@ -478,8 +504,11 @@ class Parser(file: File, input: String) {
     last
   }
 
+  private val typePostOps = List("->","?")
   def parseType(implicit ctxs: PContext): Type = addRef {
-    var tp = if (startsWithS("int")) {IntType}
+    var tp = if (startsWithS(".")) {
+        OpenRef(parsePath)
+      } else if (startsWithS("int")) {IntType}
       //else if (startsWith("float")) {skip("float"); FloatType}
       //else if (startsWith("char")) {skip("char"); CharType}
       else if (startsWithS("rat")) RatType
@@ -500,22 +529,35 @@ class Parser(file: File, input: String) {
           case ys => ProdType(ys)
         }
       } else {
-        val exp = parseExpression
-        // The above parses e.tp and e{tp} into OwnedExpr.
-        // We can only turn some of those into OwnedType: e{tp} only if tp is a reference.
-        val tp = exp match {
-          case ClosedRef("_") => Type.unknown()
-          case r: ClosedRef => r
-          case o: OpenRef => o
-          case OwnedExpr(o,r: ClosedRef) => OwnedType(o,r)
-          case OwnedExpr(o,r: OpenRef) => OwnedType(o,r)
-          case _ => fail("type expected")
+        // conflict between types that start with a name and those starting with an expression, i.e., e{tp} or e.tp
+        val backtrackPoint = index
+        val n = parseName
+        trim
+        if (n == "_") {
+          Type.unknown()
+        } else if (n != "" && !atEnd && typePostOps.exists(startsWith)) {
+          // looks like a type that starts with a name
+          ClosedRef(n)
+        } else {
+          index = backtrackPoint
+          val exp = parseExpression
+          // The above parses e.tp and e{tp} into OwnedExpr.
+          // We can only turn some of those into OwnedType: e{tp} only if tp is a reference.
+          // Similarly, it parses M{ds} into Instance, which becomes ClassType
+          val tp = exp match {
+            case r: ClosedRef => r
+            case o: OpenRef => o
+            case OwnedExpr(o,r: ClosedRef) => OwnedType(o,r)
+            case OwnedExpr(o,r: OpenRef) => OwnedType(o,r)
+            case Instance(thy) => ClassType(thy)
+            case _ => fail("type expected")
+          }
+          tp.copyFrom(exp)
         }
-        tp.copyFrom(exp)
       }
     trim
     // postfix/infix type operators
-    while (startsWith("->") || startsWith("?")) {
+    while (typePostOps.exists(startsWith)) {
       if (startsWithS("->")) {
         val out = parseType // makes -> right-associative
         val ins = tp match {

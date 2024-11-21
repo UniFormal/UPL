@@ -36,3 +36,68 @@ module M {
   }
 }
 main = .M.test
+
+module Algebra {
+  class Carrier {
+    type U
+  }
+  class Magma {
+    include Carrier
+    op: U -> U -> U
+  }
+  class Monoidal {
+    include Magma
+    e: U
+  }
+  intAdd = Magma {type U = int, op = x -> y -> x+y}
+  intMult = Magma {type U = int, op = x -> y -> x*y}
+  class BiMagma {
+    include Carrier
+    add  : Magma {type U = U}
+    mult : Magma {type U = U}
+  }
+
+  module AI {
+    class TransitionSystem {
+      type state
+      type action
+      transitions: (state,action) -> state -> bool
+      reachable: (state, [action], state) -> bool
+      applicable = (s,a) -> exists x. transitions(s,a)(x)
+    }
+    class Deterministic {
+      include TransitionSystem
+      transition: (state,action) -> state
+      transitions = (s,a) -> x -> transition(s,a) == x
+    }
+    class SearchProblem {
+      include TransitionSystem
+      initials: state -> bool
+      goals:    state -> bool
+      solution: [action] -> bool = as -> exists i,g. initials(i) & reachable(i,as,g) & goals(g)
+    }
+    class FullyObservable {
+      include SearchProblem
+      initial: state
+      initials = x -> initial == x
+    }
+    class Cost {
+      include TransitionSystem
+      cost: action -> rat
+    }
+    class DefaultCost {
+      include Cost
+      cost = a -> 1
+    }
+
+    class SearchStrategy {}
+
+    treeSearch: (SearchProblem, SearchStrategy) -> bool = (p,y) -> {
+      var fringe: [p.state] = []
+      while (fringe != []) {
+
+      }
+      false
+    }
+  }
+}
