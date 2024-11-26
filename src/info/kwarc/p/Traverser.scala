@@ -14,13 +14,14 @@ abstract class Traverser[A] {
       Theory(psT)
     }
   }
-  def apply(ctx: LocalContext)(implicit gc: GlobalContext, a:A): LocalContext = matchC(ctx) {ctx =>
+  def apply(ctx: LocalContext)(implicit gc: GlobalContext, a:A): LocalContext = {
+    if (ctx == null) null else matchC(ctx) {ctx =>
     val vdsT = ctx.decls map {d => apply(d).asInstanceOf[VarDecl]}
     LocalContext(vdsT)
-  }
+  }}
 
   def apply(rc: RegionalContext)(implicit gc: GlobalContext, a:A): RegionalContext =
-    RegionalContext(apply(rc.theory), rc.owner map apply, apply(rc.local), rc.returnType map apply)
+    RegionalContext(apply(rc.theory), rc.owner map apply, apply(rc.local))
 
   def apply(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = matchC(d)(applyDefault _)
 
@@ -44,8 +45,7 @@ abstract class Traverser[A] {
     case ExprsOver(thy,q) => ExprsOver(apply(thy), apply(q)(gc.push(thy),a))
     case FunType(ts,t) => FunType(ts map apply, apply(t))
     case ProdType(ts) => ProdType(ts map apply)
-    case ListType(t) => ListType(apply(t))
-    case OptionType(t) => OptionType(apply(t))
+    case CollectionType(b,bS,bO) => CollectionType(apply(b), bS, bO)
   }
 
   def apply(exp: Expression)(implicit gc: GlobalContext, a: A): Expression = matchC(exp)(applyDefault _)
@@ -58,7 +58,7 @@ abstract class Traverser[A] {
     case OwnedExpr(o, e) => OwnedExpr(apply(o), apply(e)(gc.push(RegionalContext(null,Some(o))),a))
     case BaseOperator(o,tp) => BaseOperator(o, apply(tp))
     case Instance(thy) => Instance(apply(thy))
-    case VarDecl(n,t,d,m) => VarDecl(n,apply(t), d map apply, m)
+    case VarDecl(n,t,d,m,o) => VarDecl(n,apply(t), d map apply, m, o)
     case Assign(k,v) => Assign(apply(k), apply(v))
     case ExprOver(t,e) => ExprOver(apply(t), apply(e)(gc.push(t),a))
     case Eval(e) => Eval(apply(e))
@@ -74,6 +74,12 @@ abstract class Traverser[A] {
       }
       Block(esT)
     case IfThenElse(c, t, e) => IfThenElse(apply(c), apply(t), e map apply)
+    case Match(e, cs) =>
+      val csT = cs map {case MatchCase(ctx,p,b) =>
+        val gcI = if (ctx == null) gc else gc.append(ctx)
+        MatchCase(apply(ctx), apply(p)(gcI,a), apply(b)(gc,a))
+      }
+      Match(apply(e), csT)
     case While(c,b) => While(apply(c), apply(b))
     case For(v,r,b) =>
       val vT = apply(v).asInstanceOf[VarDecl]
@@ -171,5 +177,40 @@ object Substitute extends Traverser[Substitution] {
     case vd: VarDecl =>
       super.apply(vd) // TODO: alpha-renaming
     case _ => applyDefault(exp)
+  }
+}
+
+object Simplify extends StatelessTraverser {
+  override def apply(exp: Expression)(implicit gc: GlobalContext, a:Unit): Expression = {
+    val expR = applyDefault(exp) // first, recursively simplify subexpressions
+    matchC(expR) {
+      case Application(BaseOperator(o,_), args) => Operator.simplify(o, args)
+      case Projection(Tuple(es),i) => es(i)
+      case ListElem(ListValue(es),IntValue(i)) => es(i.toInt)
+      case Application(Lambda(vs,b), as) => Substitute(b)(gc, vs.substitute(as))
+      case e => e
+    }
+  }
+}
+
+private class FreeVariables(initGC: GlobalContext) extends StatelessTraverser {
+  private var names: List[String] = Nil
+  override def apply(exp: Expression)(implicit gc: GlobalContext, a:Unit) = matchC(exp) {
+    case _:VarRef | _:ClosedRef if gc.regions.length == initGC.regions.length && gc.resolveName(exp).isEmpty =>
+      val n = exp match {
+        case VarRef(n) => n
+        case ClosedRef(n) => n
+        case _ => throw IError("impossible")
+      }
+      names ::= n
+      VarRef(n)
+    case _ => applyDefault(exp)
+  }
+}
+object FreeVariables {
+  def apply(gc: GlobalContext, e: Expression) = {
+    val fv = new FreeVariables(gc)
+    fv(e)(gc,())
+    fv.names.distinct
   }
 }

@@ -118,7 +118,7 @@ class Interpreter(vocInit: Module) {
           case _ => fail("not an expression")
         }
       case VarRef(n) => frame.local.get(n) // frame values are always interpreted
-      case VarDecl(n,_, vl, _) =>
+      case VarDecl(n,_, vl, _, _) =>
         val vlI = vl match {
           case None => fail("uninitialized variable")
           case Some(v) => interpretExpression(v)
@@ -224,6 +224,9 @@ class Interpreter(vocInit: Module) {
             case _ => fail("range not a list")
         }
         UnitValue
+      case Return(e) =>
+        val eI = interpretExpression(e)
+        throw ReturnFound(eI)
       case lam: Lambda =>
         // lambdas must be interpreted at call-time, and the body is relative to the current frame
         val lamC = lam.copy() // the same lambda can be interpreted in different frames
@@ -236,10 +239,17 @@ class Interpreter(vocInit: Module) {
           case o: BaseOperator =>
             Operator.simplify(o.operator, asI)
           case lam: Lambda =>
-            // is.decls.length == asI.length by type-checking
             // interpretation of lam has recorded the frame at abstraction time because
             // names in lam.body are relative to that
-            val r = applyFunction(f.toString, None, lam, asI)
+            val namedFunction = f match {
+              case _:OpenRef | _:ClosedRef | _:VarRef => true
+              case _ => false
+            }
+            val r = try {
+              applyFunction(f.toString, None, lam, asI)
+            } catch {
+              case ReturnFound(e) if namedFunction => e
+            }
             r
           case _ => fail("not a function")(f)
         }
@@ -364,6 +374,8 @@ class Interpreter(vocInit: Module) {
     }
   }
 }
+
+case class ReturnFound(e: Expression) extends Throwable
 
 /** iterates over all pairs of values from two iterators
   * order: (a1,b1), (a2,b1), (b2,a2), (b2, a1), (a3,b2), (a3,b1), ...

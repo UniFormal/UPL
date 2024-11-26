@@ -35,14 +35,15 @@ package info.kwarc.p
    I@q:          instance-quotation pair 
  */
 
-case class PContext(contexts: List[LocalContext]) {
+case class PContext(contexts: List[LocalContext], allowStatement: Boolean) {
   def append(vd: VarDecl): PContext = append(LocalContext(vd))
-  def append(ctx: LocalContext): PContext = PContext(contexts.head.append(ctx)::contexts.tail)
-  def pop() = PContext(contexts.tail)
-  def push() = PContext(LocalContext.empty::contexts)
+  def append(ctx: LocalContext): PContext = copy(contexts = contexts.head.append(ctx)::contexts.tail)
+  def pop() = copy(contexts = contexts.tail)
+  def push() = copy(contexts = LocalContext.empty::contexts)
+  def setAllowStatement(b: Boolean) = copy(allowStatement = b)
 }
 object PContext {
-  def empty = PContext(List(LocalContext.empty))
+  def empty = PContext(List(LocalContext.empty), false)
 }
 
 class Parser(file: File, input: String) {
@@ -61,8 +62,9 @@ class Parser(file: File, input: String) {
     setRef(a, from)
     a
   }
-  def setRef(sf: SyntaxFragment, from: Int) = {
+  def setRef(sf: SyntaxFragment, from: Int): sf.type = {
     sf.loc = Location(file, from, index)
+    sf
   }
 
   // all input has been parsed
@@ -75,7 +77,7 @@ class Parser(file: File, input: String) {
   // string s occurs at the current index in the input
   // if s is only letters, we additionally check that no id char follows
   def startsWith(s: String): Boolean = {
-    val isKeyword = s.forall(_.isLetter)
+    val isKeyword = s.nonEmpty && s.forall(_.isLetter)
     val b = index+s.length <= input.length && input.substring(index, index+s.length) == s
     if (b && isKeyword) (index+s.length == input.length || !Path.isIdChar(input(index+s.length)))
     else b
@@ -224,13 +226,14 @@ class Parser(file: File, input: String) {
   }
 
   def parseVarDecl(mutable: Boolean)(implicit ctxs: PContext): VarDecl = {
+    val noStatements = ctxs.setAllowStatement(false)
     val n = parseName
     trim
     val tp = if (startsWithS(":")) {
-      parseType
+      parseType(noStatements)
     } else Type.unknown
     val vl = if (startsWithS("=")) {
-      Some(parseExpression)
+      Some(parseExpression(noStatements))
     } else None
     VarDecl(n,tp,vl,mutable)
   }
@@ -257,7 +260,11 @@ class Parser(file: File, input: String) {
   }
   // needed because addRef does not work with return-statements
   private def parseExpressionInner(implicit ctxs: PContext): Expression = {
+    val allowS = ctxs.allowStatement
+    val doAllowS = ctxs.setAllowStatement(true)
+    val doNotAllowS = ctxs.setAllowStatement(false)
     var seen: List[(Expression,InfixOperator)] = Nil
+    val allExpBeginAt = index
     while (true) {
       trim
       val expBeginAt = index
@@ -265,7 +272,7 @@ class Parser(file: File, input: String) {
         OpenRef(parsePath)
       } else if (startsWithS("{")) {
         var cs: List[Expression] = Nil
-        var ctxL = ctxs
+        var ctxL = ctxs.setAllowStatement(true)
         trim
         while (!startsWithS("}")) {
           val c = parseExpression(ctxL)
@@ -278,30 +285,32 @@ class Parser(file: File, input: String) {
           if (startsWith(";")) skip(";")
         }
         Block(cs.reverse)
-      } else if (startsWithS("var")) {
+      } else if (allowS && startsWithS("var")) {
         trim
         parseVarDecl(true)
-      } else if (startsWithS("val")) {
+      } else if (allowS && startsWithS("val")) {
         trim
         parseVarDecl(false)
       } else if (startsWith("exists") || startsWith("forall")) {
-        val univ = if (startsWithS("forall")) true else {skip("exists"); false}
-        val vars = parseList(parseVarDecl(false), ",", true)
+        val univ = if (startsWithS("forall")) true else {
+          skip("exists"); false
+        }
+        val vars = parseList(parseVarDecl(false),",",true)
         skipT(".")
         val body = parseExpression
-        Quantifier(univ, LocalContext(vars), body)
-      } else if (startsWithS("while")) {
+        Quantifier(univ,LocalContext(vars),body)
+      } else if (allowS && startsWithS("while")) {
         val c = parseBracketedExpression
-        val b = parseExpression
+        val b = parseExpression(doAllowS)
         While(c,b)
-      } else if (startsWithS("for")) {
+      } else if (allowS && startsWithS("for")) {
         skipT("(")
         val v = parseName
         trim
         skipT("in")
         val r = parseExpression
         skipT(")")
-        val b = parseExpression(ctxs.append(VarDecl(v,Type.unknown)))
+        val b = parseExpression(doAllowS.append(VarDecl(v,Type.unknown)))
         For(VarDecl(v,Type.unknown),r,b)
       } else if (startsWithS("if")) {
         val c = parseBracketedExpression
@@ -309,9 +318,12 @@ class Parser(file: File, input: String) {
         trim
         val el = if (startsWithS("else")) {
           Some(parseExpression)
-        } else None
+        } else {
+          if (!allowS) fail("else branch expected")
+          else None
+        }
         IfThenElse(c,th,el)
-      } else if (startsWithS("return")) {
+      } else if (allowS && startsWithS("return")) {
         val r = parseExpression
         Return(r)
       } else if (Operator.prefixes.exists(o => startsWith(o.symbol))) {
@@ -351,17 +363,7 @@ class Parser(file: File, input: String) {
         // unit (), bracketed (e), or tuple (e,...,e)
         val es = parseExpressions("(",")")
         trim
-        if (startsWithS("->")) {
-          val vds = es.map {
-            case vd: VarDecl => vd
-            case VarRef(n) => VarDecl(n,Type.unknown)
-            case ClosedRef(n) => VarDecl(n,Type.unknown)
-            case _ => fail("not variable declaration")
-          }
-          val c = LocalContext(vds)
-          val b = parseExpression(ctxs.append(c))
-          Lambda(c,b)
-        } else es match {
+        es match {
           case Nil => UnitValue
           case List(e) => e
           case es => Tuple(es)
@@ -382,12 +384,8 @@ class Parser(file: File, input: String) {
         trim
         if (startsWithS(":")) {
           // variable declaration
-          val tp = parseType
+          val tp = parseType(doNotAllowS)
           VarDecl(n,tp,None,false)
-        } else if (startsWithS("->")) {
-          val ins = LocalContext(VarDecl(n,Type.unknown))
-          val b = parseExpression(ctxs.append(ins))
-          Lambda(ins, b)
         } else if (ctxs.contexts.head.domain.contains(n)) {
           // reference to bound variable
           VarRef(n)
@@ -396,30 +394,32 @@ class Parser(file: File, input: String) {
         }
       } // end exp =
       trim
-      val strongPostops = List('.', '(', '[', '{', '?')
-      while (!atEnd && (strongPostops contains next)) {
-        setRef(exp, expBeginAt) // only the outermost expression gets its source reference automatically
-        if (startsWith("(")) {
-          val es = parseExpressions("(",")")
+      val strongPostops = List(".","(","[","{","?")
+      while (strongPostops.exists(startsWith)) {
+        setRef(exp,expBeginAt) // only the outermost expression gets its source reference automatically
+        if (startsWithS("(")) {
+          val es = parseExpressions("",")")
           exp = Application(exp,es)
         } else if (startsWithS("[")) {
           val e = parseExpression
           skip("]")
-          exp = ListElem(exp, e)
+          exp = ListElem(exp,e)
         } else if (startsWithS("?")) {
           exp = OptionValue(exp)
         } else if (startsWithS(".")) {
-          val n = parseName
-          exp = OwnedExpr(exp, ClosedRef(n))
+          val nB = index
+          val n = setRef(ClosedRef(parseName), nB)
+          exp = OwnedExpr(exp,n)
         } else if (startsWithS("{")) {
           // conflict between M{decls} and exp{exp}
           // we look back and ahead to see if it is the former, in which case looksLikeInstanceOf.isDefined
           // check if there was a Path before
           def asPath(e: Expression): Option[Path] = e match {
-            case OwnedExpr(e,ClosedRef(n)) => asPath(e).map(_/n)
+            case OwnedExpr(e,ClosedRef(n)) => asPath(e).map(_ / n)
             case ClosedRef(n) => Some(Path(List(n)))
             case _ => None
           }
+
           var looksLikeInstanceOf = asPath(exp)
           if (looksLikeInstanceOf.isDefined) {
             // check if a declaration follows
@@ -449,19 +449,81 @@ class Parser(file: File, input: String) {
         }
       } // end while
       trim
-      Operator.infixes.find(o => startsWith(o.symbol)) match {
-        case None =>
-          if (startsWithS("=")) {
-            val df = parseExpression
-            exp = Assign(exp,df)
+      val weakPostops = List("=","->","match")
+      if (weakPostops.exists(startsWith) && !startsWith("==")) {
+        exp = disambiguateInfixOperators(seen.reverse,exp)
+        setRef(exp,allExpBeginAt)
+        val expWP = if (allowS && startsWithS("=")) {
+          val df = parseExpression
+          Assign(exp,df)
+        } else if (startsWithS("->")) {
+          // decls -> body is a Lambda, pattern -> body is a MatchCase
+          def asVarDecls(e: Expression,top: Boolean): Option[List[VarDecl]] = e match {
+            case Tuple(es) if top =>
+              val esV = es.map(e => asVarDecls(e,false))
+              if (esV.forall(_.isDefined)) Some(esV.flatMap(_.get))
+              else None
+            case e =>
+              val vd = e match {
+                case vd: VarDecl => vd
+                case VarRef(n) => VarDecl(n,Type.unknown)
+                case ClosedRef(n) => VarDecl(n,Type.unknown)
+                case _ => return None
+              }
+              Some(List(vd))
           }
-          return disambiguateInfixOperators(seen.reverse, exp)
-        case Some(o) =>
-          skip(o.symbol)
-          seen ::= (exp,o)
+          asVarDecls(exp,true) match {
+            case None =>
+              val b = parseExpression(doAllowS)
+              MatchCase(null,exp,b)
+            case Some(ins) =>
+              val ctx = LocalContext(ins)
+              val b = parseExpression(doAllowS.append(ctx))
+              Lambda(ctx,b)
+          }
+        } else if (startsWithS("match")) {
+          skip("{")
+          val cs = parseList(parseMatchCase,"}",false)
+          skip("}")
+          Match(exp,cs)
+        } else exp
+        return expWP
+      } else {
+        parseOperatorO(Operator.infixes) match {
+          case None =>
+            return disambiguateInfixOperators(seen.reverse,exp)
+          case Some(o) =>
+            setRef(exp, expBeginAt)
+            seen ::= (exp,o)
+        }
       }
     } // end while
     null // impossible
+  }
+
+  def parseMatchCase(implicit ctxs: PContext) = {
+    val e = parseExpression
+    e match {
+      case mc: MatchCase => mc
+      case Lambda(ins,bd) =>
+        // awkward: if parseExpression was able to turn the pattern into a lambda, undo that here
+        val p = if (ins.decls.length != 1)
+          Tuple(ins.decls.map(vd => VarRef(vd.name)))
+        else
+          VarRef(ins.decls.head.name)
+        MatchCase(null, p.copyFrom(ins), bd)
+      case _ => fail("match case expected")
+    }
+  }
+
+  def parseOperatorO[O<:Operator](os: List[O]): Option[O] = {
+    var found: Option[O] = None
+    os.foreach {o =>
+      if (startsWith(o.symbol) && !found.exists(f => f.length > o.length))
+        found = Some(o)
+    }
+    found.foreach {f => skip(f.symbol)}
+    found
   }
 
   // a shift-reduce parser of e1 o1 ... en on last
@@ -506,6 +568,7 @@ class Parser(file: File, input: String) {
 
   private val typePostOps = List("->","?")
   def parseType(implicit ctxs: PContext): Type = addRef {
+    val tpBegin = index
     var tp = if (startsWithS(".")) {
         OpenRef(parsePath)
       } else if (startsWithS("int")) {IntType}
@@ -515,7 +578,11 @@ class Parser(file: File, input: String) {
       else if (startsWithS("string")) StringType
       else if (startsWithS("bool")) BoolType
       else if (startsWithS("empty")) EmptyType
-      else if (startsWithS("[")) {
+      else if (startsWithS("{")) {
+        val y = parseType
+        skip("}")
+        FinSetType(y)
+      } else if (startsWithS("[")) {
         val y = parseType
         skip("]")
         ListType(y)
@@ -566,6 +633,7 @@ class Parser(file: File, input: String) {
         }
         tp = FunType(ins,out)
       } else if (startsWithS("?")) {
+        setRef(tp, tpBegin)
         tp = OptionType(tp)
       }
     }

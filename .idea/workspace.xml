@@ -62,20 +62,27 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/info/kwarc/p/Checker.scala</url>
-          <line>537</line>
-          <option name="timeStamp" value="46" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="scala-line">
-          <url>file://$PROJECT_DIR$/src/info/kwarc/p/Checker.scala</url>
-          <line>1042</line>
+          <line>1065</line>
           <option name="timeStamp" value="48" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
+          <url>file://$PROJECT_DIR$/src/info/kwarc/p/Parser.scala</url>
+          <line>54</line>
+          <option name="timeStamp" value="62" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/info/kwarc/p/Checker.scala</url>
-          <line>17</line>
-          <option name="timeStamp" value="49" />
+          <line>321</line>
+          <option name="timeStamp" value="64" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
+    <watches-manager>
+      <configuration name="Application">
+        <watch expression="((Module)gc.voc).decls" custom="info.kwarc.p.Module" />
+        <watch expression="this" />
+        <watch expression="((Module)mod).decls" custom="info.kwarc.p.Module" />
+      </configuration>
+    </watches-manager>
   </component>
 </project>

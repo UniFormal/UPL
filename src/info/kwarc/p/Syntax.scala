@@ -163,6 +163,7 @@ abstract class Context[A] extends SyntaxFragment with HasChildren[VarDecl] {
   def append(vd: VarDecl): A = append(LocalContext(vd))
   def local: LocalContext
   def decls = local.variables
+  def getOutput = local.decls.find(vd => vd.name == "" && vd.output).map(_.tp)
 }
 
 /** object-level context: relative to a vocabulary and a choice of theory in it
@@ -188,15 +189,15 @@ case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
 }
 
 /** declaration-level context: relative to a vocabulary, chooses a theory and an object-level lc relative to it */
-case class RegionalContext(theory: Theory, owner: Option[Expression], local: LocalContext, returnType: Option[Type]) extends Context[RegionalContext] {
+case class RegionalContext(theory: Theory, owner: Option[Expression], local: LocalContext) extends Context[RegionalContext] {
   override def toString = owner.getOrElse(theory).toString + s"{$local}"
   def physical = theory.physical && owner.isEmpty
   def append(c: LocalContext) = copy(local = local.append(c))
 }
 object RegionalContext {
-  val empty = RegionalContext(Theory.empty,None, LocalContext.empty, None)
-  def apply(thy: Theory, owner: Option[Expression] = None, returnType: Option[Type] = None): RegionalContext =
-    RegionalContext(thy, owner, LocalContext.empty, returnType)
+  val empty = RegionalContext(Theory.empty, None, LocalContext.empty)
+  def apply(thy: Theory, owner: Option[Expression] = None): RegionalContext =
+    RegionalContext(thy, owner, LocalContext.empty)
   def apply(p: Path): RegionalContext = RegionalContext(PhysicalTheory(p))
 }
 
@@ -226,31 +227,59 @@ case class GlobalContext private (voc: Module, regions: List[(Boolean,RegionalCo
   def add(d: Declaration) = copy(voc = voc.addIn(currentParent,d))
   def parentDecl = voc.lookupModule(currentParent).getOrElse {throw Checker.Error(voc, "unknown parent")}
   /** dereferences an ambiguous relative path: looks up in transparent physical parent regions and returns the first that exists */
-  def resolveGlobal(p: Path): Option[(Path, NamedDeclaration)] = {
+  def resolvePath(p: Path): Option[(Path, NamedDeclaration)] = {
     if (!inPhysicalTheory) return None
+
+
     val pp = currentParent/p
     voc.lookupPath(pp) match {
       case Some(d) => Some((pp,d))
       case None =>
         if (regions.length > 1 && currentIsTransparent) {
           // current region is transparent and there is a previous one to try
-          pop.resolveGlobal(p)
+          pop.resolvePath(p)
         } else None
     }
   }
+  def resolveName(obj: Object): Option[(Object,Option[NamedDeclaration])] = {
+    def make(e: Object) = if (e == obj) obj else e.copyFrom(obj)
+    val n = obj match {
+      case VarRef(n) => n
+      case ClosedRef(n) => n
+      case _ => return Some((obj,None))
+    }
+    // try finding local variable n in context
+    lookupO(n).foreach {_ =>
+      return Some((make(VarRef(n)),None))
+    }
+    // try finding n declared regionally in current or included module
+    lookupRegional(n).foreach {d =>
+      return Some((make(ClosedRef(n)),Some(d)))
+    }
+    // try finding n declared globally in current module or parent modules
+    resolvePath(Path(n)) foreach {case (p,d) =>
+      return Some((make(OpenRef(p)),Some(d)))
+    }
+    // give up
+    None
+  }
+
   def lookupRegional(name: String): Option[NamedDeclaration] = {
     val mod = if (inPhysicalTheory) parentDecl else theory.toModule
+    // look in the current module for a primitive or previously merged declaration
     mod.lookupO(name) match {
       case Some(nd: NamedDeclaration) if !nd.global => return Some(nd)
       case _ =>
     }
+    // look in included modules
     val ds = mod.supers.flatMap {p =>
       voc.lookupPath(p/name).toList
     }.filter(d => !d.global && !d.subsumed)
     if (ds.isEmpty) {
-      if (regions.length > 1 && currentIsTransparent)
+      if (regions.length > 1 && currentIsTransparent) {
+        // look in transparent enclosing regions
         pop.lookupRegional(name)
-      else
+      } else
         None
     } else {
       // find the most defined one
@@ -322,12 +351,12 @@ case class Module(name: String, closed: Boolean, decls: List[Declaration]) exten
     * @param parent the path of the last module (not quite redundant when modules are nested)
     */
   private[p] def addIn(parent: Path, d: Declaration): Module = {
-    if (parent.isRoot) copy(decls = d::decls)
+    if (parent.isRoot) copy(decls = d::decls).copyFrom(this)
     else {
       decls.headOption match {
         case Some(m: Module) if m.name.contains(parent.head) =>
           val mA = m.addIn(parent.tail, d)
-          copy(decls = mA::decls.tail)
+          copy(decls = mA::decls.tail).copyFrom(this)
         case _ => throw Checker.Error(d,"unexpected path")
       }
     }
@@ -618,22 +647,19 @@ case class IntervalType(lower: Option[Expression], upper: Option[Expression]) ex
   def concrete = lower.forall(_.isInstanceOf[IntValue]) && upper.forall(_.isInstanceOf[IntValue])
 }
 
-/** auxiliary class for built-in type operators */
-sealed abstract class TypeOperator(val children: List[Type]) extends Type
-
 /** functions (non-dependent) */
-case class FunType(ins: List[Type], out: Type) extends TypeOperator(ins:::List(out)) {
+case class FunType(ins: List[Type], out: Type) extends Type {
   override def toString = (if (ins.length == 1) ins.head else ProdType(ins)) + " -> " + out
   def finite = (out::ins).forall(_.finite)
 }
 
 /** tuples (non-dependent Cartesian product) */
-case class ProdType(comps: List[Type]) extends TypeOperator(comps) {
+case class ProdType(comps: List[Type]) extends Type {
   override def toString = comps.mkString("(",", ", ")")
   def finite = comps.forall(_.finite)
 }
 /** homogeneous lists */
-case class ListType(elem: Type) extends TypeOperator(List(elem)) {
+case class ListType(elem: Type) extends Type {
   override def toString = s"[$elem]"
   def finite = false
 }
@@ -648,10 +674,30 @@ object ListOrUnknownType {
     case _ => None
   }
 }
+/** finite subsets (Curry-subtype of lists) */
+case class FinSetType(elem: Type) extends Type {
+  override def toString = "{" + elem + "}"
+  def finite = true
+}
 /** optional values */
-case class OptionType(elem: Type) extends TypeOperator(List(elem)) {
+case class OptionType(elem: Type) extends Type {
   override def toString = elem + "?"
   def finite = elem.finite
+}
+
+/** unifies collection types */
+object CollectionType {
+  def apply(elem: Type, set: Boolean, atMostOne: Boolean) = {
+    if (atMostOne) OptionType(elem)
+    else if (set) FinSetType(elem)
+    else ListType(elem)
+  }
+  def unapply(tp: Type) = tp match {
+    case OptionType(a) => Some((a,true,true))
+    case ListType(a) => Some((a,false,false))
+    case FinSetType(a) => Some((a,true,false))
+    case _ => None
+  }
 }
 
 // ***************** Expressions **************************************
@@ -791,21 +837,29 @@ object String {
   * @param operator the operator
   * @param tp its type (most operators are ad-hoc polymorphic), null if to be infered during checking
   */
-case class BaseOperator(operator: Operator, tp: Type) extends Expression
+case class BaseOperator(operator: Operator, tp: Type) extends Expression {
+  override def toString = "(" + operator.symbol + ":" + tp + ")"
+}
 
 // ************************** Standard programming language objects
 
-/** local variable declaration */
-case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean) extends Expression with Named {
+/** local variable declaration
+  * @param mutable write access allowed at run time
+  * @param output the variable has no value (unless defined) and can only be written to
+  *               unnamed output variables are the target of return statements
+  */
+case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean, output: Boolean) extends Expression with Named {
   def defined = dfO.isDefined
   override def toString = {
+    val sep = if (output) "#" else ":"
     val tpS = if (tp == null) "???" else tp.toString
     val vlS = dfO match {case Some(v) => " = " + v.toString case None => ""}
-    s"$name: $tpS$vlS"
+    s"$name$sep $tpS$vlS"
   }
 }
 object VarDecl {
-  def apply(n: String, tp: Type, dfO: Option[Expression] = None): VarDecl = VarDecl(n, tp, dfO, false)
+  def apply(n: String, tp: Type, dfO: Option[Expression] = None, mutable: Boolean = false): VarDecl = VarDecl(n, tp, dfO, mutable, false)
+  def output(tp: Type) = VarDecl("", tp, None, false, true)
 }
 /** reference to local variable */
 case class VarRef(name: String) extends Expression {
@@ -832,6 +886,14 @@ case class IfThenElse(cond: Expression, thn: Expression, els: Option[Expression]
   }
 }
 
+case class Match(expr: Expression, cases: List[MatchCase]) extends Expression {
+  override def toString = expr.toString + " match {\n" + cases.mkString("\n") + "}"
+}
+
+case class MatchCase(context: LocalContext, pattern: Expression, body: Expression) extends Expression {
+  override def toString = pattern.toString + " -> " + body
+}
+
 /** for-loop, can be seen as elimination form of [[ListType]]
   * @param range must evaluate to list
   */
@@ -856,6 +918,7 @@ case class Return(exp: Expression) extends Expression {
   * not by the parser/checker/printer.
   * For the latter to be able to access this information, all operators must be listed in the companion object [[Operator]] */
 sealed abstract class Operator(val symbol: String) {
+  val length = symbol.length
   def types: List[FunType]
   def polyTypes(u: UnknownType): List[FunType] = Nil
   def makeExpr(args: List[Expression]) = Application(BaseOperator(this, Type.unknown), args)
@@ -888,6 +951,8 @@ sealed trait Comparison {
 sealed trait Equality extends Operator {
   def types = Nil
   override def polyTypes(u: UnknownType) = List(B<--(u,u))
+  def apply(tp: Type, l: Expression, r: Expression) =
+    Application(BaseOperator(this,FunType(List(tp,tp),BoolType)), List(l,r))
 }
 
 case object Plus extends InfixOperator("+", 0, true) with Arithmetic {
@@ -906,8 +971,36 @@ case object Power extends InfixOperator("^", 20, false) {
   val types = List(I<--(I,I), R<--(R,R), R<--(I,R), R<--(R,I))
 }
 
-case object And extends InfixOperator("&", -20, true) with Connective
-case object Or extends InfixOperator("|", -20, true) with Connective
+case object In extends InfixOperator("in", -10, false) {
+  val types = Nil
+  override def polyTypes(u: UnknownType) =
+    List(O(u),FinSetType(u),L(u)).map(a => BoolType<--(u,a))
+}
+
+case object Cons extends InfixOperator("-:", -10, false) {
+  val types = Nil
+  override def polyTypes(u: UnknownType) = List(L(u)<--(u,L(u)))
+}
+
+case object Snoc extends InfixOperator(":-:", -10, false) {
+  val types = Nil
+  override def polyTypes(u: UnknownType) = List(L(u)<--(L(u),u))
+}
+
+case object And extends InfixOperator("&", -20, true) with Connective {
+  def apply(args: List[Expression]): Expression = args match {
+    case Nil => BoolValue(true)
+    case e::Nil => e
+    case hd::tl => apply(hd, apply(tl))
+  }
+}
+case object Or extends InfixOperator("|", -20, true) with Connective {
+  def apply(args: List[Expression]): Expression = args match {
+    case Nil => BoolValue(false)
+    case e::Nil => e
+    case hd::tl => apply(hd, apply(tl))
+  }
+}
 
 case object Less extends InfixOperator("<", -10, false) with Comparison
 case object LessEq extends InfixOperator("<=", -10, false) with Comparison
@@ -928,6 +1021,7 @@ object Operator {
   val infixes = List(Plus, Minus, Times, Divide, Power, Minimum, Maximum,
                      And, Or,
                      Less, LessEq, Greater, GreaterEq,
+                     In, Cons, Snoc,
                      Equal, Inequal)
   val prefixes = List(UMinus,Not)
 
@@ -969,8 +1063,14 @@ object Operator {
           case (Plus,StringValue(l),StringValue(r)) => StringValue(l + r)
           case (Plus,ListValue(l),ListValue(r)) => ListValue(l ::: r)
           case (e: Equality,l: BaseValue,r: BaseValue) =>
+            // TODO depends on type
             val b = ((e == Equal) == (l.value == r.value))
             BoolValue(b)
+          case (In, e, ListValue(es)) =>
+            val b = es.contains(e)
+            BoolValue(b)
+          case (Cons, e, ListValue(es)) => ListValue(e::es)
+          case (Cons, ListValue(es), e) => ListValue(es:::List(e))
           case _ => throw IError("no case for operator evaluation")
         }
     }
