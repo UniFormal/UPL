@@ -211,7 +211,7 @@ case class GlobalContext private (voc: Module, regions: List[(Boolean,RegionalCo
   def currentRegion = regions.head._2
   def currentIsTransparent = regions.head._1
   def theory = currentRegion.theory
-  def local = currentRegion.local
+  def local = LocalContext(regions.takeWhile(_._1).flatMap(_._2.local.decls))
   def push(t: Theory, owner: Option[Expression] = None): GlobalContext = push(RegionalContext(t,owner))
   def push(e: RegionalContext): GlobalContext = copy(regions = (false,e)::regions)
   def pop() = copy(regions = regions.tail)
@@ -439,10 +439,9 @@ case class ExprDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Bo
 case class Theory(decls: List[Declaration]) extends SyntaxFragment {
   override def toString = {
     this match {
-      case ExtendedTheory(p,ds) => p.toString + " " + Theory(ds).toString
+      case ExtendedTheory(p,ds) => p.toString + (if  (ds.isEmpty) "" else " " + Theory(ds).toString)
       case _ => decls.mkString("{", ", ", "}")
     }
-    decls.mkString(", ")
   }
   def pathO = decls match {
     case Include(p,None,_) :: Nil => Some(p)
@@ -491,7 +490,7 @@ object PhysicalTheory {
 object ExtendedTheory {
   def apply(p: Path, sds: List[SymbolDeclaration]): Theory = Theory(Include(p) :: sds)
   def unapply(thy: Theory) = thy.decls match {
-    case Include(p,None,false) :: ds if ds.forall(_.isInstanceOf[SymbolDeclaration]) =>
+    case Include(p,None,_) :: ds if ds.forall(_.isInstanceOf[SymbolDeclaration]) =>
       Some((p, ds.map(_.asInstanceOf[SymbolDeclaration])))
     case _ => None
   }

@@ -84,9 +84,8 @@ object Checker {
      - If a new declaration has to be generated, it is added and both refinees are marked as subsumed.
      - Subsuming declarations are marked as well.
      - Declarations are marked to retain the original list.
-     keepFull determines what is returned: all non-subsumed declarations or only the subsuming ones
+     keepFull determines what is returned: all non-subsumed declarations or only the subsuming ones and includes
     */
-    // TODO subsumed flag must not mess up declarations in included modules
   private def checkDeclarationsAndFlatten(gc: GlobalContext, decls: List[Declaration], keepFull: Boolean): List[Declaration] = {
     /* a FIFO queue of lists of declarations that must be flattened
      * Later on included lists of declarations will be prefixed with that flag negated and the definiens of the include.
@@ -245,12 +244,18 @@ object Checker {
     }
   }
 
+  // TODO totality check of realize
   def checkTheory(gc: GlobalContext, thy: Theory)(implicit cause: SyntaxFragment): Theory = {
     if (thy.isFlat) return thy
     val mod = thy.toModule
     val gcI = gc.add(mod.copy(decls = Nil)).enter(mod.name)
     val declsC = checkDeclarationsAndFlatten(gcI,thy.decls,false)
-    val t = Theory(declsC)
+    // remove realize flags, which are irrelevant from the outside
+    val declsCN = declsC map {
+      case id : Include if id.realize => id.copy(realize = false)
+      case d => d
+    }
+    val t = Theory(declsCN)
     t.isFlat = true
     t
   }
@@ -295,7 +300,7 @@ object Checker {
   def checkType(gc: GlobalContext, tpA: Type): Type = {
     implicit val cause = tpA
     def r(x:Type): Type = checkType(gc,x)
-    correctFreeOwner(gc, tpA).foreach {corrected => return checkType(gc, corrected)}
+    disambiguateOwnedObject(gc, tpA).foreach {corrected => return checkType(gc, corrected)}
     // tp != tA only if tpA is an unresolved reference
     val (tpR, sdCached) = gc.resolveName(tpA).getOrElse(fail("unknown identifier"))
     val tp = tpR match {
@@ -593,8 +598,7 @@ object Checker {
   def checkExpression(gc: GlobalContext,exp: Expression,tp: Type, returnToHere: Boolean = false): Expression = {
     implicit val cause = exp
     def withReturnVar(q: GlobalContext, o: Type) = if (returnToHere) q.append(VarDecl.output(o)) else q
-    correctFreeOwner(gc, exp).foreach {corrected => return checkExpression(gc, corrected, tp)}
-    correctFreeOwner(gc, tp).foreach {corrected => return checkExpression(gc, exp, corrected)}
+    disambiguateOwnedObject(gc, exp).foreach {corrected => return checkExpression(gc, corrected, tp)}
     val tpN = typeNormalize(gc, tp)
     val eC = (exp,tpN) match {
       case (i, IntervalType(l,u)) =>
@@ -752,7 +756,7 @@ object Checker {
       case e: Expression => e
       case _ => fail("not an expression")
     }
-    correctFreeOwner(gc, expA).foreach {corrected => return inferExpression(gc, corrected)}
+    disambiguateOwnedObject(gc, exp).foreach {corrected => return inferExpression(gc, corrected)}
     // check exp and infer its type
     val (expC,expI) = exp match {
       case e: BaseValue => (e,e.tp)
@@ -816,6 +820,8 @@ object Checker {
             (mf.evaluation.insert(eC, Nil), a)
           case _ => fail("not a quoted expression")
         }
+      case MatchCase(ctx, p, b) =>
+        fail("match case outside of match")
       case Lambda(ins,bd) =>
         val insC = checkLocal(gc,ins,false,false)
         val inTypes = insC.decls.map(_.tp)
@@ -862,7 +868,7 @@ object Checker {
           case ProdType(ts) =>
             if (p <= 0) fail("non-positive index")
             if (p > ts.length) fail("index out of bounds")
-            (Projection(tupC,p), ts(p))
+            (Projection(tupC,p), ts(p-1))
           case mfp(_,a) =>
             (mfp.insert(tupC, List(IntValue(p))), a)
           case _ => fail("not a tuple")
@@ -1025,27 +1031,38 @@ object Checker {
     (rC,pd)
   }
 
-  /** for replacing OwnedObj with Expr[s]Over or OpenRef because the parser cannot disambiguate these */
+  /** for replacing OwnedObj with
+    * - Expr[s]Over
+    * - OpenRef
+    * - projection
+    * because the parser cannot disambiguate these */
   // the type bound allows taking a Type or an Expression and returning the same
-  // TODO: this must still do the OpenRef part, probably by recursively checking the owners for open modules
-  private def correctFreeOwner[A >: Type with Expression](gc: GlobalContext, o: A): Option[A] = o match {
+  private def disambiguateOwnedObject[A >: Type with Expression](gc: GlobalContext, o: A): Option[A] = o match {
     case o: OwnedObject =>
-      val pO = o.owner match {
+      val ownerInfo = o.owner match {
         case OpenRef(p) => gc.resolvePath(p) flatMap {
-          case (p, _: Module) => Some(p)
+          case (pR, m: Module) => Some((pR, m.closed))
           case _ => None
         }
-        case ClosedRef(n) => gc.lookupRegional(n) flatMap {
-          case _:Module => Some(Path(n))
+        case ClosedRef(n) => gc.resolveName(o.owner) flatMap {
+          case (_:ClosedRef,Some(m:Module)) => Some((Path(n), m.closed))
+          case (OpenRef(pR), _) => Some((pR,false))
           case _ => None
         }
         case _ => None
       }
-      pO map {p =>
-        val sc = PhysicalTheory(p)
-        o match {
-          case o: OwnedType => ExprsOver(sc,o.owned).copyFrom(o).asInstanceOf[A] // guaranteed to work, but needed by Scala compiler
-          case o: OwnedExpr => ExprOver(sc,o.owned).copyFrom(o).asInstanceOf[A]
+      ownerInfo map {case (p,closed) =>
+        if (closed) {
+          val sc = PhysicalTheory(p)
+          o match {
+            case o: OwnedType => ExprsOver(sc,o.owned).copyFrom(o).asInstanceOf[A] // guaranteed to work, but needed by Scala compiler
+            case o: OwnedExpr => ExprOver(sc,o.owned).copyFrom(o).asInstanceOf[A]
+          }
+        } else {
+          o.owned match {
+            case ClosedRef(n) => OpenRef(p/n)
+            case _ => fail("open module cannot own expressions")(o)
+          }
         }
       }
     case _ => None
@@ -1069,8 +1086,9 @@ object Checker {
     matchingTypes.tail.foreach {case (_,next) => commonAssignments = commonAssignments intersect next}
     // if we found multiple assignments for the parameter of this operator, take their union
     val (paramAssignments, otherAssignments) = commonAssignments.partition(_._1 == param)
-    val paramAssignment = if (paramAssignments.isEmpty) Nil else List((param, typeUnion(gc, paramAssignments.map(_._2))))
-    // better take union than fail because of equality and + on lists
+    val paramAssignment = if (paramAssignments.isEmpty) Nil
+       else List((param, typeUnion(gc, paramAssignments.map(_._2))))
+    // better take union than fail because of equality and operations on collections
     assignAsMatched(paramAssignment:::otherAssignments)
     out
   }

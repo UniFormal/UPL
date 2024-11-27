@@ -44,13 +44,7 @@ module M {
     if (x <= 0) return 1
     x * factorial(x-1)
   }
-
-  test = {
-    sum([1,2,3]) == 6 &
-    factorial(3) == 6
-  }
 }
-main = .M.test
 
 module Algebra {
   class Carrier {
@@ -113,27 +107,48 @@ module AI {
 
     class Node {
       label: state
-      parent: Node
+      parent: Node?
     }
+    makeNode = (l,p) -> Node {label = l, parent = p}
 
     class SearchStrategy {
        type Fringe
        init: [state] -> Fringe
        empty: Fringe -> bool
-       insert: Fringe -> (Node,state) -> ()
-       takeNext: Fringe -> Node
+       insert: Fringe -> (Node,state) -> Fringe
+       takeNext: Fringe -> (Fringe,Node)
+    }
+
+    DFS = SearchStrategy {
+      type Fringe = [Node]
+      init = ss -> ss match {
+        [] -> []
+        h-:t -> makeNode(h,?) -: init(t)
+      }
+      empty = l -> l == []
+      insert = l -> (p,s) -> makeNode(s, p?) -: l
+      takeNext = l -> l match {
+        h -: t -> (t,h)
+      }
     }
 
     treeSearch: (SearchProblem, SearchStrategy) -> Node? = (prob,strat) -> {
-      val fringe: strat.Fringe = strat.init(prob.initials)
+      var fringe: strat.Fringe = strat.init(prob.initials)
       while (!strat.empty(fringe)) {
-         val node = strat.takeNext(fringe)
+         val fn = strat.takeNext(fringe)
+         fringe = fn(1)
+         val node = fn(2)
          if (prob.goals(node.label)) return node?
          else
            for (a in prob.enumAllActions)
              for (s in prob.transitions(node.label, a))
-               strat.insert(fringe)(node, s)
+               fringe = strat.insert(fringe)(node, s)
       };
       ?
     }
+}
+
+main = {
+  M.sum([1,2,3]) == 6 &
+  M.factorial(3) == 6
 }
