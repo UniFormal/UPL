@@ -952,6 +952,8 @@ sealed trait Equality extends Operator {
   override def polyTypes(u: UnknownType) = List(B<--(u,u))
   def apply(tp: Type, l: Expression, r: Expression) =
     Application(BaseOperator(this,FunType(List(tp,tp),BoolType)), List(l,r))
+  /** the operator to reduce after applying this operator on a list of pairs */
+  def reduce: Operator
 }
 
 case object Plus extends InfixOperator("+", 0, true) with Arithmetic {
@@ -1006,8 +1008,12 @@ case object LessEq extends InfixOperator("<=", -10, false) with Comparison
 case object Greater extends InfixOperator(">", -10, false) with Comparison
 case object GreaterEq extends InfixOperator(">=", -10, false) with Comparison
 
-case object Equal extends InfixOperator("==", -10, false) with Equality
-case object Inequal extends InfixOperator("!=", -10, false) with Equality
+case object Equal extends InfixOperator("==", -10, false) with Equality {
+  val reduce = And
+}
+case object Inequal extends InfixOperator("!=", -10, false) with Equality {
+  val reduce = Or
+}
 
 case object UMinus extends PrefixOperator("-") {
   val types = List(I<--I, R<--R)
@@ -1062,15 +1068,49 @@ object Operator {
           case (Plus,StringValue(l),StringValue(r)) => StringValue(l + r)
           case (Plus,ListValue(l),ListValue(r)) => ListValue(l ::: r)
           case (e: Equality,l: BaseValue,r: BaseValue) =>
-            // TODO depends on type
+            // TODO: more types
             val b = ((e == Equal) == (l.value == r.value))
             BoolValue(b)
+          case (e: Equality,Tuple(ls), Tuple(rs)) =>
+            if (ls.length != rs.length) BoolValue(e != Equal)
+            else {
+              val lrs = (ls zip rs).map({case (l,r) => simplify(e, List(l,r))})
+              simplify(e.reduce, lrs)
+            }
+          case (e: Equality,ListValue(ls), ListValue(rs)) =>
+            // TODO: depends on type, e.g., FinSet
+            if (ls.length != rs.length) BoolValue(e != Equal)
+            else {
+              val lrs = (ls zip rs).map({case (l,r) => simplify(e, List(l,r))})
+              simplify(e.reduce, lrs)
+            }
+          case (e: Equality,OptionValue(l), OptionValue(r)) =>
+            if (l == null) BoolValue((e == Equal) == (r == null))
+            else {
+              simplify(e, List(l,r))
+            }
           case (In, e, ListValue(es)) =>
             val b = es.contains(e)
             BoolValue(b)
           case (Cons, e, ListValue(es)) => ListValue(e::es)
-          case (Cons, ListValue(es), e) => ListValue(es:::List(e))
-          case _ => throw IError("no case for operator evaluation")
+          case (Snoc, ListValue(es), e) => ListValue(es:::List(e))
+          case _ => throw IError("no case for operator evaluation: " + o.symbol)
+        }
+    }
+  }
+  /** partial inverse, for pattern-matching */
+  def invert(o: Operator, res: Expression): Option[List[Expression]] = {
+    o match {
+      case pf: PrefixOperator =>
+        ((pf,res)) match {
+          case (UMinus,(IntOrRatValue(x,y))) => Some(List(IntOrRatValue(-x,y)))
+          case (Not,BoolValue(b)) => Some(List(BoolValue(!b)))
+        }
+      case inf: InfixOperator =>
+        (inf,res) match {
+          case (Cons, ListValue(e::es)) => Some(List(e,ListValue(es)))
+          case (Snoc, ListValue(es)) if es.nonEmpty => Some(List(ListValue(es.init), es.last))
+          case _ => None
         }
     }
   }

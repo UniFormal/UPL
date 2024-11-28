@@ -24,7 +24,7 @@ module M {
     r
   }
   map2:_
-  map2 = (l: [int]) -> f -> {
+  map2 = (l: [int]) -> (f: int -> int) -> {
     l match {
       [] -> []
       h-:t -> f(h)-:map2(t)(f)
@@ -150,5 +150,6 @@ module AI {
 
 main = {
   M.sum([1,2,3]) == 6 &
-  M.factorial(3) == 6
+  M.factorial(3) == 6 &
+  M.map2([1,2,3])(x -> x+1) == [2,3,4]
 }

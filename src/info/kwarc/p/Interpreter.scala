@@ -127,7 +127,7 @@ class Interpreter(vocInit: Module) {
         UnitValue
       case Assign(t, v) =>
         val vI = interpretExpression(v)
-        assign(t,vI)
+        assign(t,vI)(true)
         UnitValue
       case ExprOver(v,q) =>
         val gc = GlobalContext("").push(v)
@@ -227,6 +227,26 @@ class Interpreter(vocInit: Module) {
       case Return(e) =>
         val eI = interpretExpression(e)
         throw ReturnFound(eI)
+      case Match(e,cases) =>
+        val eI = interpretExpression(e)
+        def doCases(mcs: List[MatchCase]): Expression = mcs match {
+          case Nil => fail("match error")
+          case mc::rest =>
+            frame.enterBlock
+            mc.context.decls foreach {vd => frame.allocate(vd.name,null)}
+            val matched = assign(mc.pattern,eI)(false)
+            if (matched) {
+              mc.context.decls.foreach {vd =>
+                if (frame.local.get(vd.name) == null)
+                  throw fail("expression matched but undefined variables remain")
+              }
+              interpretExpression(mc.body)
+            } else {
+              frame.leaveBlock
+              doCases(rest)
+            }
+          }
+        doCases(cases)
       case lam: Lambda =>
         // lambdas must be interpreted at call-time, and the body is relative to the current frame
         val lamC = lam.copy() // the same lambda can be interpreted in different frames
@@ -332,26 +352,62 @@ class Interpreter(vocInit: Module) {
     }
   }
 
-  private def assign(target: Expression, value: Expression): Unit = {
+  /** called if assign fails */
+  private def assignFail(msg: String)(implicit failOnMismatch: Boolean) = {
+    if (failOnMismatch) throw RuntimeError(msg)
+    else false
+  }
+  private def assign(target: Expression, value: Expression)(implicit failOnMismatch: Boolean): Boolean = {
     (target,value) match {
-      case (VarRef(""), _) => // ignore value
-      case (VarRef(n),_) => frame.local.set(n,value)
+      case (VarRef(""), _) =>
+        true // ignore value
+      case (VarRef(n),_) =>
+        frame.local.set(n,value)
+        true
       case (ClosedRef(n),_) => frame.region match {
-        case Some(inst) => inst.set(n, value)
-        case None => fail("mutable field without owner")(target)
+        case Some(inst) =>
+          if (failOnMismatch) {
+            // force equality by changing current value
+            inst.set(n, value)
+            true
+          } else {
+            // compare against current value
+            inst.get(n) == value
+          }
+        case None =>
+          fail("mutable field without owner")(target)
       }
-      case (Tuple(es),Tuple(vs)) => (es zip vs).foreach {case (e,v) => assign(e,v)}
+      case (Tuple(es),Tuple(vs)) => (es zip vs).forall {case (e,v) => assign(e,v)}
+      case (OptionValue(e), OptionValue(v)) =>
+        if (e == null && v == null) true
+        else if (e == null || v == null) {
+          assignFail("expressions different")
+        } else assign(e,v)
       case (ListValue(es), ListValue(vs)) =>
-        if (es.length != vs.length) throw RuntimeError("lists have inequal length")
-        (es zip vs).foreach {case (e,v) => assign(e,v)}
+        if (es.length != vs.length) {
+          assignFail("lists have inequal length")
+        } else {
+          (es zip vs).forall {case (e,v) => assign(e,v)}
+        }
       case (Application(OpenRef(r), es), Application(OpenRef(s), vs)) if r == s =>
-        (es zip vs) foreach {case (e,v) => assign(e,v)}
+        (es zip vs) forall {case (e,v) => assign(e,v)}
+      case (Application(BaseOperator(op,_),args), r) =>
+        val argsE = Operator.invert(op,r).getOrElse {
+          fail("operator cannot be inverted")(target)
+        }
+        if (argsE.length != args.length) fail("wrong number of arguments")(target)
+        (args zip argsE).forall {case (a,e) => assign(a,e)}
       case (eo:ExprOver, vo: ExprOver) =>
         val (es, eR) = EvalTraverser.replaceEvals(eo)
         val (vs, vR) = EvalTraverser.replaceEvals(vo)
-        if (eR != vR) throw RuntimeError("shape of expressions does not match")
-        (es.decls zip vs.decls) foreach {case (e,v) => assign(e.dfO.get, v.dfO.get)}
-      case _ => fail("target unsupported")(target)
+        if (eR != vR) {
+          assignFail("shape of expressions does not match")
+        } else {
+          (es.decls zip vs.decls) forall {case (e,v) => assign(e.dfO.get,v.dfO.get)}
+        }
+      case (t,v) =>
+        if (t == v) true
+        else assignFail("pattern unsupported")
     }
   }
 
