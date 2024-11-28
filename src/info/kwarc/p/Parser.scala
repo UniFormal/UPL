@@ -1,5 +1,7 @@
 package info.kwarc.p
 
+import info.kwarc.p
+
 /* Concrete syntax
    (A,...) -> B
    A -> B         function type
@@ -82,11 +84,18 @@ class Parser(file: File, input: String) {
     if (b && isKeyword) (index+s.length == input.length || !Path.isIdChar(input(index+s.length)))
     else b
   }
-  // test for some strings, and if found, skip and trim
+  /** test for some strings, and if found, skip and trim */
   def startsWithS(s: String): Boolean = {
     val b = startsWith(s)
     if (b) {skip(s); trim}
     b
+  }
+
+  /** like startsWith but for multiple options */
+  def startsWithAny(k: String*) = k.toList.exists(startsWith)
+  /** skips either of two options, true if it was the first one */
+  def skipEither(t: String, f: String): Boolean = {
+    if (startsWithS(t)) true else {skipT(f); false}
   }
 
   // parses all whitespace at the current position
@@ -154,8 +163,8 @@ class Parser(file: File, input: String) {
   import Keywords._
 
   def parseDeclaration: Declaration = addRef {
-    if (startsWith(closedModule) || startsWith(openModule)) parseModule
-    else if (startsWith(include) || startsWith(totalInclude)) parseInclude
+    if (startsWithAny(closedModule,openModule)) parseModule
+    else if (startsWithAny(include,totalInclude)) parseInclude
     else if (startsWithS(typeDecl)) parseTypeDecl
     else if (startsWithS(mutableExprDecl)) parseExprDecl(true)
     else if (next.isLetter) parseExprDecl(false)
@@ -177,7 +186,7 @@ class Parser(file: File, input: String) {
   }
 
   def parseModule: Module = {
-    val closed = if (startsWithS(closedModule)) true else {skipT(openModule); false}
+    val closed = skipEither(closedModule,openModule)
     val name = parseName
     trim
     skip("{")
@@ -189,7 +198,7 @@ class Parser(file: File, input: String) {
 
   def parseInclude: Include = {
     implicit val ctx = PContext.empty
-    val rz = if (startsWithS(include)) false else {skipT(totalInclude); true}
+    val rz = skipEither(totalInclude,include)
     val dom = parsePath
     trim
     val dfO = if (!rz && startsWithS("=")) {
@@ -291,10 +300,8 @@ class Parser(file: File, input: String) {
       } else if (allowS && startsWithS("val")) {
         trim
         parseVarDecl(false)
-      } else if (startsWith("exists") || startsWith("forall")) {
-        val univ = if (startsWithS("forall")) true else {
-          skip("exists"); false
-        }
+      } else if (startsWithAny("exists","forall")) {
+        val univ = skipEither("forall", "exists")
         val vars = parseList(parseVarDecl(false),",",true)
         skipT(".")
         val body = parseExpression
@@ -323,9 +330,10 @@ class Parser(file: File, input: String) {
           else None
         }
         IfThenElse(c,th,el)
-      } else if (allowS && startsWithS("return")) {
+      } else if (allowS && startsWithAny("return","throw")) {
+        val thrw = skipEither("throw","return")
         val r = parseExpression
-        Return(r)
+        Return(r,thrw)
       } else if (Operator.prefixes.exists(o => startsWith(o.symbol))) {
         val o = Operator.prefixes.find(o => startsWith(o.symbol)).get
         skip(o.symbol)
@@ -370,14 +378,12 @@ class Parser(file: File, input: String) {
         }
       } else if (startsWith("[")) {
         val es = parseExpressions("[","]")
-        ListValue(es)
+        CollectionValue(es)
       } else if (startsWithS("`")) {
         if (ctxs.contexts.length <= 1) fail("eval outside quotation")
         val e = parseExpression(ctxs.pop())
         skip("`")
         Eval(e)
-      } else if (startsWithS("?")) {
-        OptionValue(null)
       } else {
         //  symbol/variable/module reference
         val n = parseName
@@ -394,8 +400,13 @@ class Parser(file: File, input: String) {
         }
       } // end exp =
       trim
-      val strongPostops = List(".","(","[","{","?")
-      while (strongPostops.exists(startsWith)) {
+      // avoid trying to parse nonsense if we can already tell
+      val tryPostOps = exp match {
+        case _:BaseValue | _: Block | _: Assign | _: VarDecl | _:While | _:For | _: Return => false
+        case _ => true
+      }
+      val strongPostops = List(".","(","[","{")
+      while (tryPostOps && startsWithAny(strongPostops:_*)) {
         setRef(exp,expBeginAt) // only the outermost expression gets its source reference automatically
         if (startsWithS("(")) {
           val es = parseExpressions("",")")
@@ -404,8 +415,6 @@ class Parser(file: File, input: String) {
           val e = parseExpression
           skip("]")
           exp = ListElem(exp,e)
-        } else if (startsWithS("?")) {
-          exp = OptionValue(exp)
         } else if (startsWithS(".")) {
           val nB = index
           val n = setRef(ClosedRef(parseName), nB)
@@ -419,7 +428,6 @@ class Parser(file: File, input: String) {
             case ClosedRef(n) => Some(Path(List(n)))
             case _ => None
           }
-
           var looksLikeInstanceOf = asPath(exp)
           if (looksLikeInstanceOf.isDefined) {
             // check if a declaration follows
@@ -449,8 +457,8 @@ class Parser(file: File, input: String) {
         }
       } // end while
       trim
-      val weakPostops = List("=","->","match")
-      if (weakPostops.exists(startsWith) && !startsWith("==")) {
+      val weakPostops = List("=","->","match", "catch")
+      if (startsWithAny(weakPostops:_*) && !startsWith("==")) {
         exp = disambiguateInfixOperators(seen.reverse,exp)
         setRef(exp,allExpBeginAt)
         val expWP = if (allowS && startsWithS("=")) {
@@ -481,11 +489,12 @@ class Parser(file: File, input: String) {
               val b = parseExpression(doAllowS.append(ctx))
               Lambda(ctx,b)
           }
-        } else if (startsWithS("match")) {
+        } else if (startsWithAny("match","catch")) {
+          val handle = skipEither("catch","match")
           skip("{")
           val cs = parseList(parseMatchCase,"}",false)
           skip("}")
-          Match(exp,cs)
+          Match(exp,cs,handle)
         } else exp
         return expWP
       } else {
@@ -578,14 +587,13 @@ class Parser(file: File, input: String) {
       else if (startsWithS("string")) StringType
       else if (startsWithS("bool")) BoolType
       else if (startsWithS("empty")) EmptyType
-      else if (startsWithS("{")) {
-        val y = parseType
-        skip("}")
-        FinSetType(y)
-      } else if (startsWithS("[")) {
+      else if (startsWithAny("[" :: CollectionKind.allKeywords :_*)) {
+        val kind = if (startsWith("[")) CollectionKind.List
+        else CollectionKind.allKinds.find(k => startsWithS(k._1)).get._2
+        skip("[")
         val y = parseType
         skip("]")
-        ListType(y)
+        CollectionType(y, kind)
       } else if (startsWith("(")) {
         skip("(")
         val ys = parseList(parseType, ",", ")")
@@ -634,7 +642,7 @@ class Parser(file: File, input: String) {
         tp = FunType(ins,out)
       } else if (startsWithS("?")) {
         setRef(tp, tpBegin)
-        tp = OptionType(tp)
+        tp = CollectionType(tp, CollectionKind.Option)
       }
     }
     tp

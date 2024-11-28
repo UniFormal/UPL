@@ -1,7 +1,7 @@
 package info.kwarc.p
 
 case class Location(file: File, from: Int, to: Int) {
-  override def toString = file.getName + s"#$from:$to"
+  override def toString = file.toJava.getName + s"#$from:$to"
 }
 
 
@@ -608,8 +608,8 @@ object BaseType {
   val I = IntType
   val R = RatType
   val S = StringType
-  def L(e: Type) = ListType(e)
-  def O(e: Type) = OptionType(e)
+  def L(e: Type) = CollectionKind.List(e)
+  def O(e: Type) = CollectionKind.Option(e)
 }
 /** 0 elements */
 case object EmptyType extends BaseType("empty") {
@@ -657,46 +657,43 @@ case class ProdType(comps: List[Type]) extends Type {
   override def toString = comps.mkString("(",", ", ")")
   def finite = comps.forall(_.finite)
 }
-/** homogeneous lists */
-case class ListType(elem: Type) extends Type {
-  override def toString = s"[$elem]"
-  def finite = false
+/** homogeneous collections, unifies lists, finite sets, options, etc.
+  * all types are Curry-subquotients of lists, i.e., there is only one introduction form for all of them
+  */
+case class CollectionType(elem: Type, kind: CollectionKind) extends Type {
+  override def toString = {
+    s"$kind[$elem]"
+  }
+  def finite = kind.idemp && elem.finite
 }
-/** matches a list type, possibly specializing an [[UnknownType]] */
-object ListOrUnknownType {
-  def unapply(t: Type) = t match {
-    case ListType(e) => Some(e)
-    case u:UnknownType =>
-      val e = Type.unknown
-      u.set(ListType(e))
-      Some(e)
+case class CollectionKind(idemp: Boolean, comm: Boolean, sizeOne: Boolean) {
+  override def toString = CollectionKind.allKinds.find(_._2 == this).get._1
+  def apply(a: Type) = CollectionType(a, this)
+  def unapply(a: Type) = a match {
+    case CollectionType(e,k) if k == this => Some(e)
     case _ => None
   }
-}
-/** finite subsets (Curry-subtype of lists) */
-case class FinSetType(elem: Type) extends Type {
-  override def toString = "{" + elem + "}"
-  def finite = true
-}
-/** optional values */
-case class OptionType(elem: Type) extends Type {
-  override def toString = elem + "?"
-  def finite = elem.finite
+  def sub(that: CollectionKind) = {
+    this.sizeOne || ((!this.idemp || that.idemp) && (!this.comm || that.comm))
+  }
+  def union(that: CollectionKind) = {
+    if (this.sizeOne) that else if (that.sizeOne) this else
+    CollectionKind(this.idemp || that.idemp, this.comm || that.comm, false)
+  }
+  def inter(that: CollectionKind) = {
+    if (this.sizeOne || that.sizeOne) CollectionKind.Option else
+    CollectionKind(this.idemp && that.idemp, this.comm && that.comm, false)
+  }
 }
 
-/** unifies collection types */
-object CollectionType {
-  def apply(elem: Type, set: Boolean, atMostOne: Boolean) = {
-    if (atMostOne) OptionType(elem)
-    else if (set) FinSetType(elem)
-    else ListType(elem)
-  }
-  def unapply(tp: Type) = tp match {
-    case OptionType(a) => Some((a,true,true))
-    case ListType(a) => Some((a,false,false))
-    case FinSetType(a) => Some((a,true,false))
-    case _ => None
-  }
+object CollectionKind {
+  val List = CollectionKind(false,false,false)
+  val Set = CollectionKind(true,true,false)
+  val Bag = CollectionKind(false,true,false)
+  val UList = CollectionKind(true,false,false)
+  val Option = CollectionKind(true,true,true)
+  val allKinds = scala.List("List" -> this.List, "UList" -> this.UList, "Bag" -> this.Bag, "Set" -> this.Set, "Option" -> this.Option)
+  val allKeywords = allKinds.map(_._1)
 }
 
 // ***************** Expressions **************************************
@@ -763,21 +760,15 @@ case class Projection(tuple: Expression, index: Int) extends Expression {
   override def toString = s"$tuple.$index"
 }
 
-/** lists, introduction form for [[ListType]] */
-case class ListValue(elems: List[Expression]) extends Expression {
+/** collections, introduction form for [[CollectionType]] */
+case class CollectionValue(elems: List[Expression]) extends Expression {
   override def toString = elems.mkString("[", ",", "]")
 }
-/** list elements access, elimination form for [[ListType]]
+/** list elements access, elimination form for non-commutative [[CollectionType]]s
   * @param position must evaluate to an [[IntValue]] between 0 and length-1; type-checking is undecidable and over-approximates
   */
 case class ListElem(list: Expression, position: Expression) extends Expression {
   override def toString = s"$list[$position]"
-}
-
-/** optional value, null-value for empty option */
-case class OptionValue(value: Expression) extends Expression {
-  def get = Option(value)
-  override def toString = if (value == null) "?" else value + "?"
 }
 
 case class Quantifier(univ: Boolean, vars: LocalContext, body: Expression) extends Expression {
@@ -870,7 +861,6 @@ case class Assign(target: Expression, value: Expression) extends Expression {
 }
 
 /** sequence of expressions, ;-operator
-  *
   * evaluates to its last element, variable declarations are in scope till the end of their block
   */
 case class Block(exprs: List[Expression]) extends Expression {
@@ -885,15 +875,20 @@ case class IfThenElse(cond: Expression, thn: Expression, els: Option[Expression]
   }
 }
 
-case class Match(expr: Expression, cases: List[MatchCase]) extends Expression {
-  override def toString = expr.toString + " match {\n" + cases.mkString("\n") + "}"
+/** unifies pattern-matching and exception handling */
+case class Match(expr: Expression, cases: List[MatchCase], handler: Boolean) extends Expression {
+  override def toString = {
+    val kw = if (handler) "handle" else "match"
+    expr.toString + " " + kw + " {\n" + cases.mkString("\n") + "}"
+  }
 }
 
+/** case in a match: context |- pattern -> body */
 case class MatchCase(context: LocalContext, pattern: Expression, body: Expression) extends Expression {
   override def toString = pattern.toString + " -> " + body
 }
 
-/** for-loop, can be seen as elimination form of [[ListType]]
+/** for-loop, can be seen as elimination form of [[CollectionType]], behaves like map
   * @param range must evaluate to list
   */
 case class For(vd: VarDecl, range: Expression, body: Expression) extends Expression {
@@ -905,8 +900,12 @@ case class While(cond: Expression, body: Expression) extends Expression {
   override def toString = s"while $cond $body"
 }
 
-case class Return(exp: Expression) extends Expression {
-  override def toString = "return " + exp
+/** unifies return and throw statements */
+case class Return(exp: Expression, thrw: Boolean) extends Expression {
+  override def toString = {
+    val kw = if (thrw) "throw" else "return"
+    kw + " " + exp
+  }
 }
 
 // *********************************** Operators *****************************
@@ -975,7 +974,7 @@ case object Power extends InfixOperator("^", 20, false) {
 case object In extends InfixOperator("in", -10, false) {
   val types = Nil
   override def polyTypes(u: UnknownType) =
-    List(O(u),FinSetType(u),L(u)).map(a => BoolType<--(u,a))
+    List(BoolType<--(u,CollectionKind.Set(u)))
 }
 
 case object Cons extends InfixOperator("-:", -10, false) {
@@ -1066,7 +1065,7 @@ object Operator {
           case (And,BoolValue(l),BoolValue(r)) => BoolValue(l && r)
           case (Or,BoolValue(l),BoolValue(r)) => BoolValue(l || r)
           case (Plus,StringValue(l),StringValue(r)) => StringValue(l + r)
-          case (Plus,ListValue(l),ListValue(r)) => ListValue(l ::: r)
+          case (Plus,CollectionValue(l),CollectionValue(r)) => CollectionValue(l ::: r)
           case (e: Equality,l: BaseValue,r: BaseValue) =>
             // TODO: more types
             val b = ((e == Equal) == (l.value == r.value))
@@ -1077,23 +1076,18 @@ object Operator {
               val lrs = (ls zip rs).map({case (l,r) => simplify(e, List(l,r))})
               simplify(e.reduce, lrs)
             }
-          case (e: Equality,ListValue(ls), ListValue(rs)) =>
-            // TODO: depends on type, e.g., FinSet
+          case (e: Equality,CollectionValue(ls), CollectionValue(rs)) =>
+            // TODO: depends on the collection kind
             if (ls.length != rs.length) BoolValue(e != Equal)
             else {
               val lrs = (ls zip rs).map({case (l,r) => simplify(e, List(l,r))})
               simplify(e.reduce, lrs)
             }
-          case (e: Equality,OptionValue(l), OptionValue(r)) =>
-            if (l == null) BoolValue((e == Equal) == (r == null))
-            else {
-              simplify(e, List(l,r))
-            }
-          case (In, e, ListValue(es)) =>
+          case (In, e, CollectionValue(es)) =>
             val b = es.contains(e)
             BoolValue(b)
-          case (Cons, e, ListValue(es)) => ListValue(e::es)
-          case (Snoc, ListValue(es), e) => ListValue(es:::List(e))
+          case (Cons, e, CollectionValue(es)) => CollectionValue(e::es)
+          case (Snoc, CollectionValue(es), e) => CollectionValue(es:::List(e))
           case _ => throw IError("no case for operator evaluation: " + o.symbol)
         }
     }
@@ -1107,9 +1101,10 @@ object Operator {
           case (Not,BoolValue(b)) => Some(List(BoolValue(!b)))
         }
       case inf: InfixOperator =>
+        // TODO: only legal for certain collection kinds
         (inf,res) match {
-          case (Cons, ListValue(e::es)) => Some(List(e,ListValue(es)))
-          case (Snoc, ListValue(es)) if es.nonEmpty => Some(List(ListValue(es.init), es.last))
+          case (Cons, CollectionValue(e::es)) => Some(List(e,CollectionValue(es)))
+          case (Snoc, CollectionValue(es)) if es.nonEmpty => Some(List(CollectionValue(es.init), es.last))
           case _ => None
         }
     }

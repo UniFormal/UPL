@@ -11,9 +11,6 @@ case class File(toJava: java.io.File) {
 
 /** copied from mmt-api */
 object File {
-   implicit def toJava(f: File) = f.toJava
-   implicit def fromJava(f: java.io.File) = File(f)
-
   /** constructs a File from a string, using the java.io.File parser */
   def apply(s: String): File = File(new java.io.File(s))
 

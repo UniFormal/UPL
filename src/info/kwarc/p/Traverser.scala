@@ -45,7 +45,7 @@ abstract class Traverser[A] {
     case ExprsOver(thy,q) => ExprsOver(apply(thy), apply(q)(gc.push(thy),a))
     case FunType(ts,t) => FunType(ts map apply, apply(t))
     case ProdType(ts) => ProdType(ts map apply)
-    case CollectionType(b,bS,bO) => CollectionType(apply(b), bS, bO)
+    case CollectionType(b,k) => CollectionType(apply(b), k)
   }
 
   def apply(exp: Expression)(implicit gc: GlobalContext, a: A): Expression = matchC(exp)(applyDefault _)
@@ -74,26 +74,24 @@ abstract class Traverser[A] {
       }
       Block(esT)
     case IfThenElse(c, t, e) => IfThenElse(apply(c), apply(t), e map apply)
-    case Match(e, cs) =>
-      val csT = cs map {case MatchCase(ctx,p,b) =>
-        val gcI = if (ctx == null) gc else gc.append(ctx)
-        MatchCase(apply(ctx), apply(p)(gcI,a), apply(b)(gc,a))
-      }
-      Match(apply(e), csT)
+    case Match(e, cs, h) =>
+      Match(apply(e), cs map {c => apply(c).asInstanceOf[MatchCase]}, h)
+    case MatchCase(ctx,p,b) =>
+      val gcI = if (ctx == null) gc else gc.append(ctx)
+      MatchCase(apply(ctx), apply(p)(gcI,a), apply(b)(gc,a))
     case While(c,b) => While(apply(c), apply(b))
     case For(v,r,b) =>
       val vT = apply(v).asInstanceOf[VarDecl]
       For(vT, apply(r), apply(b)(gc.append(v),a))
-    case Return(e) => Return(apply(e))
+    case Return(e, thrw) => Return(apply(e), thrw)
     case Lambda(is,b) =>
       val isT = apply(is)
       Lambda(isT, apply(b)(gc.append(is),a))
     case Application(f,as) => Application(apply(f), as map apply)
     case Tuple(es) => Tuple(es map apply)
     case Projection(e,i) => Projection(apply(e), i)
-    case ListValue(es) => ListValue(es map apply)
+    case CollectionValue(es) => CollectionValue(es map apply)
     case ListElem(l,p) => ListElem(apply(l), apply(p))
-    case OptionValue(e) => if (e == null) exp else OptionValue(apply(e))
     case Quantifier(q,vs,b) =>
       val vsT = apply(vs)
       Quantifier(q, vsT, apply(b)(gc.append(vs),a))
@@ -186,7 +184,7 @@ object Simplify extends StatelessTraverser {
     matchC(expR) {
       case Application(BaseOperator(o,_), args) => Operator.simplify(o, args)
       case Projection(Tuple(es),i) => es(i)
-      case ListElem(ListValue(es),IntValue(i)) => es(i.toInt)
+      case ListElem(CollectionValue(es),IntValue(i)) => es(i.toInt)
       case Application(Lambda(vs,b), as) => Substitute(b)(gc, vs.substitute(as))
       case e => e
     }

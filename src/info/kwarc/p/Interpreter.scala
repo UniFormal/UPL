@@ -213,22 +213,27 @@ class Interpreter(vocInit: Module) {
       case For(vd, r, b) =>
         val rI = interpretExpression(r)
         rI match {
-          case ListValue(vs) =>
+          case CollectionValue(vs) =>
             frame.enterBlock
             frame.allocate(vd.name, null) // irrelevant value
-            vs.foreach {v =>
+            val vsI = vs.map {v =>
               frame.local.set(vd.name, v)
               interpretExpression(b)
             }
             frame.leaveBlock
+            CollectionValue(vsI)
             case _ => fail("range not a list")
         }
-        UnitValue
-      case Return(e) =>
+      case Return(e, thrw) =>
         val eI = interpretExpression(e)
-        throw ReturnFound(eI)
-      case Match(e,cases) =>
-        val eI = interpretExpression(e)
+        throw ReturnFound(eI, thrw)
+      case Match(e,cases, handle) =>
+        val (eI,runCases) = try {
+          (interpretExpression(e), !handle)
+        } catch {
+          case ReturnFound(exc, true) if handle =>
+            (exc, true)
+        }
         def doCases(mcs: List[MatchCase]): Expression = mcs match {
           case Nil => fail("match error")
           case mc::rest =>
@@ -246,7 +251,7 @@ class Interpreter(vocInit: Module) {
               doCases(rest)
             }
           }
-        doCases(cases)
+        if (runCases) doCases(cases) else eI
       case lam: Lambda =>
         // lambdas must be interpreted at call-time, and the body is relative to the current frame
         val lamC = lam.copy() // the same lambda can be interpreted in different frames
@@ -268,7 +273,7 @@ class Interpreter(vocInit: Module) {
             val r = try {
               applyFunction(f.toString, None, lam, asI)
             } catch {
-              case ReturnFound(e) if namedFunction => e
+              case ReturnFound(e, false) if namedFunction => e
             }
             r
           case _ => fail("not a function")(f)
@@ -282,24 +287,24 @@ class Interpreter(vocInit: Module) {
           case Tuple(es) => es(i)
           case _ => fail("owner not a tuple")(tI)
         }
-      case ListValue(es) =>
+      case CollectionValue(es) =>
         val esI = es map interpretExpression
-        ListValue(esI)
-      case OptionValue(e) =>
-        if (e == null) exp else OptionValue(interpretExpression(e))
+        CollectionValue(esI)
       case ListElem(l, i) =>
         val esI = interpretExpression(l) match {
-          case ListValue(es) => es
+          case CollectionValue(es) => es
           case _ => fail("owner not a list")
         }
         val iI = interpretExpression(i) match {
           case IntValue(n) => n
           case _ => fail("index not an integer")
         }
-        if (iI < 0 || iI >= esI.length) {
+        val len = esI.length
+        if (iI < -len || iI >= len) {
           throw RuntimeError("index out of bounds")
         }
-        esI(iI.toInt)
+        val n = if (iI < 0) iI + len else iI
+        esI(n.toInt)
       case Quantifier(q, ctx, bd) =>
         val vds = ctx.variables
         val its = vds.map {vd => makeIterator(vd.tp)}
@@ -330,10 +335,14 @@ class Interpreter(vocInit: Module) {
         val it = new ProductIterator(Enumeration.Integers, Enumeration.Naturals)
         it.filter {case (i,n) => n != 0 && i.gcd(n) == 1}.map {case (i,n) => RatValue(i,n)}
       case ProdType(ts) => Enumeration.product(ts map makeIterator).map(es => Tuple(es))
-      case OptionType(t) => Iterator(OptionValue(null)) ++ makeIterator(t)
-      case ListType(t) => Enumeration.Naturals flatMap {n =>
-        val it = makeIterator(t.power(n.toInt))
-        it.map(l => ListValue(l.asInstanceOf[Tuple].comps))
+      case CollectionKind.Option(t) => Iterator(CollectionValue(Nil)) ++ makeIterator(t)
+      case CollectionType(t,k) => Enumeration.Naturals flatMap {n =>
+        def idemp(es: List[Expression]) = es.distinct.length == es.length // repetition-normal, i.e., no repetitions
+        def comm(es: List[Expression]) = es.sortBy(_.hashCode()) == es // order-normal, e.g., ordered by hashcode
+        var it = makeIterator(t.power(n.toInt)).map(e => e.asInstanceOf[Tuple].comps)
+        if (k.idemp) it = it.filter(idemp)
+        if (k.comm) it = it.filter(comm)
+        it.map(l => CollectionValue(l))
       }
       case iv: IntervalType if iv.concrete =>
         val (begin,end,step) = (iv.lower,iv.upper) match {
@@ -378,14 +387,9 @@ class Interpreter(vocInit: Module) {
           fail("mutable field without owner")(target)
       }
       case (Tuple(es),Tuple(vs)) => (es zip vs).forall {case (e,v) => assign(e,v)}
-      case (OptionValue(e), OptionValue(v)) =>
-        if (e == null && v == null) true
-        else if (e == null || v == null) {
-          assignFail("expressions different")
-        } else assign(e,v)
-      case (ListValue(es), ListValue(vs)) =>
+      case (CollectionValue(es), CollectionValue(vs)) =>
         if (es.length != vs.length) {
-          assignFail("lists have inequal length")
+          assignFail("collections have inequal length")
         } else {
           (es zip vs).forall {case (e,v) => assign(e,v)}
         }
@@ -431,7 +435,7 @@ class Interpreter(vocInit: Module) {
   }
 }
 
-case class ReturnFound(e: Expression) extends Throwable
+case class ReturnFound(e: Expression, thrw: Boolean) extends Throwable
 
 /** iterates over all pairs of values from two iterators
   * order: (a1,b1), (a2,b1), (b2,a2), (b2, a1), (a3,b2), (a3,b1), ...

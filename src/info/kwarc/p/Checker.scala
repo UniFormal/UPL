@@ -341,7 +341,7 @@ object Checker {
         val lC = l map {e => checkExpressionPure(gc, e, IntType)}
         val uC = l map {e => checkExpressionPure(gc, e, IntType)}
         IntervalType(lC,uC)
-      case CollectionType(a,aS,aO) => CollectionType(r(a),aS,aO)
+      case CollectionType(a,k) => CollectionType(r(a),k)
       case ProdType(as) => ProdType(as map r)
       case FunType(as,b) => FunType(as map r, r(b))
       case ClassType(thy) =>
@@ -361,7 +361,7 @@ object Checker {
 
   /** a <: b */
   def checkSubtype(gc: GlobalContext, a: Type, b: Type)(implicit cause: SyntaxFragment): Unit = {
-    val equated = equateTypes(a,b)
+    val equated = equateTypes(a,b)(true)
     if (equated) return
     (a,b) match {
       case (_,AnyType) => AnyType
@@ -387,9 +387,8 @@ object Checker {
             else if (c == BoolValue(false)) fail("interval is not subtype")
             else {}// type-checking incomplete}
         }
-      case (CollectionType(a,aS,aO),CollectionType(b,bS,bO)) =>
-        if (!aO && bO) fail("collection type is not subtype of option type")
-        if (aS && !aO && !bS) fail("set type is not a subtype of collection type")
+      case (CollectionType(a,k),CollectionType(b,l)) =>
+        if (!(k sub l)) fail(s"collection type $k is not subtype of collection type $l")
         checkSubtype(gc,a,b)
       case (ProdType(as),ProdType(bs)) if as.length == bs.length =>
         (as zip bs).foreach {case (x,y) => checkSubtype(gc,x,y)}
@@ -430,8 +429,8 @@ object Checker {
     //TODO type bounds
   def typeUnion(gc: GlobalContext,a: Type,b: Type)(implicit cause: SyntaxFragment): Type = {
     // equality, possibly by inference
-    val equated = equateTypes(a,b)
-    if (equated) return a
+    val equated = equateTypes(a,b)(true)
+    if (equated) return b
     // proper subtyping
     (a,b) match {
       case (AnyType,_) | (_,AnyType) => AnyType
@@ -450,7 +449,7 @@ object Checker {
           case _ => None
         }
         IntervalType(l,u)
-      case (CollectionType(a,aS,aO),CollectionType(b,bS,bO)) => CollectionType(typeUnion(gc,a,b), aS || bS, aO && bO)
+      case (CollectionType(a,k),CollectionType(b,l)) => CollectionType(typeUnion(gc,a,b), k union l)
       case (ProdType(as),ProdType(bs)) if as.length == bs.length =>
         val abs = (as zip bs).map {case (x,y) => typeUnion(gc,x,y)}
         ProdType(abs)
@@ -482,7 +481,7 @@ object Checker {
     */
    //TODO type bounds
   def typeIntersection(gc: GlobalContext, a: Type, b: Type)(implicit cause: SyntaxFragment): Type = {
-     val equated = equateTypes(a,b)
+     val equated = equateTypes(a,b)(true)
      if (equated) return a
     (a,b) match {
       case (AnyType,t) => t
@@ -503,7 +502,7 @@ object Checker {
           case (None,b) => b
         }
         IntervalType(l,u)
-      case (CollectionType(a,aS,aO),CollectionType(b,bS,bO)) => CollectionType(typeIntersection(gc,a,b), aS || bS , aO || bO)
+      case (CollectionType(a,k),CollectionType(b,l)) => CollectionType(typeIntersection(gc,a,b), k inter l)
       case (ProdType(as),ProdType(bs)) if as.length == bs.length =>
         val abs = (as zip bs).map {case (x,y) => typeIntersection(gc,x,y)}
         ProdType(abs)
@@ -580,7 +579,7 @@ object Checker {
         }
       case FunType(as,a) => FunType(as map n, n(a))
       case ProdType(as) => ProdType(as map n)
-      case CollectionType(a,aS,aO) => CollectionType(n(a), aS, aO)
+      case CollectionType(a,k) => CollectionType(n(a), k)
       case ClassType(sc) => ClassType(f(sc))
       case ExprsOver(sc, t) =>
         val thyN = f(sc)
@@ -617,10 +616,10 @@ object Checker {
             checkSubtype(gc,iI,tpN)
         }
         iC
-      case (ListValue(es), CollectionType(t,aS,aO)) =>
-        if (aO && es.length > 1) fail("option type must have at most one element")
+      case (CollectionValue(es), CollectionType(t,kind)) =>
+        if (kind.sizeOne && es.length > 1) fail("option type must have at most one element")
         val esC = es.map(e => checkExpression(gc,e,t))
-        ListValue(esC)
+        CollectionValue(esC)
       case (Tuple(es),ProdType(ts)) =>
         if (es.length != ts.length) fail("wrong number of components in tuple")
         val esC = (es zip ts) map {case (e,t) => checkExpression(gc,e,t)}
@@ -706,8 +705,17 @@ object Checker {
         Block(esC)
       case _ =>
         val (eC,eI) = inferExpression(gc,exp)
-        checkSubtype(gc,eI,tpN)
-        eC
+        val mf = new MagicFunctions(gc)
+        (tp,eI) match {
+          case (StringType, mf.asstring(_,StringType)) =>
+            mf.asstring.insert(eC,Nil)
+          case (s:CollectionType, mf.iteration(_,t:CollectionType)) =>
+            checkSubtype(gc,t,s)
+            mf.iteration.insert(eC,Nil)
+          case _ =>
+            checkSubtype(gc,eI,tpN)
+            eC
+        }
     }
     eC.copyFrom(exp)
     eC
@@ -873,27 +881,17 @@ object Checker {
             (mfp.insert(tupC, List(IntValue(p))), a)
           case _ => fail("not a tuple")
         }
-      case ListValue(es) =>
+      case CollectionValue(es) =>
         val (esC,esI) = es.map(e => inferExpression(gc,e)).unzip
         val eI = typeUnion(gc,esI)
-        (ListValue(esC),ListType(eI))
+        val kind = if (es.length <= 1) CollectionKind.Option else CollectionKind.List // smallest applicable subquotient of List
+        (CollectionValue(esC),CollectionType(eI, kind))
       case ListElem(l, p) =>
-        val (lC,lI) = inferExpressionNorm(gc, l)
+        val u = Type.unknown
+        val lC = checkExpression(gc, l, CollectionType(u, CollectionKind.UList))
         val pC = checkExpression(gc, p, IntType)
-        lI match {
-          case ListOrUnknownType(t) =>
-            // list index bound unchecked
-            (ListElem(lC,pC), t)
-          case mf.listElement(_,FunType(List(IntType),a)) =>
-            (mf.listElement.insert(lC, List(pC)), a)
-          case _ => fail("not a list")
-        }
-      case OptionValue(e) =>
-        if (e == null) (exp, OptionType(EmptyType))
-        else {
-          val (eC,eI) = inferExpression(gc, e)
-          (OptionValue(eC), OptionType(eI))
-        }
+        // index bounds not checked
+        (ListElem(lC,pC), u)
       case Quantifier(q,vars,bd) =>
         val varsC = checkLocal(gc, vars, false, false)
         val bdC = checkExpressionPure(gc.append(varsC), bd, BoolType)
@@ -935,36 +933,38 @@ object Checker {
           case None => (None,UnitType)
         }
         (IfThenElse(condC, thnC, elsOC), eI)
-      case Match(e,cs) =>
+      case Match(e,cs,h) =>
         val (eC,eI) = inferExpression(gc,e)
+        val (patType,bodyType) = if (h) {
+          (AnyType,Some(eI))
+        } else {
+          (eI,None)
+        }
         val (csC,csI) = cs.map {case MatchCase(ctx,p,b) =>
           val (ctxC,pC) = if (ctx == null) {
-            checkExpressionPattern(gc,p,eI)
+            checkExpressionPattern(gc,p,patType)
           } else {
             val cC = checkLocal(gc, ctx, false, false)
-            (cC, checkExpression(gc.append(cC), p, eI))
+            (cC, checkExpression(gc.append(cC), p, patType))
           }
-          val (bC,bI) = inferExpression(gc.append(ctxC), b)
+          val (bC,bI) = bodyType match {
+            case None => inferExpression(gc.append(ctxC),b)
+            case Some(bt) => (checkExpression(gc.append(ctxC),b,bt), bt)
+          }
           (MatchCase(ctxC,pC,bC),bI)
         }.unzip
-        val mI = typeUnion(gc,csI)
+        val mI = if (h) eI else typeUnion(gc,csI)
         if (mI == AnyType) fail(s"branches have incompatible types: " + csI.mkString(", "))
-        (Match(eC,csC),mI)
+        (Match(eC,csC,h),mI)
       case For(vd, range, bd) =>
         val vdC = checkVarDecl(gc,vd,false,false)
-        val (rangeC,rangeI) = inferExpressionNorm(gc, range)
-        val (rangeM, nTp) = rangeI match {
-          case ListOrUnknownType(t) => (rangeC, t)
-          case mf.iteration(_,ListType(t)) => (mf.iteration.insert(rangeC, Nil), t)
-          case _ => fail("not iterable")
-        }
-        checkSubtype(gc, vd.tp, nTp)
-        val bdC = checkExpression(gc.append(vdC), bd, AnyType)
-        (For(vdC, rangeM, bdC), UnitType)
-      case Return(e) =>
-        val rt = gc.getOutput.getOrElse(fail("return not allowed here"))
+        val rangeC = checkExpression(gc, range, CollectionKind.UList(vdC.tp))
+        val (bdC,bdI) = inferExpression(gc.append(vdC), bd)
+        (For(vdC, rangeC, bdC), CollectionKind.List(bdI)) // map may introduce repetitions
+      case Return(e,thrw) =>
+        val rt = if (thrw) AnyType else gc.getOutput.getOrElse(fail("return not allowed here"))
         val eC = checkExpression(gc,e,rt)
-        (Return(eC), EmptyType)
+        (Return(eC,thrw), EmptyType)
     }
     expC.copyFrom(exp)
     (expC,expI)
@@ -1005,7 +1005,7 @@ object Checker {
         case _ => fail("not an assignable field")
       }
       case Tuple(es) => es foreach check
-      case ListValue(es) => es foreach check
+      case CollectionValue(es) => es foreach check // TODO depends on kind
       case eo: ExprOver => EvalTraverser(eo) {e => check(e); e}
       case Application(OpenRef(r),es) =>
         gc.voc.lookupPath(r) match {
@@ -1072,7 +1072,7 @@ object Checker {
     val param = Type.unknown()
     val possibleTypes = op.types:::op.polyTypes(param)
     val matchResults = possibleTypes.map {case f@FunType(expected,_) =>
-      matchTypes(ProdType(expected), ProdType(ins)).map((f,_))
+      matchTypes(ProdType(ins), ProdType(expected))(true).map((f,_))
     }
     val matchingTypes = matchResults.flatMap(_.toList)
     if (matchingTypes.length == 0)
@@ -1095,17 +1095,20 @@ object Checker {
 
   private type TypeAssignments = List[(UnknownType,Type)]
   /** checks if the types can be made equal by assigning to unknowns, returns those assignments */
-  private def matchTypes(a: Type, b: Type): Option[TypeAssignments] = (a.skipUnknown,b.skipUnknown) match {
+  private def matchTypes(a: Type, b: Type)(implicit allowSubtyping: Boolean): Option[TypeAssignments] = (a.skipUnknown,b.skipUnknown) match {
     case (a,b) if a == b => Some(Nil)
     case (u: UnknownType, k) if !u.known => Some(List((u,k)))
     case (k, u: UnknownType) if k.known && !u.known => Some(List((u,k)))
     case (ProdType(as), ProdType(bs)) => matchTypeLists(as,bs)
-    case (FunType(as,c), FunType(bs,d)) => matchTypeLists(c::as,d::bs)
-    case (CollectionType(c,cS,cO), CollectionType(d,dS,dO)) =>
-      if (cS != dS || cO != dO) None else matchTypes(c,d)
+    case (FunType(as,c), FunType(bs,d)) => matchTypeLists(c::bs,d::as)
+    case (CollectionType(c,k), CollectionType(d,l)) =>
+      if (k == l || (allowSubtyping && (k sub l)))
+        matchTypes(c,d)
+      else
+        None
     case _ => None
   }
-  private def matchTypeLists(as: List[Type], bs: List[Type]): Option[TypeAssignments] = {
+  private def matchTypeLists(as: List[Type], bs: List[Type])(implicit allowSubtyping: Boolean): Option[TypeAssignments] = {
     if (as.length != bs.length) return None
     val cs = (as zip bs).map{case (x,y) => matchTypes(x,y)}
     if (cs.forall(_.isDefined)) Some(cs.flatMap(_.get)) else None
@@ -1115,7 +1118,7 @@ object Checker {
     u.set(a)
   }
   /** like matchTypes, but makes the assignments right away if matching is possible */
-  private def equateTypes(a: Type, b: Type) = matchTypes(a,b) match {
+  private def equateTypes(a: Type, b: Type)(allowSubtyping: Boolean) = matchTypes(a,b)(allowSubtyping) match {
     case Some(uas) => assignAsMatched(uas); true
     case None => false
   }
@@ -1132,6 +1135,7 @@ class MagicFunctions(gc: GlobalContext) {
       case _ => None
     }
   }
+  object asstring extends MagicFunction("toString")
   object listElement extends MagicFunction("elemAt")
   object iteration extends MagicFunction("elements")
   object application extends MagicFunction("apply")

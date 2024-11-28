@@ -17,10 +17,10 @@ module M {
   id = x -> x
   id0 = id(0)
 
-  foreach : ([int], int -> ()) -> () = (l,f) -> for (i in l) f(i)
+  foreach : ([int], int -> ()) -> () = (l,f) -> {for (i in l) f(i); ()}
   map = (l: [int]) -> f -> {
     var r: [int] = []
-    for (x in l) {r = [f(x)] + r}
+    for (x in l) {r = f(x) -: r}
     r
   }
   map2:_
@@ -123,10 +123,10 @@ module AI {
       type Fringe = [Node]
       init = ss -> ss match {
         [] -> []
-        h-:t -> makeNode(h,?) -: init(t)
+        h-:t -> makeNode(h,[]) -: init(t)
       }
       empty = l -> l == []
-      insert = l -> (p,s) -> makeNode(s, p?) -: l
+      insert = l -> (p,s) -> makeNode(s, [p]) -: l
       takeNext = l -> l match {
         h -: t -> (t,h)
       }
@@ -138,13 +138,13 @@ module AI {
          val fn = strat.takeNext(fringe)
          fringe = fn(1)
          val node = fn(2)
-         if (prob.goals(node.label)) return node?
+         if (prob.goals(node.label)) return [node]
          else
            for (a in prob.enumAllActions)
              for (s in prob.transitions(node.label, a))
                fringe = strat.insert(fringe)(node, s)
-      };
-      ?
+      }
+      []
     }
 }
 

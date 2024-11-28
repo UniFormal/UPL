@@ -27,6 +27,10 @@
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="panda.excluded.classes" value="" />
     <property name="panda.monitored.classes" value="" />
+    <property name="project.structure.last.edited" value="Problems" />
+    <property name="project.structure.proportion" value="0.0" />
+    <property name="project.structure.side.proportion" value="0.39425287" />
+    <property name="settings.editor.selected.configurable" value="Scala Compiler" />
   </component>
   <component name="RunManager">
     <configuration name="Build" type="Application" factoryName="Application">
@@ -67,7 +71,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/info/kwarc/p/Parser.scala</url>
-          <line>54</line>
+          <line>56</line>
           <option name="timeStamp" value="62" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
