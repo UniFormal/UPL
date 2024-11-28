@@ -316,6 +316,14 @@ class Interpreter(vocInit: Module) {
           if (bdI == BoolValue(!q)) return bdI
         }
         BoolValue(q) // only correct if we've tried all values
+      case Assert(f) =>
+        val fI = interpretExpression(f)
+        fI match {
+          case BoolValue(true) =>
+          case BoolValue(false) => throw RuntimeError("assertion failed: " + f)
+          case _ => throw RuntimeError("assertion inconclusive: " + f)
+        }
+        UnitValue
     } // end match
   }
 

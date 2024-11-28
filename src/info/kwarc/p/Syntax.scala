@@ -42,6 +42,7 @@ sealed trait MaybeNamed extends SyntaxFragment {
 sealed trait Named extends MaybeNamed {
   def name: String
   def nameO: Some[String] = Some(name)
+  def anonymous = name == ""
 }
 
 sealed trait HasChildren[A <: MaybeNamed] extends SyntaxFragment {
@@ -647,15 +648,20 @@ case class IntervalType(lower: Option[Expression], upper: Option[Expression]) ex
 }
 
 /** functions (non-dependent) */
-case class FunType(ins: List[Type], out: Type) extends Type {
-  override def toString = (if (ins.length == 1) ins.head else ProdType(ins)) + " -> " + out
-  def finite = (out::ins).forall(_.finite)
+case class FunType(ins: LocalContext, out: Type) extends Type {
+  override def toString = ProdType(ins) + " -> " + out
+  def finite = (out::ins.decls.map(_.tp)).forall(_.finite)
 }
 
 /** tuples (non-dependent Cartesian product) */
-case class ProdType(comps: List[Type]) extends Type {
-  override def toString = comps.mkString("(",", ", ")")
-  def finite = comps.forall(_.finite)
+case class ProdType(comps: LocalContext) extends Type {
+  def decls = comps.decls
+  override def toString = {
+    val (open,close) = if (decls.length == 1 && decls.head.anonymous) ("","") else ("(",")")
+    val declsS = decls.map(vd => if (vd.anonymous) vd.tp.toString else vd.toString)
+    declsS.mkString(open, ",", close)
+  }
+  def finite = decls.forall(_.tp.finite)
 }
 /** homogeneous collections, unifies lists, finite sets, options, etc.
   * all types are Curry-subquotients of lists, i.e., there is only one introduction form for all of them
@@ -694,6 +700,11 @@ object CollectionKind {
   val Option = CollectionKind(true,true,true)
   val allKinds = scala.List("List" -> this.List, "UList" -> this.UList, "Bag" -> this.Bag, "Set" -> this.Set, "Option" -> this.Option)
   val allKeywords = allKinds.map(_._1)
+}
+
+case class ProofType(formula: Expression) extends Type {
+  override def toString = "|- " + formula
+  def finite = true
 }
 
 // ***************** Expressions **************************************
@@ -774,6 +785,10 @@ case class ListElem(list: Expression, position: Expression) extends Expression {
 case class Quantifier(univ: Boolean, vars: LocalContext, body: Expression) extends Expression {
   def binder = if (univ) "forall" else "exists"
   override def toString = s"($binder $vars.$body)"
+}
+
+case class Assert(formula: Expression) extends Expression {
+  override def toString = "|- " + formula
 }
 
 /** base values, introduction forms of [[BaseType]] */

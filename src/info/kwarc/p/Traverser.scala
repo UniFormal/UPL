@@ -43,9 +43,10 @@ abstract class Traverser[A] {
     case IntervalType(l,u) => IntervalType(l map apply, u map apply)
     case ClassType(thy) => ClassType(apply(thy))
     case ExprsOver(thy,q) => ExprsOver(apply(thy), apply(q)(gc.push(thy),a))
-    case FunType(ts,t) => FunType(ts map apply, apply(t))
-    case ProdType(ts) => ProdType(ts map apply)
+    case FunType(ts,t) => FunType(apply(ts), apply(t)(gc.append(ts), a))
+    case ProdType(ts) => ProdType(apply(ts))
     case CollectionType(b,k) => CollectionType(apply(b), k)
+    case ProofType(f) => ProofType(apply(f))
   }
 
   def apply(exp: Expression)(implicit gc: GlobalContext, a: A): Expression = matchC(exp)(applyDefault _)
@@ -95,6 +96,7 @@ abstract class Traverser[A] {
     case Quantifier(q,vs,b) =>
       val vsT = apply(vs)
       Quantifier(q, vsT, apply(b)(gc.append(vs),a))
+    case Assert(f) => Assert(apply(f))
   }
 }
 

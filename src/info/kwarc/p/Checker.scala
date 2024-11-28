@@ -342,8 +342,11 @@ object Checker {
         val uC = l map {e => checkExpressionPure(gc, e, IntType)}
         IntervalType(lC,uC)
       case CollectionType(a,k) => CollectionType(r(a),k)
-      case ProdType(as) => ProdType(as map r)
-      case FunType(as,b) => FunType(as map r, r(b))
+      case ProdType(as) => ProdType(checkLocal(gc, as))
+      case FunType(as,b) =>
+        val asC = checkLocal(gc, as)
+        val bC = checkType(gc.append(asC), b)
+        FunType(asC, bC)
       case ClassType(thy) =>
         val thyC = checkTheory(gc, thy)(tp)
         ClassType(thyC)
@@ -351,6 +354,9 @@ object Checker {
         val scC = checkTheory(gc, sc)
         val qC = checkType(gc.push(scC), q)
         ExprsOver(scC, qC)
+      case ProofType(f) =>
+        val fC = checkExpressionPure(gc, f, BoolType)
+        ProofType(fC)
       case u: UnknownType =>
         if (u.known)
           checkType(gc, u.tp)
@@ -390,11 +396,11 @@ object Checker {
       case (CollectionType(a,k),CollectionType(b,l)) =>
         if (!(k sub l)) fail(s"collection type $k is not subtype of collection type $l")
         checkSubtype(gc,a,b)
-      case (ProdType(as),ProdType(bs)) if as.length == bs.length =>
-        (as zip bs).foreach {case (x,y) => checkSubtype(gc,x,y)}
-      case (FunType(as,o),FunType(bs,p)) if as.length == bs.length =>
-        (as zip bs).foreach {case (x,y) => checkSubtype(gc,y,x)}
-        checkSubtype(gc,o,b)
+      case (ProdType(as),ProdType(bs)) =>
+        checkSubcontext(gc, as, bs)
+      case (FunType(as,o),FunType(bs,p)) =>
+        checkSubcontext(gc, bs, as)
+        checkSubtype(gc.append(bs),o,b)
       case (ExprsOver(aT,u),ExprsOver(bT,v)) =>
         if (!isSubtheory(aT,bT)) fail("not quoted from the same theory")
         checkSubtype(gc.push(aT),u,v)
@@ -584,6 +590,7 @@ object Checker {
       case ExprsOver(sc, t) =>
         val thyN = f(sc)
         ExprsOver(thyN, n(t))
+      case _:ProofType => tp
       case u: UnknownType => if (u.known) n(u.tp) else u
     }
   }
@@ -896,6 +903,9 @@ object Checker {
         val varsC = checkLocal(gc, vars, false, false)
         val bdC = checkExpressionPure(gc.append(varsC), bd, BoolType)
         (Quantifier(q,varsC,bdC), BoolType)
+      case Assert(f) =>
+        val fC = checkExpressionPure(gc, f, BoolType)
+        (Assert(fC), UnitType)
       case Block(es) =>
         inferExpressionViaCheck(gc, exp)
       case VarDecl(n, tp, vlO, mut, _) =>
@@ -985,6 +995,7 @@ object Checker {
         case _: Instance => fail("state-dependent")
         case _: Assign => fail("state-changing")
         case _: While => fail("potentially non-terminating")
+        case _: Return => fail("potentially non-value")
         case _ => applyDefault(e)
       }
       e
