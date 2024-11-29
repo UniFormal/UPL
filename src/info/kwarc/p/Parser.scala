@@ -214,7 +214,7 @@ class Parser(file: File, input: String) {
     trim
     val tp = if (startsWithS(":")) {
       parseType(PContext.empty)
-    } else Type.unknown
+    } else Type.unknown()
     trim
     val vl = if (startsWithS("=")) {
       Some(parseExpression(PContext.empty))
@@ -234,17 +234,30 @@ class Parser(file: File, input: String) {
     TypeDecl(name, tp, df)
   }
 
-  def parseVarDecl(mutable: Boolean)(implicit ctxs: PContext): VarDecl = {
+  def parseVarDecl(mutable: Boolean, nameMandatory: Boolean)(implicit ctxs: PContext): VarDecl = {
     val noStatements = ctxs.setAllowStatement(false)
+    val backtrackPoint = index
     val n = parseName
     trim
-    val tp = if (startsWithS(":")) {
-      parseType(noStatements)
-    } else Type.unknown
-    val vl = if (startsWithS("=")) {
-      Some(parseExpression(noStatements))
-    } else None
-    VarDecl(n,tp,vl,mutable)
+    if (!startsWithAny(":","=") && !nameMandatory && !mutable) {
+      // n is not actually a variable name, treat this as anonymous var decl
+      index = backtrackPoint
+      val tp = parseType(noStatements)
+      VarDecl.anonymous(tp)
+    } else {
+      val tp = if (startsWithS(":")) {
+        parseType(noStatements)
+      } else Type.unknown()
+      val df = if (startsWithS("=")) {
+        Some(parseExpression(noStatements))
+      } else None
+      VarDecl(n,tp,df,mutable)
+    }
+  }
+
+  def parseContext(namesMandatory: Boolean)(implicit ctxs: PContext): LocalContext = {
+    val vds = parseList(parseVarDecl(false, namesMandatory), ",", ")")
+    LocalContext.make(vds)
   }
 
   def parseTheory(implicit ctxs: PContext): Theory = {
@@ -296,16 +309,16 @@ class Parser(file: File, input: String) {
         Block(cs.reverse)
       } else if (allowS && startsWithS("var")) {
         trim
-        parseVarDecl(true)
+        parseVarDecl(true, true)
       } else if (allowS && startsWithS("val")) {
         trim
-        parseVarDecl(false)
+        parseVarDecl(false,true)
       } else if (startsWithAny("exists","forall")) {
         val univ = skipEither("forall", "exists")
-        val vars = parseList(parseVarDecl(false),",",true)
+        val vars = parseContext(true)
         skipT(".")
         val body = parseExpression
-        Quantifier(univ,LocalContext(vars),body)
+        Quantifier(univ,vars,body)
       } else if (allowS && startsWithS("while")) {
         val c = parseBracketedExpression
         val b = parseExpression(doAllowS)
@@ -317,8 +330,8 @@ class Parser(file: File, input: String) {
         skipT("in")
         val r = parseExpression
         skipT(")")
-        val b = parseExpression(doAllowS.append(VarDecl(v,Type.unknown)))
-        For(VarDecl(v,Type.unknown),r,b)
+        val b = parseExpression(doAllowS.append(VarDecl(v,Type.unknown())))
+        For(VarDecl(v,Type.unknown()),r,b)
       } else if (startsWithS("if")) {
         val c = parseBracketedExpression
         val th = parseExpression
@@ -338,7 +351,7 @@ class Parser(file: File, input: String) {
         val o = Operator.prefixes.find(o => startsWith(o.symbol)).get
         skip(o.symbol)
         val e = parseExpression
-        Application(BaseOperator(o,Type.unknown),List(e))
+        Application(BaseOperator(o,Type.unknown()),List(e))
       } else if (startsWithS("\"")) {
         val begin = index
         while (next != '"') index += 1
@@ -474,8 +487,8 @@ class Parser(file: File, input: String) {
             case e =>
               val vd = e match {
                 case vd: VarDecl => vd
-                case VarRef(n) => VarDecl(n,Type.unknown)
-                case ClosedRef(n) => VarDecl(n,Type.unknown)
+                case VarRef(n) => VarDecl(n,Type.unknown())
+                case ClosedRef(n) => VarDecl(n,Type.unknown())
                 case _ => return None
               }
               Some(List(vd))
@@ -485,7 +498,7 @@ class Parser(file: File, input: String) {
               val b = parseExpression(doAllowS)
               MatchCase(null,exp,b)
             case Some(ins) =>
-              val ctx = LocalContext(ins)
+              val ctx = LocalContext.make(ins)
               val b = parseExpression(doAllowS.append(ctx))
               Lambda(ctx,b)
           }
@@ -551,7 +564,7 @@ class Parser(file: File, input: String) {
         case Nil =>
           // reduce on the right: before e o | last ---> before | (e o last)
           val (e,o) = shifted.head
-          val eolast = Application(BaseOperator(o,Type.unknown),List(e,last))
+          val eolast = Application(BaseOperator(o,Type.unknown()),List(e,last))
           shifted = shifted.tail
           last = eolast
         case (e2,o2) :: tl =>
@@ -562,7 +575,7 @@ class Parser(file: File, input: String) {
             // before e1 o1 | e2 o2 tl last
             if (o1.precedence >= o2.precedence) {
               // reduce on the left: ---> before (e1 o1 e2) o2 | tl last
-              val e1o1e2 = Application(BaseOperator(o1,Type.unknown),List(e1,e2))
+              val e1o1e2 = Application(BaseOperator(o1,Type.unknown()),List(e1,e2))
               shifted = (e1o1e2,o2) :: shifted.tail
               rest = tl
             } else if (o1.precedence < o2.precedence) {
@@ -596,12 +609,11 @@ class Parser(file: File, input: String) {
         CollectionType(y, kind)
       } else if (startsWith("(")) {
         skip("(")
-        val ys = parseList(parseType, ",", ")")
+        val ys = parseContext(false)
         skip(")")
-        ys match {
+        ys.decls match {
           case Nil => UnitType
-          case List(a) => a
-          case ys => ProdType(ys)
+          case _ => ProdType(ys)
         }
       } else {
         // conflict between types that start with a name and those starting with an expression, i.e., e{tp} or e.tp
@@ -637,7 +649,7 @@ class Parser(file: File, input: String) {
         val out = parseType // makes -> right-associative
         val ins = tp match {
           case ProdType(ys) => ys
-          case y => List(y)
+          case y => LocalContext(VarDecl.anonymous(y))
         }
         tp = FunType(ins,out)
       } else if (startsWithS("?")) {

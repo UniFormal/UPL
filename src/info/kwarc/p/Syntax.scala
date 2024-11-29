@@ -50,6 +50,7 @@ sealed trait HasChildren[A <: MaybeNamed] extends SyntaxFragment {
   def domain = decls collect {case d: Named => d.name}
   def lookupO(name: String) = decls.find(_.nameO.contains(name))
   def lookup(name: String) = lookupO(name).get
+  def declares(name: String) = lookupO(name).isDefined
 }
 
 /** identifiers */
@@ -78,16 +79,17 @@ sealed abstract class Object extends SyntaxFragment
 sealed trait Type extends Object {
   def known = true
   def skipUnknown = this
-  def <--(ins:Type*) = FunType(ins.toList,this)
+  def substitute(sub: Substitution) = Substituter(GlobalContext(""), sub, this)
+  def <--(ins:Type*) = FunType.simple(ins.toList,this)
   /** true if this type is definitely finite (in complex cases, this may be false for finite types)
     * only reliable for fully normalized types
     */
   def finite: Boolean
-  def power(n: Int) = ProdType(Range(1,n).toList.map(_ => this))
+  def power(n: Int) = ProdType.simple(Range(1,n).toList.map(_ => this))
 }
 object Type {
   private var unknownCounter = -1
-  def unknown() = {unknownCounter += 1; new UnknownType(unknownCounter, null)}
+  def unknown(gc: GlobalContext = null) = {unknownCounter += 1; new UnknownType(unknownCounter, gc, null)}
   val unbounded = AnyType
   /** normalizes what can be done context-freely, in particular removes unknown types */
   def normalize(tp: Type) = IdentityTraverser(tp)(GlobalContext(""),())
@@ -95,7 +97,8 @@ object Type {
 
 /** typed expressions */
 sealed trait Expression extends Object {
-  def field(f: String) = OwnedExpr(this, ClosedRef(f))
+  def field(f: String) = OwnedExpr(this,ClosedRef(f))
+  def substitute(sub: Substitution) = Substituter(GlobalContext(""), sub, this)
 }
 
 /** parent of all structuring classes like module, symbol declarations */
@@ -168,12 +171,28 @@ abstract class Context[A] extends SyntaxFragment with HasChildren[VarDecl] {
 }
 
 /** object-level context: relative to a vocabulary and a choice of theory in it
-  * inner-most variables occur first and are found first by lookup
+  *
+  * Context-order means that the inner-most variables occurs first.
+  * These are found first by lookup.
+  * The constructors must not be applied to declartions in natural order - use make instead.
   */
 case class LocalContext(variables: List[VarDecl]) extends Context[LocalContext] {
-  override def toString = variables.mkString(", ")
+  override def toString = variables.reverse.mkString(", ")
   def local = this
+  /** the number of declarations */
+  def length = variables.length
+  /** the prefix of this context containing the first n declarations (counting from outer-most) */
+  def take(n: Int) = LocalContext(variables.drop(length-n))
+  /** the n-th declaration (counting from outer-most, starting at 0) */
+  def apply(n: Int) = variables(length-1-n)
+  /** appends some declarations */
   def append(c: LocalContext) = copy(variables = c.variables.reverse ::: variables)
+  /** applies f to all declarations, outer-most first */
+  def map(f: VarDecl => VarDecl) = {
+    val varsM = variables.reverseMap(f)
+    LocalContext.make(varsM)
+  }
+
   def substitute(es: List[Expression]) = {
     if (variables.length != es.length) throw IError("unexpected number of values")
     val defs = (variables zip es.reverse).map {case (vd,e) => VarDecl(vd.name, null, Some(e))}
@@ -183,10 +202,29 @@ case class LocalContext(variables: List[VarDecl]) extends Context[LocalContext] 
 object LocalContext {
   val empty = LocalContext(Nil)
   def apply(d: VarDecl): LocalContext = LocalContext(List(d))
+  def make(vds: List[VarDecl]) = LocalContext(vds.reverse)
 }
 
+/** substitution into a context; inner-most substitute first; pre: defs.forall(_.defined) */
 case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
-  def append(n: String, e: Expression) = Substitution(VarDecl(n,null,Some(e))::decls)
+  def append(n: String, e: Expression) = Substitution(VarDecl.sub(n,e)::decls)
+  def length = decls.length
+  def exprs = decls.reverseMap(_.dfO.get)
+  def isIdentity = decls.forall(d => d.anonymous || d.dfO.contains(VarRef(d.name)))
+  /** the inverse of this if it is a renaming */
+  def inverse = {
+    val declsI = decls.map {vd =>
+      val r = vd.dfO match {
+        case Some(VarRef(n)) => n
+        case _ => throw IError("not a renaming")
+      }
+      VarDecl.sub(r, VarRef(vd.name))
+    }
+    Substitution(declsI)
+  }
+}
+object Substitution {
+  def empty = Substitution(Nil)
 }
 
 /** declaration-level context: relative to a vocabulary, chooses a theory and an object-level lc relative to it */
@@ -213,6 +251,11 @@ case class GlobalContext private (voc: Module, regions: List[(Boolean,RegionalCo
   def currentIsTransparent = regions.head._1
   def theory = currentRegion.theory
   def local = LocalContext(regions.takeWhile(_._1).flatMap(_._2.local.decls))
+  def freshName = {
+    var i = 0
+    while (local.decls.exists(vd => vd.name.startsWith("_" + i))) i+=1
+    "_"+i
+  }
   def push(t: Theory, owner: Option[Expression] = None): GlobalContext = push(RegionalContext(t,owner))
   def push(e: RegionalContext): GlobalContext = copy(regions = (false,e)::regions)
   def pop() = copy(regions = regions.tail)
@@ -416,6 +459,7 @@ sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
     val dfOS = dfO match {case Some(t) => " = " + t case None => ""}
     kind + " " + name+tpS+dfOS
   }
+  def toRef = ClosedRef(name)
 }
 
 /** declares a type symbol
@@ -503,15 +547,15 @@ object ExtendedTheory {
 
 /** reference to a symbol from an open theory */
 case class OpenRef(path: Path) extends Expression with Type {
-  override def toString = {
-    "." + path
-  }
+  override def toString = "." + path
+  override def substitute(s: Substitution) = this // needed due to double-inheritance
   def finite = false
 }
 
 /** reference to a symbol from an included theory */
 case class ClosedRef(n: String) extends Expression with Type {
   override def toString = n
+  override def substitute(s: Substitution) = this // needed due to double-inheritance
   def finite = false
 }
 
@@ -556,10 +600,10 @@ case class OwnedType(owner: Expression, owned: Type) extends Type with OwnedObje
 // ***************** Types **************************************
 
 /** an omitted type that is to be filled in during type inference */
-sealed class UnknownType(private var id: Int, private var _tp: Type) extends Type {
+sealed class UnknownType(private var id: Int, private[p] var gc: GlobalContext, private var _tp: Type) extends Type {
   def tp = if (known) _tp.skipUnknown else null
   override def known = {_tp != null && _tp.known}
-  def set(t: Type): Unit = {
+  private[p] def set(t: Type): Unit = {
     if (known)
       throw IError("type already inferred")
     if (_tp == null) {
@@ -647,21 +691,37 @@ case class IntervalType(lower: Option[Expression], upper: Option[Expression]) ex
   def concrete = lower.forall(_.isInstanceOf[IntValue]) && upper.forall(_.isInstanceOf[IntValue])
 }
 
-/** functions (non-dependent) */
+/** dependent functions
+  * Declarations in ins are given in context-order
+  */
 case class FunType(ins: LocalContext, out: Type) extends Type {
   override def toString = ProdType(ins) + " -> " + out
   def finite = (out::ins.decls.map(_.tp)).forall(_.finite)
+  def simple = ins.decls.forall(_.anonymous)
+  /** only valid if this.simple */
+  def simpleInputs = ins.decls.reverseMap(_.tp)
+}
+object FunType {
+  def simple(ts: List[Type], t: Type) = FunType(LocalContext.make(ts.map(VarDecl.anonymous)), t)
 }
 
-/** tuples (non-dependent Cartesian product) */
+/** dependent sums/tuples
+  * Declarations in ins are given in context-order
+  */
 case class ProdType(comps: LocalContext) extends Type {
-  def decls = comps.decls
+  def decls = comps.decls.reverse
   override def toString = {
     val (open,close) = if (decls.length == 1 && decls.head.anonymous) ("","") else ("(",")")
     val declsS = decls.map(vd => if (vd.anonymous) vd.tp.toString else vd.toString)
     declsS.mkString(open, ",", close)
   }
   def finite = decls.forall(_.tp.finite)
+  def simple = comps.decls.forall(_.anonymous)
+  /** only valid if this.simple */
+  def simpleComps = comps.decls.reverseMap(_.tp)
+}
+object ProdType {
+  def simple(ts: List[Type]) = ProdType(LocalContext.make(ts.map(VarDecl.anonymous)))
 }
 /** homogeneous collections, unifies lists, finite sets, options, etc.
   * all types are Curry-subquotients of lists, i.e., there is only one introduction form for all of them
@@ -748,7 +808,9 @@ case class Lambda(ins: LocalContext, body: Expression) extends Expression {
   override def toString = s"($ins) -> $body"
 }
 
-/** function application, elimination form for [[FunType]] */
+/** function application, elimination form for [[FunType]]
+  * arguments are given in left-to-right order, i.e., opposite to the one used in [[FunType]]
+  */
 case class Application(fun: Expression, args: List[Expression]) extends Expression {
   override def toString = {
     fun match {
@@ -759,7 +821,9 @@ case class Application(fun: Expression, args: List[Expression]) extends Expressi
   }
 }
 
-/** tuples, introduction form for [[ProdType]] */
+/** tuples, introduction form for [[ProdType]]
+  * components are given in left-to-right order, i.e., the opposite order of the one in [[ProdType]]
+  */
 case class Tuple(comps: List[Expression]) extends Expression {
   override def toString = comps.mkString("(", ", ", ")")
 }
@@ -861,10 +925,13 @@ case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boo
     val vlS = dfO match {case Some(v) => " = " + v.toString case None => ""}
     s"$name$sep $tpS$vlS"
   }
+  def toRef = VarRef(name).copyFrom(this)
 }
 object VarDecl {
   def apply(n: String, tp: Type, dfO: Option[Expression] = None, mutable: Boolean = false): VarDecl = VarDecl(n, tp, dfO, mutable, false)
+  def anonymous(tp: Type) = VarDecl("", tp)
   def output(tp: Type) = VarDecl("", tp, None, false, true)
+  def sub(n: String, df: Expression) = VarDecl(n, null, Some(df))
 }
 /** reference to local variable */
 case class VarRef(name: String) extends Expression {
@@ -907,7 +974,7 @@ case class MatchCase(context: LocalContext, pattern: Expression, body: Expressio
   * @param range must evaluate to list
   */
 case class For(vd: VarDecl, range: Expression, body: Expression) extends Expression {
-  override def toString = s"for ${vd.name} in $range $body"
+  override def toString = s"for (${vd.name} in $range) $body"
 }
 
 /** while-loop */
@@ -934,7 +1001,7 @@ sealed abstract class Operator(val symbol: String) {
   val length = symbol.length
   def types: List[FunType]
   def polyTypes(u: UnknownType): List[FunType] = Nil
-  def makeExpr(args: List[Expression]) = Application(BaseOperator(this, Type.unknown), args)
+  def makeExpr(args: List[Expression]) = Application(BaseOperator(this, Type.unknown(null)), args)
 }
 
 /** operators with binary infix notation (flexary flag not supported yet) */
@@ -965,7 +1032,7 @@ sealed trait Equality extends Operator {
   def types = Nil
   override def polyTypes(u: UnknownType) = List(B<--(u,u))
   def apply(tp: Type, l: Expression, r: Expression) =
-    Application(BaseOperator(this,FunType(List(tp,tp),BoolType)), List(l,r))
+    Application(BaseOperator(this, BoolType<--(tp,tp)), List(l,r))
   /** the operator to reduce after applying this operator on a list of pairs */
   def reduce: Operator
 }

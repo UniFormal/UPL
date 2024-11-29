@@ -67,7 +67,8 @@ class Interpreter(vocInit: Module) {
   private val debug = false
   /** unexpected error, e.g., typing error in input or expression does not simplify into value */
   case class Error(stack: List[RegionalEnvironment], msg: String) extends PError(msg)
-  def fail(msg: String)(implicit sf: SyntaxFragment) = throw Error(stack, msg + ": " + sf)
+  def fail(msg: String)(implicit sf: SyntaxFragment) =
+    throw Error(stack, msg + ": " + sf)
   /** run-time error while processing well-formed input, e.g., index out of bounds */
   case class RuntimeError(msg: String) extends PError(msg)
 
@@ -222,7 +223,7 @@ class Interpreter(vocInit: Module) {
             }
             frame.leaveBlock
             CollectionValue(vsI)
-            case _ => fail("range not a list")
+          case _ => fail("range not a list")
         }
       case Return(e, thrw) =>
         val eI = interpretExpression(e)
@@ -342,7 +343,7 @@ class Interpreter(vocInit: Module) {
       case RatType =>
         val it = new ProductIterator(Enumeration.Integers, Enumeration.Naturals)
         it.filter {case (i,n) => n != 0 && i.gcd(n) == 1}.map {case (i,n) => RatValue(i,n)}
-      case ProdType(ts) => Enumeration.product(ts map makeIterator).map(es => Tuple(es))
+      case p:ProdType if p.simple => Enumeration.product(p.simpleComps map makeIterator).map(es => Tuple(es))
       case CollectionKind.Option(t) => Iterator(CollectionValue(Nil)) ++ makeIterator(t)
       case CollectionType(t,k) => Enumeration.Naturals flatMap {n =>
         def idemp(es: List[Expression]) = es.distinct.length == es.length // repetition-normal, i.e., no repetitions
@@ -424,7 +425,7 @@ class Interpreter(vocInit: Module) {
   }
 
   def applyFunction(name: String, owner: Option[Instance], lam: Lambda, args: List[Expression]) = {
-    val fes = (lam.ins.decls zip args) map {case (i,a) => MutableExpression(i.name,a)}
+    val fes = (lam.ins.decls.reverse zip args) map {case (i,a) => MutableExpression(i.name,a)}
     val fr = RegionalEnvironment(name, owner, LocalEnvironment(fes:::lam.frame.fields))
     interpretExpressionInFrame(fr, lam.body)
   }
