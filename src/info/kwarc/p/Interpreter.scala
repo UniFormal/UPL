@@ -125,7 +125,7 @@ class Interpreter(vocInit: Module) {
           case Some(v) => interpretExpression(v)
         }
         frame.allocate(n, vlI)
-        UnitValue
+        vlI
       case Assign(t, v) =>
         val vI = interpretExpression(v)
         assign(t,vI)(true)

@@ -262,8 +262,7 @@ object Checker {
     t
   }
   def checkLocal(gc: GlobalContext,c: LocalContext,allowDefinitions: Boolean,allowMutable: Boolean): LocalContext = {
-    val names = c.decls collect {case vd if !vd.anonymous => vd.name}
-    if (names.distinct.length != names.length) fail("name clash in local context")(c)
+    if (!c.namesUnique) fail("name clash in local context")(c)
     var gcL = gc
     c.map {vd =>
       val vdC = checkVarDecl(gcL,vd,allowDefinitions,allowMutable)
@@ -769,13 +768,11 @@ object Checker {
           } else {
             // other expressions can have any type
             val (eC,_) = inferExpression(gcL,e)
-            // remember varibles for later expressions
-            eC match {
-              case vd: VarDecl =>
-                val vdNoDef = if (vd.defined && vd.mutable) vd.copy(dfO = None) else vd
-                gcL = gcL.append(vdNoDef)
-              case _ =>
-            }
+            // remember variables for later expressions
+            val eDs = LocalContext(collectDeclarations(eC))
+            if (!eDs.namesUnique)
+              fail("clashing names declared in expression")
+            gcL = gcL.append(eDs)
             eC
           }
         }
@@ -996,20 +993,10 @@ object Checker {
         (Assert(fC), UnitType)
       case Block(es) =>
         inferExpressionViaCheck(gc, exp)
-      case VarDecl(n, tp, vlO, mut, _) =>
-        val (tpC,vlC) = if (!tp.known) {
-          vlO match {
-            case None => fail("untyped variables")
-            case Some(vl) =>
-              val (vlC,vlI) = inferExpression(gc, vl)
-              (vlI, Some(vlC))
-          }
-        } else {
-          val tpC = checkType(gc, tp)
-          val vlC = vlO map {vl => checkExpression(gc,vl,tp)}
-          (tpC,vlC)
-        }
-        (VarDecl(n,tpC,vlC,mut),UnitType)
+      case VarDecl(n, tp, dfO, mut, output) =>
+        val tpC = checkType(gc, tp)
+        val dfOC = dfO map {df => checkExpression(gc,df,tpC)}
+        (VarDecl(n,tpC,dfOC,mut,output),tpC) // evaluates to VarRef(n); that allows introducing names in the middle of expressions
       case Assign(e,df) =>
         val (eC,eI) = inferExpression(gc, e)
         val dfC = checkExpression(gc,df,eI)
@@ -1098,6 +1085,8 @@ object Checker {
       case VarRef(n) =>
         val vd = gc.local.lookup(n)
         if (!vd.mutable) fail("variable not mutable")
+      case vd: VarDecl =>
+        if (vd.defined) fail("defined variable not assignable")
       case ClosedRef(n) => gc.lookupRegional(n) match {
         case Some(ed: ExprDecl) =>
           if (!ed.mutable) fail("assignment to immutable field")
@@ -1115,6 +1104,22 @@ object Checker {
       case _ => fail("expression not assignable")
     }
   }
+
+  /** collects the declarations introduced by this expression */
+  def collectDeclarations(exp: Expression): List[VarDecl] = exp match {
+    case vd: VarDecl =>
+      val vdNoDef = if (vd.defined && vd.mutable) vd.copy(dfO = None) else vd
+      List(vdNoDef)
+    case Assign(t,v) => collectDeclarations(List(t,v))
+    case Tuple(es) => collectDeclarations(es)
+    case Projection(e,_) => collectDeclarations(e)
+    case Application(f,as) => collectDeclarations(f::as)
+    case CollectionValue(es) => collectDeclarations(es)
+    case ListElem(l,i) => collectDeclarations(List(l,i))
+    case OwnedExpr(o,e) => collectDeclarations(o)
+    case _ => Nil
+  }
+  def collectDeclarations(exp: List[Expression]): List[VarDecl] = exp.flatMap(collectDeclarations)
 
   def simplifyExpression(gc: GlobalContext, exp: Expression) = Simplify(exp)(gc,())
 

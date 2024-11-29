@@ -135,9 +135,7 @@ module AI {
     treeSearch: (SearchProblem, SearchStrategy) -> Node? = (prob,strat) -> {
       var fringe: strat.Fringe = strat.init(prob.initials)
       while (!strat.empty(fringe)) {
-         val fn = strat.takeNext(fringe)
-         fringe = fn(1)
-         val node = fn(2)
+         (fringe, val node) = strat.takeNext(fringe)
          if (prob.goals(node.label)) return [node]
          else
            for (a in prob.enumAllActions)

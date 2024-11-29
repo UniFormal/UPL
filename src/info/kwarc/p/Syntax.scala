@@ -192,6 +192,10 @@ case class LocalContext(variables: List[VarDecl]) extends Context[LocalContext] 
     val varsM = variables.reverseMap(f)
     LocalContext.make(varsM)
   }
+  def namesUnique = {
+    val names = variables collect {case vd if !vd.anonymous => vd.name}
+    Util.noReps(names)
+  }
 
   def substitute(es: List[Expression]) = {
     if (variables.length != es.length) throw IError("unexpected number of values")
@@ -1191,4 +1195,8 @@ object Operator {
         }
     }
   }
+}
+
+object Util {
+  def noReps[A](l: List[A]) = l.distinct.length == l.length
 }
