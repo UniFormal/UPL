@@ -66,7 +66,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/info/kwarc/p/Checker.scala</url>
-          <line>1186</line>
+          <line>1189</line>
           <option name="timeStamp" value="48" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
@@ -81,14 +81,18 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/info/kwarc/p/Interpreter.scala</url>
-          <line>70</line>
+          <line>74</line>
           <option name="timeStamp" value="82" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
-          <condition expression="eDs.variables.nonEmpty" language="Scala" />
+          <url>file://$PROJECT_DIR$/src/info/kwarc/p/Syntax.scala</url>
+          <line>1181</line>
+          <option name="timeStamp" value="84" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/info/kwarc/p/Checker.scala</url>
-          <line>772</line>
-          <option name="timeStamp" value="83" />
+          <line>1178</line>
+          <option name="timeStamp" value="85" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

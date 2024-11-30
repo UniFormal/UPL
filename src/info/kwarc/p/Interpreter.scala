@@ -40,14 +40,15 @@ case class RegionalEnvironment(name: String, region: Option[Instance], local: Lo
     addedInBlock = (addedInBlock.head + 1) :: addedInBlock.tail
   }
 
-  private var addedInBlock: List[Int] = Nil
-  def enterBlock {
+  def inNewBlock[A](a: => A) = {
     addedInBlock ::= 0
+    try {a}
+    finally {
+      local.fields = local.fields.drop(addedInBlock.head)
+      addedInBlock = addedInBlock.tail
+    }
   }
-  def leaveBlock {
-    local.fields = local.fields.drop(addedInBlock.head)
-    addedInBlock = addedInBlock.tail
-  }
+  private var addedInBlock: List[Int] = Nil
 }
 
 object RegionalEnvironment {
@@ -57,8 +58,11 @@ object RegionalEnvironment {
 class GlobalEnvironment(var voc: Module) {
   var regions = List(RegionalEnvironment("toplevel", None, LocalEnvironment.empty))
   def frame = regions.head
-  def push(f: RegionalEnvironment) {regions::=f}
-  def pop() {regions = regions.tail}
+  def inFrame[A](f: RegionalEnvironment)(a: => A) = {
+    regions ::= f
+    try {a}
+    finally {regions = regions.tail}
+  }
 }
 
 // ********************************* interpretation
@@ -82,10 +86,9 @@ class Interpreter(vocInit: Module) {
   }
 
   def interpretExpressionInFrame(f: RegionalEnvironment, exp: Expression) = {
-    env.push(f)
-    val expI = interpretExpression(exp)
-    env.pop()
-    expI
+    env.inFrame(f) {
+      interpretExpression(exp)
+    }
   }
   def interpretExpression(exp: Expression): Expression = {
     if (debug) println("interpreting: " + exp)
@@ -102,31 +105,31 @@ class Interpreter(vocInit: Module) {
             case None =>
               val ExtendedTheory(instD,_) = inst.theory
               env.voc.lookupPath(instD / n) match {
-              case Some(d: ExprDecl) => d.dfO match {
-                case Some(e) => e
-                case None => fail("no definiens")
+                case Some(d: ExprDecl) => d.dfO match {
+                  case Some(e) => e
+                  case None => fail("no definiens")
+                }
+                case _ => fail("not an expression")
               }
-              case _ => fail("not an expression")
-            }
           }
       }
       case OpenRef(p) =>
         env.voc.lookupPath(p) match {
-          case Some(sd:ExprDecl) => sd.dfO match {
+          case Some(sd: ExprDecl) => sd.dfO match {
             case None => fail("no definiens") //TODO allow this as an abstract declaration in a module; all elimination forms below must remain uninterpreted
             case Some(v) => interpretExpression(v)
           }
           case _ => fail("not an expression")
         }
       case VarRef(n) => frame.local.get(n) // frame values are always interpreted
-      case VarDecl(n,_, vl, _, _) =>
+      case VarDecl(n,_,vl,_,_) =>
         val vlI = vl match {
           case None => fail("uninitialized variable")
           case Some(v) => interpretExpression(v)
         }
-        frame.allocate(n, vlI)
+        frame.allocate(n,vlI)
         vlI
-      case Assign(t, v) =>
+      case Assign(t,v) =>
         val vI = interpretExpression(v)
         assign(t,vI)(true)
         UnitValue
@@ -139,56 +142,56 @@ class Interpreter(vocInit: Module) {
       case inst: Instance if inst.isRuntime =>
         // instance reference
         inst
-      case inst:Instance =>
+      case inst: Instance =>
         // instance creation
         val runtimeInst = inst.copy() // create new Java object for every new instance
         val initDecls = inst.theory.decls
         // TODO: replace all references to the current frame in initDecls with their current values
         // otherwise, we would have to keep those frames around; including in lambdas
         val initDeclsAbsolute = initDecls
-        val re = RegionalEnvironment("new instance", Some(runtimeInst))
-        env.push(re)
-        // execute the constructor arguments in the context of this instance
-        initDeclsAbsolute.foreach {
-          case sd: ExprDecl =>
-            val dfI = interpretExpression(sd.dfO.get)
-            runtimeInst.fields ::= MutableExpression(sd.name, dfI)
-          case _ =>
+        val re = RegionalEnvironment("new instance",Some(runtimeInst))
+        env.inFrame(re) {
+          // execute the constructor arguments in the context of this instance
+          initDeclsAbsolute.foreach {
+            case sd: ExprDecl =>
+              val dfI = interpretExpression(sd.dfO.get)
+              runtimeInst.fields ::= MutableExpression(sd.name,dfI)
+            case _ =>
+          }
+          // execute inherited field initializers
+          val instDom = inst.theory match {
+            case PhysicalTheory(p) => p
+            case _ => fail("non-atomic instance")
+          }
+          val mod = env.voc.lookupModule(instDom).getOrElse(fail("unknown module"))
+          // TODO: i.dfO
+          mod.decls.foreach {
+            case sd: ExprDecl if sd.dfO.isDefined =>
+              val d = sd.dfO.get
+              val dI = interpretExpression(d)
+              if (!(d eq dI) || sd.mutable) {
+                runtimeInst.fields ::= MutableExpression(sd.name,dI)
+              }
+            case _ =>
+          }
         }
-        // execute inherited field initializers
-        val instDom = inst.theory match {
-          case PhysicalTheory(p) => p
-          case _ => fail("non-atomic instance")
-        }
-        val mod = env.voc.lookupModule(instDom).getOrElse(fail("unknown module"))
-        // TODO: i.dfO
-        mod.decls.foreach {
-          case sd: ExprDecl if sd.dfO.isDefined =>
-            val d = sd.dfO.get
-            val dI = interpretExpression(d)
-            if (!(d eq dI) || sd.mutable) {
-              runtimeInst.fields ::= MutableExpression(sd.name, dI)
-            }
-          case _ =>
-        }
-        env.pop()
         runtimeInst
-      case OwnedExpr(own, e) =>
+      case OwnedExpr(own,e) =>
         val ownI = interpretExpression(own)
         ownI match {
           case inst: Instance if inst.isRuntime =>
-            val fr = RegionalEnvironment(e.toString, Some(inst))
-            interpretExpressionInFrame(fr, e)
+            val fr = RegionalEnvironment(e.toString,Some(inst))
+            interpretExpressionInFrame(fr,e)
           case _ => fail("owner not a runtime instance")
         }
       case Block(es) =>
-        frame.enterBlock
-        var ret: Expression = UnitValue
-        es.foreach {e =>
-          ret = interpretExpression(e)
+        frame.inNewBlock {
+          var ret: Expression = UnitValue
+          es.foreach {e =>
+            ret = interpretExpression(e)
+          }
+          ret
         }
-        frame.leaveBlock
-        ret
       case IfThenElse(c,t,eO) =>
         val cI = interpretExpression(c)
         cI match {
@@ -211,47 +214,50 @@ class Interpreter(vocInit: Module) {
           if (cI) interpretExpression(b) else break = true
         }
         UnitValue
-      case For(vd, r, b) =>
+      case For(vd,r,b) =>
         val rI = interpretExpression(r)
         rI match {
           case CollectionValue(vs) =>
-            frame.enterBlock
-            frame.allocate(vd.name, null) // irrelevant value
-            val vsI = vs.map {v =>
-              frame.local.set(vd.name, v)
-              interpretExpression(b)
+            frame.inNewBlock {
+              frame.allocate(vd.name,null) // irrelevant value
+              val vsI = vs.map {v =>
+                frame.local.set(vd.name,v)
+                interpretExpression(b)
+              }
+              CollectionValue(vsI)
             }
-            frame.leaveBlock
-            CollectionValue(vsI)
           case _ => fail("range not a list")
         }
-      case Return(e, thrw) =>
+      case Return(e,thrw) =>
         val eI = interpretExpression(e)
-        throw ReturnFound(eI, thrw)
-      case Match(e,cases, handle) =>
+        throw ReturnFound(eI,thrw)
+      case Match(e,cases,handle) =>
         val (eI,runCases) = try {
-          (interpretExpression(e), !handle)
+          (interpretExpression(e),!handle)
         } catch {
-          case ReturnFound(exc, true) if handle =>
-            (exc, true)
+          case ReturnFound(exc,true) if handle =>
+            (exc,true)
         }
         def doCases(mcs: List[MatchCase]): Expression = mcs match {
           case Nil => fail("match error")
-          case mc::rest =>
-            frame.enterBlock
-            mc.context.decls foreach {vd => frame.allocate(vd.name,null)}
-            val matched = assign(mc.pattern,eI)(false)
-            if (matched) {
-              mc.context.decls.foreach {vd =>
-                if (frame.local.get(vd.name) == null)
-                  throw fail("expression matched but undefined variables remain")
+          case mc :: rest =>
+            val mcI = frame.inNewBlock {
+              mc.context.decls foreach {vd => frame.allocate(vd.name,null)}
+              val matched = assign(mc.pattern,eI)(false)
+              if (matched) {
+                mc.context.decls.foreach {vd =>
+                  if (frame.local.get(vd.name) == null)
+                    fail("expression matched but undefined variables remain")
+                }
+                Some(interpretExpression(mc.body))
+              } else {
+                None
               }
-              interpretExpression(mc.body)
-            } else {
-              frame.leaveBlock
+            }
+            mcI getOrElse {
               doCases(rest)
             }
-          }
+        }
         if (runCases) doCases(cases) else eI
       case lam: Lambda =>
         // lambdas must be interpreted at call-time, and the body is relative to the current frame
@@ -382,6 +388,9 @@ class Interpreter(vocInit: Module) {
       case (VarRef(n),_) =>
         frame.local.set(n,value)
         true
+      case (vd: VarDecl, v) if !vd.defined =>
+        frame.allocate(vd.name, v)
+        true
       case (ClosedRef(n),_) => frame.region match {
         case Some(inst) =>
           if (failOnMismatch) {
@@ -420,7 +429,7 @@ class Interpreter(vocInit: Module) {
         }
       case (t,v) =>
         if (t == v) true
-        else assignFail("pattern unsupported")
+        else assignFail("pattern unsupported: " + t)
     }
   }
 

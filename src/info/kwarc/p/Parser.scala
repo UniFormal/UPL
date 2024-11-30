@@ -307,10 +307,10 @@ class Parser(file: File, input: String) {
           if (startsWith(";")) skip(";")
         }
         Block(cs.reverse)
-      } else if (allowS && startsWithS("var")) {
+      } else if (startsWithS("var")) {
         trim
         parseVarDecl(true, true)
-      } else if (allowS && startsWithS("val")) {
+      } else if (startsWithS("val")) {
         trim
         parseVarDecl(false,true)
       } else if (startsWithAny("exists","forall")) {
@@ -401,13 +401,15 @@ class Parser(file: File, input: String) {
         //  symbol/variable/module reference
         val n = parseName
         trim
-        if (startsWithS(":")) {
+        if (startsWith(":") && !Operator.infixes.exists(o => startsWith(o.symbol))) {
           // variable declaration
+          skip(":")
           val tp = parseType(doNotAllowS)
-          VarDecl(n,tp,None,false)
+          VarDecl(n,tp)
+        } else if (n == "_") {
+          VarDecl.anonymous(Type.unknown()) // anonymous variable
         } else if (ctxs.contexts.head.domain.contains(n)) {
-          // reference to bound variable
-          VarRef(n)
+          VarRef(n) // reference to bound variable
         } else {
           ClosedRef(n)
         }
@@ -530,7 +532,7 @@ class Parser(file: File, input: String) {
       case Lambda(ins,bd) =>
         // awkward: if parseExpression was able to turn the pattern into a lambda, undo that here
         val p = if (ins.decls.length != 1)
-          Tuple(ins.decls.map(vd => VarRef(vd.name)))
+          Tuple(ins.decls.reverseMap(_.toRef))
         else
           VarRef(ins.decls.head.name)
         MatchCase(null, p.copyFrom(ins), bd)

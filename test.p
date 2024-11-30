@@ -39,10 +39,27 @@ module M {
     x
   }
 
+  ac = { val abc = ["a", "b", "c"];
+         (val a) -: _ = abc;
+         _ :- (val c) = abc;
+         (a,c)
+        }
+
+
   factorial: _
   factorial = (x:int) -> {
     if (x <= 0) return 1
     x * factorial(x-1)
+  }
+
+  deepBinding1 = {factorial(factorial(val n = 3)); n+1} == 4
+
+  test = {
+    M.sum([1,2,3]) == 6 &
+    M.factorial(3) == 6 &
+    M.map2([1,2,3])(x -> x+1) == [2,3,4] &
+    deepBinding1 &
+    ac == ("a","c")
   }
 }
 
@@ -146,8 +163,4 @@ module AI {
     }
 }
 
-main = {
-  M.sum([1,2,3]) == 6 &
-  M.factorial(3) == 6 &
-  M.map2([1,2,3])(x -> x+1) == [2,3,4]
-}
+main = {M.test}

@@ -839,7 +839,7 @@ object Checker {
     implicit val cause = expA
     val mf = new MagicFunctions(gc)
     // exp != expA only if exp is an unresolved reference
-    val (expR, sdCached) = gc.resolveName(expA).getOrElse(fail("unknown identifier"))
+    val (expR, sdCached) = gc.resolveName(expA).getOrElse(fail("unknown identifier " + expA))
     val exp = expR match {
       case e: Expression => e
       case _ => fail("not an expression")
@@ -1101,6 +1101,9 @@ object Checker {
           case _ => fail("function application not assignable")
         }
         es foreach check
+      case Application(BaseOperator(o,_),es) =>
+        if (!o.invertible) fail("operator not invertible")
+        es foreach check
       case _ => fail("expression not assignable")
     }
   }
@@ -1191,7 +1194,11 @@ object Checker {
     // if we found multiple assignments for the parameter of this operator, take their union
     val (paramAssignments, otherAssignments) = commonAssignments.partition(_._1 == param)
     val paramAssignment = if (paramAssignments.isEmpty) Nil
-       else List((param, typeUnion(gc, paramAssignments.map(_._2))))
+      else {
+        val u = typeUnion(gc, paramAssignments.map(_._2))
+        if (u == AnyType) fail("incompatible operator arguments")
+        List((param, u))
+      }
     // better take union than fail because of equality and operations on collections
     assignAsMatched(paramAssignment:::otherAssignments)
     out

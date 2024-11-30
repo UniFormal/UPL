@@ -1006,15 +1006,18 @@ sealed abstract class Operator(val symbol: String) {
   def types: List[FunType]
   def polyTypes(u: UnknownType): List[FunType] = Nil
   def makeExpr(args: List[Expression]) = Application(BaseOperator(this, Type.unknown(null)), args)
+  def invertible: Boolean
 }
 
 /** operators with binary infix notation (flexary flag not supported yet) */
 sealed abstract class InfixOperator(s: String, val precedence: Int, val flexary: Boolean) extends Operator(s) {
   def apply(l: Expression, r: Expression) = makeExpr(List(l,r))
+  def invertible = false
 }
 /** operators with prefix notation */
 sealed abstract class PrefixOperator(s: String) extends Operator(s) {
   def apply(e: Expression) = makeExpr(List(e))
+  def invertible = true
 }
 
 // for type abbreviations
@@ -1066,11 +1069,13 @@ case object In extends InfixOperator("in", -10, false) {
 case object Cons extends InfixOperator("-:", -10, false) {
   val types = Nil
   override def polyTypes(u: UnknownType) = List(L(u)<--(u,L(u)))
+  override def invertible = true
 }
 
-case object Snoc extends InfixOperator(":-:", -10, false) {
+case object Snoc extends InfixOperator(":-", -10, false) {
   val types = Nil
   override def polyTypes(u: UnknownType) = List(L(u)<--(L(u),u))
+  override def invertible = true
 }
 
 case object And extends InfixOperator("&", -20, true) with Connective {
