@@ -57,6 +57,7 @@ class Parser(file: File, input: String) {
     throw Error(msg + "; found " + input.substring(index))
   }
 
+  def makeRef(from: Int) = Location(file, from, index)
   def addRef[A<:SyntaxFragment](sf: => A): A = {
     trim
     val from = index
@@ -65,7 +66,7 @@ class Parser(file: File, input: String) {
     a
   }
   def setRef(sf: SyntaxFragment, from: Int): sf.type = {
-    sf.loc = Location(file, from, index)
+    sf.loc = makeRef(from)
     sf
   }
 
@@ -285,7 +286,7 @@ class Parser(file: File, input: String) {
     val allowS = ctxs.allowStatement
     val doAllowS = ctxs.setAllowStatement(true)
     val doNotAllowS = ctxs.setAllowStatement(false)
-    var seen: List[(Expression,InfixOperator)] = Nil
+    var seen: List[(Expression,InfixOperator,Location)] = Nil
     val allExpBeginAt = index
     while (true) {
       trim
@@ -513,12 +514,13 @@ class Parser(file: File, input: String) {
         } else exp
         return expWP
       } else {
+        setRef(exp, expBeginAt)
+        val opBegin = index
         parseOperatorO(Operator.infixes) match {
           case None =>
             return disambiguateInfixOperators(seen.reverse,exp)
           case Some(o) =>
-            setRef(exp, expBeginAt)
-            seen ::= (exp,o)
+            seen ::= (exp,o, makeRef(opBegin))
         }
       }
     } // end while
@@ -551,9 +553,9 @@ class Parser(file: File, input: String) {
   }
 
   // a shift-reduce parser of e1 o1 ... en on last
-  def disambiguateInfixOperators(eos: List[(Expression,InfixOperator)], lastExp: Expression): Expression = {
+  def disambiguateInfixOperators(eos: List[(Expression,InfixOperator,Location)], lastExp: Expression): Expression = {
     // invariant: eos last = shifted rest last
-    var shifted: List[(Expression, InfixOperator)] = Nil
+    var shifted: List[(Expression, InfixOperator,Location)] = Nil
     var rest = eos
     var last = lastExp
     // shift: shifted.reverse | hd tl last ---> shifted hd | tl last
@@ -565,20 +567,24 @@ class Parser(file: File, input: String) {
       rest match {
         case Nil =>
           // reduce on the right: before e o | last ---> before | (e o last)
-          val (e,o) = shifted.head
-          val eolast = Application(BaseOperator(o,Type.unknown()),List(e,last))
+          val (e,o,l) = shifted.head
+          val bo = BaseOperator(o,Type.unknown())
+          bo.loc = l
+          val eolast = Application(bo,List(e,last))
           shifted = shifted.tail
           last = eolast
-        case (e2,o2) :: tl =>
+        case (e2,o2,l2) :: tl =>
           if (shifted.isEmpty) {
             shift
           } else {
-            val (e1,o1) = shifted.head
+            val (e1,o1,l1) = shifted.head
             // before e1 o1 | e2 o2 tl last
             if (o1.precedence >= o2.precedence) {
               // reduce on the left: ---> before (e1 o1 e2) o2 | tl last
-              val e1o1e2 = Application(BaseOperator(o1,Type.unknown()),List(e1,e2))
-              shifted = (e1o1e2,o2) :: shifted.tail
+              val bo1 = BaseOperator(o1,Type.unknown())
+              bo1.loc = l1
+              val e1o1e2 = Application(bo1,List(e1,e2))
+              shifted = (e1o1e2,o2,l2) :: shifted.tail
               rest = tl
             } else if (o1.precedence < o2.precedence) {
               // shift: ---> before e1 o1 e2 o2 | tl last

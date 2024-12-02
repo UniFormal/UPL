@@ -54,7 +54,16 @@ abstract class Traverser[A] {
   def apply(tp: Type)(implicit gc: GlobalContext, a: A): Type = matchC(tp)(applyDefault _)
 
   protected final def applyDefault(tp: Type)(implicit gc: GlobalContext, a: A): Type = tp match {
-    case u: UnknownType => if (u.known) applyDefault(u.tp) else u // traversal eliminates unknown-wrappers
+    case UnknownType(g,cont,sub) =>
+      if (cont.known)
+        applyDefault(tp.skipUnknown)  // eliminate unknown-wrappers
+      else {
+        val subT = if (sub != null)
+          // or traverse into the substitution values (this gives the right results for collecting free variables and applying substitutions)
+          sub.map {vd => vd.copy(dfO = vd.dfO map applyDefault)}
+        else null
+        UnknownType(g,cont, subT)
+      }
     case ClosedRef(n) => ClosedRef(n)
     case OpenRef(p) => OpenRef(apply(p))
     case OwnedType(e, o) => OwnedType(apply(e), apply(o)(gc.push(RegionalContext(null,Some(e))),a))
@@ -209,7 +218,7 @@ class Substituter(val initGC: GlobalContext) extends Traverser[Substitution] wit
   }
   override def applyVarDecl(vd: VarDecl)(implicit gc: GlobalContext, sub: Substitution) = {
     if (!inOriginalRegion) super.applyVarDecl(vd) else {
-      val renamed = vd.name
+      val renamed = vd.name // TODO avoid capture
       val subT = sub.append(vd.name,VarRef(renamed))
       val (vdS,_) = super.applyVarDecl(vd)
       (vdS,subT)
@@ -219,11 +228,11 @@ class Substituter(val initGC: GlobalContext) extends Traverser[Substitution] wit
 object Substituter {
   def apply(gc: GlobalContext, sub: Substitution, e: Expression) = {
     if (sub.isIdentity) e else
-    new Substituter(gc)(e)(gc,sub)
+      new Substituter(gc)(e)(gc,sub)
   }
   def apply(gc: GlobalContext, sub: Substitution, y: Type) = {
     if (sub.isIdentity) y else
-    new Substituter(gc)(y)(gc,sub)
+      new Substituter(gc)(y)(gc,sub)
   }
 }
 
@@ -240,24 +249,29 @@ object Simplify extends StatelessTraverser {
   }
 }
 
-private class FreeVariables(val initGC: GlobalContext) extends StatelessTraverser with TraverseOnlyOriginalRegion {
+private class FreeVariables(val initGC: GlobalContext, alsoRegionals: Boolean) extends StatelessTraverser with TraverseOnlyOriginalRegion {
   private var names: List[String] = Nil
   override def apply(exp: Expression)(implicit gc: GlobalContext, a:Unit) = matchC(exp) {
-    case _:VarRef | _:ClosedRef if inOriginalRegion && gc.resolveName(exp).isEmpty =>
-      val n = exp match {
-        case VarRef(n) => n
-        case ClosedRef(n) => n
-        case _ => throw IError("impossible")
-      }
+    case VarRef(n) if inOriginalRegion && gc.resolveName(exp).isEmpty =>
       names ::= n
-      VarRef(n)
+      exp
+    case ClosedRef(n) if inOriginalRegion && gc.resolveName(exp).isEmpty  =>
+      if (alsoRegionals) {names ::= n; VarRef(n)} else exp
     case _ => applyDefault(exp)
   }
 }
 object FreeVariables {
-  def apply(gc: GlobalContext, e: Expression) = {
-    val fv = new FreeVariables(gc)
+  /** the list of free local/regional names not bound and not declared in the context */
+  def infer(gc: GlobalContext, e: Expression) = {
+    val fv = new FreeVariables(gc, true)
     fv(e)(gc,())
+    fv.names.distinct
+  }
+  /** the list of unbound local names (not bound variables) */
+  def collect(y: Type) = {
+    val gc = GlobalContext("") // running it with the empty context excludes exactly the bound names
+    val fv = new FreeVariables(gc, false)
+    fv(y)(gc,())
     fv.names.distinct
   }
 }

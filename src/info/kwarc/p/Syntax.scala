@@ -48,6 +48,8 @@ sealed trait Named extends MaybeNamed {
 sealed trait HasChildren[A <: MaybeNamed] extends SyntaxFragment {
   def decls: List[A]
   def domain = decls collect {case d: Named => d.name}
+  def length = decls.length
+  def empty = length == 0
   def lookupO(name: String) = decls.find(_.nameO.contains(name))
   def lookup(name: String) = lookupO(name).get
   def declares(name: String) = lookupO(name).isDefined
@@ -89,7 +91,12 @@ sealed trait Type extends Object {
 }
 object Type {
   private var unknownCounter = -1
-  def unknown(gc: GlobalContext = null) = {unknownCounter += 1; new UnknownType(unknownCounter, gc, null)}
+  def unknown(gc: GlobalContext = null) = {
+    unknownCounter += 1
+    val cont = new UnknownTypeContainer(unknownCounter, null)
+    UnknownType(gc, cont, if (gc == null) null else gc.visibleLocals.identity)
+  }
+
   val unbounded = AnyType
   /** normalizes what can be done context-freely, in particular removes unknown types */
   def normalize(tp: Type) = IdentityTraverser(tp)(GlobalContext(""),())
@@ -163,10 +170,16 @@ object Declaration {
 // ************************************* Contexts *****************************
 
 abstract class Context[A] extends SyntaxFragment with HasChildren[VarDecl] {
-  def append(c: LocalContext): A
-  def append(vd: VarDecl): A = append(LocalContext(vd))
   def local: LocalContext
+  def copyLocal(lc: LocalContext): A
   def decls = local.variables
+  /** appends some local declarations */
+  def append(c: LocalContext) = copyLocal(LocalContext(c.variables ::: decls))
+  def append(vd: VarDecl): A = append(LocalContext(vd))
+  /** the prefix of this containing the first n local declarations (counting from outer-most) */
+  def take(n: Int) = copyLocal(LocalContext(decls.drop(length-n)))
+  /** the prefix of this without the last n local declarations (counting from outer-most) */
+  def dropLast(n: Int) = copyLocal(LocalContext(decls.drop(n)))
   def getOutput = local.decls.find(vd => vd.name == "" && vd.output).map(_.tp)
 }
 
@@ -179,14 +192,18 @@ abstract class Context[A] extends SyntaxFragment with HasChildren[VarDecl] {
 case class LocalContext(variables: List[VarDecl]) extends Context[LocalContext] {
   override def toString = variables.reverse.mkString(", ")
   def local = this
-  /** the number of declarations */
-  def length = variables.length
-  /** the prefix of this context containing the first n declarations (counting from outer-most) */
-  def take(n: Int) = LocalContext(variables.drop(length-n))
+  def copyLocal(lc: LocalContext) = lc
   /** the n-th declaration (counting from outer-most, starting at 0) */
   def apply(n: Int) = variables(length-1-n)
-  /** appends some declarations */
-  def append(c: LocalContext) = copy(variables = c.variables.reverse ::: variables)
+  /** checks if this == smaller.append(result) */
+  def unappend(smaller: LocalContext): Option[LocalContext] = {
+    val thisLen = this.length
+    val smallerLen = smaller.length
+    if (thisLen < smallerLen) return None
+    val (diff,rest) = variables.splitAt(thisLen - smallerLen)
+    if (rest != smaller.variables) return None // should be reference equality in practice and return immediately
+    Some(LocalContext(diff))
+  }
   /** applies f to all declarations, outer-most first */
   def map(f: VarDecl => VarDecl) = {
     val varsM = variables.reverseMap(f)
@@ -202,6 +219,7 @@ case class LocalContext(variables: List[VarDecl]) extends Context[LocalContext] 
     val defs = (variables zip es.reverse).map {case (vd,e) => VarDecl(vd.name, null, Some(e))}
     Substitution(defs)
   }
+  def identity = Substitution(variables collect {case vd if !vd.anonymous => vd.toSub})
 }
 object LocalContext {
   val empty = LocalContext(Nil)
@@ -209,33 +227,55 @@ object LocalContext {
   def make(vds: List[VarDecl]) = LocalContext(vds.reverse)
 }
 
-/** substitution into a context; inner-most substitute first; pre: defs.forall(_.defined) */
+/** substitution (for an omitted context) into a target context
+  * (n_1/e_1 ... n_l/e_l) : (n_1:_, ..., n_l:_) -> target
+  * represented as decls == VarDecl.sub(n_l,e_n), ...
+  */
 case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
-  def append(n: String, e: Expression) = Substitution(VarDecl.sub(n,e)::decls)
-  def length = decls.length
+  override def toString = decls.reverseMap(vd => vd.name + "/" + vd.dfO.get).mkString(", ")
+  /** e_1, ..., e_n */
   def exprs = decls.reverseMap(_.dfO.get)
+  def map(f: VarDecl => VarDecl) = Substitution(decls.reverseMap(f).reverse)
+  /** this : G -> target   --->  this, n/e : G, n:_ -> target */
+  def append(n: String, e: Expression) = copy(decls = VarDecl.sub(n,e)::decls)
+  /** this : G -> target   --->  this, n/vd.name : G, n:_ -> target, vd */
+  def appendRename(n: String, vd: VarDecl) = Substitution(VarDecl.sub(n,vd.toRef)::decls)
+  /** substitution is no-op */
   def isIdentity = decls.forall(d => d.anonymous || d.dfO.contains(VarRef(d.name)))
-  /** the inverse of this if it is a renaming */
-  def inverse = {
-    val declsI = decls.map {vd =>
-      val r = vd.dfO match {
-        case Some(VarRef(n)) => n
-        case _ => throw IError("not a renaming")
-      }
-      VarDecl.sub(r, VarRef(vd.name))
+  /** if this is an injective renaming, the inverse */
+  def inverse: Option[Substitution] = {
+    var image: List[String] = Nil
+    val subs = decls.collect {
+      case vd @ VarDecl(_,_,Some(VarRef(n)),_,_) if !vd.anonymous && !image.contains(n) =>
+        image ::= n
+        VarDecl.sub(n, vd.toRef)
+      case _ => return None
     }
-    Substitution(declsI)
+    Some(Substitution(subs))
   }
 }
 object Substitution {
   def empty = Substitution(Nil)
 }
 
+/** a pair of alpha-renamable contexts, with the substitutions between them
+  * This is helpful when matching dependent types up to alpha-renaming in order to delay substitutions.
+  */
+case class BiContext(lr: List[(VarDecl,VarDecl)]) {
+  def append(a: VarDecl, b: VarDecl) = {
+    BiContext((a,b) :: lr)
+  }
+  def left = LocalContext(lr.map(_._1))
+  def right = LocalContext(lr.map(_._2))
+  def renameLeftToRight = Substitution(lr.map({case (a,b) => VarDecl.sub(a.name,b.toRef)}))
+  def renameRightToLeft = Substitution(lr.map({case (a,b) => VarDecl.sub(b.name,a.toRef)}))
+}
+
 /** declaration-level context: relative to a vocabulary, chooses a theory and an object-level lc relative to it */
 case class RegionalContext(theory: Theory, owner: Option[Expression], local: LocalContext) extends Context[RegionalContext] {
   override def toString = owner.getOrElse(theory).toString + s"{$local}"
   def physical = theory.physical && owner.isEmpty
-  def append(c: LocalContext) = copy(local = local.append(c))
+  def copyLocal(c: LocalContext) = copy(local = c)
 }
 object RegionalContext {
   val empty = RegionalContext(Theory.empty, None, LocalContext.empty)
@@ -254,7 +294,8 @@ case class GlobalContext private (voc: Module, regions: List[(Boolean,RegionalCo
   def currentRegion = regions.head._2
   def currentIsTransparent = regions.head._1
   def theory = currentRegion.theory
-  def local = LocalContext(regions.takeWhile(_._1).flatMap(_._2.local.decls))
+  def local = currentRegion.local
+  def visibleLocals = LocalContext(regions.takeWhile(_._1).flatMap(_._2.local.decls))
   def freshName = {
     var i = 0
     while (local.decls.exists(vd => vd.name.startsWith("_" + i))) i+=1
@@ -265,7 +306,17 @@ case class GlobalContext private (voc: Module, regions: List[(Boolean,RegionalCo
   def pop() = copy(regions = regions.tail)
   /** true if the local environment is given by the current parent(s) (as opposed to other ones that we have pushed) */
   def inPhysicalTheory = regions.forall(_._2.physical)
-  def append(c: LocalContext) = copy(regions = (regions.head._1, regions.head._2.append(c)) :: regions.tail)
+  def copyLocal(lc: LocalContext) = {
+    val regC = currentRegion.copyLocal(lc)
+    copy(regions = (regions.head._1, regC) :: regions.tail)
+  }
+  /** checks if this == smaller.append(result) */
+  def unappend(smaller: GlobalContext): Option[LocalContext] = {
+    // voc may be longer than shorter.voc, but that is not checked here
+    if (this.regions.length != smaller.regions.length) return None
+    if (this.regions.tail != smaller.regions.tail) return None // should be reference equal in practice and succeed immediately
+    this.regions.head._2.local unappend smaller.regions.head._2.local
+  }
 
   private def currentParent: Path = {
     if (!inPhysicalTheory) throw IError("not in physical theory")
@@ -277,8 +328,6 @@ case class GlobalContext private (voc: Module, regions: List[(Boolean,RegionalCo
   /** dereferences an ambiguous relative path: looks up in transparent physical parent regions and returns the first that exists */
   def resolvePath(p: Path): Option[(Path, NamedDeclaration)] = {
     if (!inPhysicalTheory) return None
-
-
     val pp = currentParent/p
     voc.lookupPath(pp) match {
       case Some(d) => Some((pp,d))
@@ -297,7 +346,7 @@ case class GlobalContext private (voc: Module, regions: List[(Boolean,RegionalCo
       case _ => return Some((obj,None))
     }
     // try finding local variable n in context
-    lookupO(n).foreach {_ =>
+    visibleLocals.lookupO(n).foreach {_ =>
       return Some((make(VarRef(n)),None))
     }
     // try finding n declared regionally in current or included module
@@ -604,23 +653,49 @@ case class OwnedType(owner: Expression, owned: Type) extends Type with OwnedObje
 // ***************** Types **************************************
 
 /** an omitted type that is to be filled in during type inference */
-sealed class UnknownType(private var id: Int, private[p] var gc: GlobalContext, private var _tp: Type) extends Type {
-  def tp = if (known) _tp.skipUnknown else null
-  override def known = {_tp != null && _tp.known}
+class UnknownTypeContainer(private var id: Int, private[p] var tp: Type) {
+  override def toString = if (known) tp.toString else "???"+id
+  def known = tp != null && tp.known
+}
+
+/** an unknown type that is to be solved during inference
+  * see [[Type.unknown]] for its creation
+
+  * All local variables that were visible when the type was created can be free in the solution.
+  * This class can be seen as a redex that abstracts over them and is then applied to some arguments.
+  * @param originalContext the free variables, initially context in which this type occurred
+  * @param container the mutable container of the solved type, initially null
+  * @param sub the argument corresponding to the free variables, initially the identity
+  */
+case class UnknownType(originalContext: GlobalContext, container: UnknownTypeContainer, sub: Substitution) extends Type {
+  // overriding to avoid extremely slow recursion into the global context
+  override def hashCode() = container.hashCode() + sub.hashCode()
+  override def equals(that: Any) = {
+    that match {
+      case that: UnknownType => this.container == that.container && this.sub == that.sub
+      case _ => false
+    }
+  }
+  override def toString = container.toString + (if (sub != null && !sub.isIdentity) "[" + sub + "]" else "")
+  override def known = container.known
+  override def skipUnknown = if (!known) this else container.tp.skipUnknown.substitute(sub)
+  /** solves the unknown type
+    * pre: if not null, t is relative to u.gc
+    */
   private[p] def set(t: Type): Unit = {
     if (known)
       throw IError("type already inferred")
-    if (_tp == null) {
+    if (container.tp == null) {
       // println(s"solving $this as $t")
-      _tp = t.skipUnknown
-    } else _tp match {
+      container.tp = t.skipUnknown
+    } else container.tp match {
       case u:UnknownType =>
         u.set(t)
       case _ => throw IError("impossible case")
     }
   }
-  override def skipUnknown: Type = if (known) _tp.skipUnknown else this
-  override def toString = if (known) _tp.toString else "???"+id
+  /** pattern fragment: sub is a renaming of the free variables */
+  def isSolvable = !known && sub.inverse.isDefined
   def finite = if (known) skipUnknown.finite else false
 }
 
@@ -930,6 +1005,7 @@ case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boo
     s"$name$sep $tpS$vlS"
   }
   def toRef = VarRef(name).copyFrom(this)
+  def toSub = VarDecl.sub(name, toRef)
 }
 object VarDecl {
   def apply(n: String, tp: Type, dfO: Option[Expression] = None, mutable: Boolean = false): VarDecl = VarDecl(n, tp, dfO, mutable, false)
@@ -1204,4 +1280,10 @@ object Operator {
 
 object Util {
   def noReps[A](l: List[A]) = l.distinct.length == l.length
+  def disjoint[A](l: List[A], r: List[A]) = {
+    l.forall(n => !r.contains(n))
+  }
+  def sub[A](l: List[A], r: List[A]) = {
+    l.forall(n => r.contains(n))
+  }
 }
