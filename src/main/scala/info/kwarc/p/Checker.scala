@@ -347,14 +347,6 @@ object Checker {
   def isSubtheory(a: Theory, b: Theory) = {
     a.decls.forall(p => b.decls.contains(p))
   }
-  /** context a subsumed by b */
-  def isSubcontext(a: LocalContext, b: LocalContext) = {
-    a.decls.forall(d => b.decls.contains(d))
-  }
-  /** environment a subsumed by b */
-  def isSubregion(a: RegionalContext, b: RegionalContext) = {
-    isSubtheory(a.theory, b.theory) && isSubcontext(a.local,b.local)
-  }
 
   // ***************** Types **************************************
   def checkType(gc: GlobalContext,tp: Type, bound: Type): Type = {

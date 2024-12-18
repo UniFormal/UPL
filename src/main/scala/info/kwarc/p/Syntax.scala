@@ -1,7 +1,7 @@
 package info.kwarc.p
 
-case class Location(file: File, from: Int, to: Int) {
-  override def toString = file.toJava.getName + s"#$from:$to"
+case class Location(origin: SourceOrigin, from: Int, to: Int) {
+  override def toString = origin + s"#$from:$to"
 }
 
 
@@ -169,11 +169,24 @@ object Declaration {
 
 // ************************************* Contexts *****************************
 
+/** joint parent class for all levels of contexts
+  * - global: all global declarations, i.e., the program's entire vocabulary
+  *   names are unique due to qualification
+  * - regional: global + choice of theory relative to which expressions are formed
+  *   duplicate names are merged
+  * - local: regional + locally bound variables
+  *   duplicate names cause shadowing
+  *
+  * Implementation-wise, it is more convenient to group the contexts in such a way that each subsumes the smaller ones.
+  * Thus, in particular, every context has a local context.
+  */
 abstract class Context[A] extends SyntaxFragment with HasChildren[VarDecl] {
+  /** the local context */
   def local: LocalContext
-  def copyLocal(lc: LocalContext): A
   def decls = local.variables
-  /** appends some local declarations */
+  /** helps create copies with a different local context */
+  def copyLocal(lc: LocalContext): A
+  /** copies and appends some local declarations */
   def append(c: LocalContext) = copyLocal(LocalContext(c.variables ::: decls))
   def append(vd: VarDecl): A = append(LocalContext(vd))
   /** the prefix of this containing the first n local declarations (counting from outer-most) */
@@ -259,7 +272,7 @@ object Substitution {
 }
 
 /** a pair of alpha-renamable contexts, with the substitutions between them
-  * This is helpful when matching dependent types up to alpha-renaming in order to delay substitutions.
+  * This is helpful when matching dependent types up to alpha-renaming in a way that delays substitutions.
   */
 case class BiContext(lr: List[(VarDecl,VarDecl)]) {
   def append(a: VarDecl, b: VarDecl) = {
@@ -271,7 +284,12 @@ case class BiContext(lr: List[(VarDecl,VarDecl)]) {
   def renameRightToLeft = Substitution(lr.map({case (a,b) => VarDecl.sub(b.name,a.toRef)}))
 }
 
-/** declaration-level context: relative to a vocabulary, chooses a theory and an object-level lc relative to it */
+/** declaration-level context: relative to a vocabulary, holds a regional+local context
+  * @param theory the regional context: a theory
+  * @param owner the instance whose domain makes the regional context
+  *   if this is defined, [[theory]] may be null, in which case it has to be infered
+  * @param local the local context
+  */
 case class RegionalContext(theory: Theory, owner: Option[Expression], local: LocalContext) extends Context[RegionalContext] {
   override def toString = owner.getOrElse(theory).toString + s"{$local}"
   def physical = theory.physical && owner.isEmpty
@@ -284,11 +302,14 @@ object RegionalContext {
   def apply(p: Path): RegionalContext = RegionalContext(PhysicalTheory(p))
 }
 
-/** program-level lc: provides the vocabulary and a local environment
+/** program-level context: provides the vocabulary and the stack of regional+local contexts
   *
-  * @param currentParent the path to the module in the vocabulary that current processing starts at;
-  *                      also the bottom element of the stack of local environments
-  * @param locals because checking must jump around between local environments, the letter are stored as a stack
+  * @param voc the vocabulary
+  * @param regions a stack of regional contexts
+  *
+  * Traverses algorithms must move between regional contexts.
+  * Therefore, they are maintained as a stack. Only the top element is accessible at any given time.
+  * However, each element carries an additional Boolean; if true, it is transparent, and the element beneath is accessible too.
   */
 case class GlobalContext private (voc: Module, regions: List[(Boolean,RegionalContext)]) extends Context[GlobalContext] {
   def currentRegion = regions.head._2
@@ -865,12 +886,19 @@ case class Instance(theory: Theory) extends Expression with MutableExpressionSto
 
 /** a quoted expressions; introduction form of [[ExprsOver]] */
 case class ExprOver(scope: Theory, expr: Expression) extends Expression {
-  override def toString = s"<{$scope} $expr>"
+  override def toString = s"$scope{$expr}>"
 }
 /** backquote/evaluation inside a [[ExprsOver]] */
 case class Eval(syntax: Expression) extends Expression {
   override def toString = s"`$syntax`"
 }
+
+/*
+/** runs a Prolog query relative to a theory */
+case class Query(scope: Theory, qvars: LocalContext, query: Expression) extends Expression {
+  override def toString = s"$scope ?? $query"
+}
+*/
 
 /** anonymous function, introduction form for [[FunType]] */
 case class Lambda(ins: LocalContext, body: Expression) extends Expression {

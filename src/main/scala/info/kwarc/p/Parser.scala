@@ -1,7 +1,5 @@
 package info.kwarc.p
 
-import info.kwarc.p
-
 /* Concrete syntax
    (A,...) -> B
    A -> B         function type
@@ -48,8 +46,9 @@ object PContext {
   def empty = PContext(List(LocalContext.empty), false)
 }
 
-class Parser(file: File, input: String) {
+class Parser(origin: SourceOrigin, input: String) {
   private var index = 0
+  private val inputLength = input.length
   override def toString = input.substring(index)
 
   case class Error(msg: String) extends PError(msg)
@@ -57,7 +56,7 @@ class Parser(file: File, input: String) {
     throw Error(msg + "; found " + input.substring(index))
   }
 
-  def makeRef(from: Int) = Location(file, from, index)
+  def makeRef(from: Int) = Location(origin, from, index)
   def addRef[A<:SyntaxFragment](sf: => A): A = {
     trim
     val from = index
@@ -71,7 +70,7 @@ class Parser(file: File, input: String) {
   }
 
   // all input has been parsed
-  def atEnd = {index == input.length}
+  def atEnd = {index == inputLength}
 
   // next character to parse
   def next = input(index)
@@ -168,7 +167,7 @@ class Parser(file: File, input: String) {
     else if (startsWithAny(include,totalInclude)) parseInclude
     else if (startsWithS(typeDecl)) parseTypeDecl
     else if (startsWithS(mutableExprDecl)) parseExprDecl(true)
-    else if (next.isLetter) parseExprDecl(false)
+    else if (!atEnd && next.isLetter) parseExprDecl(false)
     else fail("declaration expected")
   }
 
@@ -355,7 +354,7 @@ class Parser(file: File, input: String) {
         Application(BaseOperator(o,Type.unknown()),List(e))
       } else if (startsWithS("\"")) {
         val begin = index
-        while (next != '"') index += 1
+        while (!atEnd && next != '"') index += 1
         val end = index
         skip("\"")
         StringValue(input.substring(begin,end))
@@ -370,7 +369,7 @@ class Parser(file: File, input: String) {
         BoolValue(true)
       } else if (startsWithS("false")) {
         BoolValue(false)
-      } else if (next.isDigit || next == '-') {
+      } else if (!atEnd && (next.isDigit || next == '-')) {
         val begin = index
         if (next == '-') skip("-")
         var seenDot = false
@@ -623,6 +622,9 @@ class Parser(file: File, input: String) {
           case Nil => UnitType
           case _ => ProdType(ys)
         }
+      } else if (startsWithS("|-")) {
+        val e = parseExpression
+        ProofType(e)
       } else {
         // conflict between types that start with a name and those starting with an expression, i.e., e{tp} or e.tp
         val backtrackPoint = index
@@ -654,11 +656,11 @@ class Parser(file: File, input: String) {
     // postfix/infix type operators
     while (typePostOps.exists(startsWith)) {
       if (startsWithS("->")) {
-        val out = parseType // makes -> right-associative
-        val ins = tp match {
-          case ProdType(ys) => ys
-          case y => LocalContext(VarDecl.anonymous(y))
+        val (ctxR,ins) = tp match {
+          case ProdType(ys) => (ctxs.append(ys),ys)
+          case y => (ctxs, LocalContext(VarDecl.anonymous(y)))
         }
+        val out = parseType(ctxR) // makes -> right-associative and dependent
         tp = FunType(ins,out)
       } else if (startsWithS("?")) {
         setRef(tp, tpBegin)

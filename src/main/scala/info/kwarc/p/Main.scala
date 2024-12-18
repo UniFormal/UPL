@@ -1,14 +1,14 @@
 package info.kwarc.p
 
 object Main {
-  def main(args: Array[String]) = {
+  def main(args: Array[String]): Unit = {
     val path = File(args(0))
     val src = File.read(path)
-    val parser = new Parser(path, src)
+    val parser = new Parser(path.toSourceOrigin, src)
     val decls = parser.parseDeclarations
     val main = if (args.length > 1) {
       val s = args(1)
-      val parserM = new Parser(path, s)
+      val parserM = new Parser(path.toSourceOrigin, s)
       parserM.parseExpression(PContext.empty)
     } else {
       UnitValue

@@ -3,10 +3,16 @@ package info.kwarc.p
 import java.io._
 import scala.collection._
 
+/** like File, but used to avoid any dependency on java.io.File */
+case class SourceOrigin(path: String) {
+  override def toString = path
+}
+
 case class File(toJava: java.io.File) {
    def /(s: String) = File(new java.io.File(toJava, s))
    def canonical : File = File(toJava.getCanonicalPath)
    override def toString = toJava.toString
+   def toSourceOrigin = SourceOrigin(toString)
 }
 
 /** copied from mmt-api */
