@@ -425,6 +425,7 @@ object GlobalContext {
 /** top non-terminal; represents a set of declarations and an initial expression to evaluate */
 case class Program(voc: List[Declaration], main: Expression) extends SyntaxFragment {
   override def toString = voc.mkString("\n") + "\n" + main
+  def toModule = Module.anonymous(voc)
 }
 
 /** A declaration that nests other declarations.
