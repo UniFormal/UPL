@@ -29,7 +29,7 @@ object File {
   def read(f: File): String = {
     val s = new StringBuilder
     ReadLineWise(f) {l => s.append(l + "\n")}
-    s.result
+    s.result()
   }
 
   /** convenience method to obtain a typical (buffered, UTF-8) reader for a file */
@@ -40,7 +40,7 @@ object File {
     * @param f the file
     * @param proc a function applied to every line (without line terminator)
     */
-  def ReadLineWise(f: File)(proc: String => Unit) {
+  def ReadLineWise(f: File)(proc: String => Unit) = {
     val r = Reader(f)
     var line: Option[String] = None
     try {
@@ -52,26 +52,5 @@ object File {
     } finally {
       r.close
     }
-  }
-
-  def readProperties(manifest: File): mutable.Map[String, String] = {
-    val properties = new scala.collection.mutable.ListMap[String, String]
-    File.ReadLineWise(manifest) { case line =>
-      // usually continuation lines start with a space but we ignore those
-      val tline = line.trim
-      if (!tline.startsWith("//")) {
-        val p = tline.indexOf(":")
-        if (p > 0) {
-          // make sure line contains colon and the key is non-empty
-          val key = tline.substring(0, p).trim
-          val value = tline.substring(p + 1).trim
-          properties(key) = properties.get(key) match {
-            case None => value
-            case Some(old) => old + " " + value
-          }
-        }
-      }
-    }
-    properties
   }
 }

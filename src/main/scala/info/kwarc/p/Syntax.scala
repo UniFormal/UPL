@@ -1,7 +1,7 @@
 package info.kwarc.p
 
 case class Location(origin: SourceOrigin, from: Int, to: Int) {
-  override def toString = origin + s"#$from:$to"
+  override def toString = s"$origin#$from:$to"
 }
 
 
@@ -219,7 +219,7 @@ case class LocalContext(variables: List[VarDecl]) extends Context[LocalContext] 
   }
   /** applies f to all declarations, outer-most first */
   def map(f: VarDecl => VarDecl) = {
-    val varsM = variables.reverseMap(f)
+    val varsM = Util.reverseMap(variables)(f)
     LocalContext.make(varsM)
   }
   def namesUnique = {
@@ -245,10 +245,10 @@ object LocalContext {
   * represented as decls == VarDecl.sub(n_l,e_n), ...
   */
 case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
-  override def toString = decls.reverseMap(vd => vd.name + "/" + vd.dfO.get).mkString(", ")
+  override def toString = decls.reverseIterator.map(vd => vd.name + "/" + vd.dfO.get).mkString(", ")
   /** e_1, ..., e_n */
-  def exprs = decls.reverseMap(_.dfO.get)
-  def map(f: VarDecl => VarDecl) = Substitution(decls.reverseMap(f).reverse)
+  def exprs = Util.reverseMap(decls)(_.dfO.get)
+  def map(f: VarDecl => VarDecl) = Substitution(Util.reverseMap(decls)(f).reverse)
   /** this : G -> target   --->  this, n/e : G, n:_ -> target */
   def append(n: String, e: Expression) = copy(decls = VarDecl.sub(n,e)::decls)
   /** this : G -> target   --->  this, n/vd.name : G, n:_ -> target, vd */
@@ -355,7 +355,7 @@ case class GlobalContext private (voc: Module, regions: List[(Boolean,RegionalCo
       case None =>
         if (regions.length > 1 && currentIsTransparent) {
           // current region is transparent and there is a previous one to try
-          pop.resolvePath(p)
+          pop().resolvePath(p)
         } else None
     }
   }
@@ -396,7 +396,7 @@ case class GlobalContext private (voc: Module, regions: List[(Boolean,RegionalCo
     if (ds.isEmpty) {
       if (regions.length > 1 && currentIsTransparent) {
         // look in transparent enclosing regions
-        pop.lookupRegional(name)
+        pop().lookupRegional(name)
       } else
         None
     } else {
@@ -646,7 +646,7 @@ sealed trait OwnedObject extends Object {
   def owner: Expression
   /** the original object */
   def owned: Object
-  override def toString = owner + "." + owned
+  override def toString = s"$owner.$owned"
 }
 
 /**
@@ -796,11 +796,11 @@ case class IntervalType(lower: Option[Expression], upper: Option[Expression]) ex
   * Declarations in ins are given in context-order
   */
 case class FunType(ins: LocalContext, out: Type) extends Type {
-  override def toString = ProdType(ins) + " -> " + out
+  override def toString = ProdType(ins).toString + " -> " + out
   def finite = (out::ins.decls.map(_.tp)).forall(_.finite)
   def simple = ins.decls.forall(_.anonymous)
   /** only valid if this.simple */
-  def simpleInputs = ins.decls.reverseMap(_.tp)
+  def simpleInputs = Util.reverseMap(ins.decls)(_.tp)
 }
 object FunType {
   def simple(ts: List[Type], t: Type) = FunType(LocalContext.make(ts.map(VarDecl.anonymous)), t)
@@ -819,7 +819,7 @@ case class ProdType(comps: LocalContext) extends Type {
   def finite = decls.forall(_.tp.finite)
   def simple = comps.decls.forall(_.anonymous)
   /** only valid if this.simple */
-  def simpleComps = comps.decls.reverseMap(_.tp)
+  def simpleComps = Util.reverseMap(comps.decls)(_.tp)
 }
 object ProdType {
   def simple(ts: List[Type]) = ProdType(LocalContext.make(ts.map(VarDecl.anonymous)))
@@ -924,7 +924,7 @@ case class Application(fun: Expression, args: List[Expression]) extends Expressi
     fun match {
       case BaseOperator(o: InfixOperator,_) => args.mkString("("," " + o.symbol + " ",")")
       case BaseOperator(o: PrefixOperator,_) => o.symbol + args.mkString
-      case _ => fun + args.mkString("(",", ",")")
+      case _ => fun.toString + args.mkString("(",", ",")")
     }
   }
 }
@@ -982,8 +982,8 @@ case class IntValue(v: BigInt) extends BaseValue(v, IntType) {
 }
 
 /** elements of [[RatType]] */
-case class RatValue(enum: BigInt, denom: BigInt) extends BaseValue(enum/denom, RatType) {
-  override def toString = enum.toString + "/" + denom.toString
+case class RatValue(enumer: BigInt, denom: BigInt) extends BaseValue(enumer/denom, RatType) {
+  override def toString = enumer.toString + "/" + denom.toString
 }
 
 /** helper object to construct/pattern-match numbers such that [[IntType]] is a subtype of [[RatType]] */
@@ -1306,15 +1306,5 @@ object Operator {
           case _ => None
         }
     }
-  }
-}
-
-object Util {
-  def noReps[A](l: List[A]) = l.distinct.length == l.length
-  def disjoint[A](l: List[A], r: List[A]) = {
-    l.forall(n => !r.contains(n))
-  }
-  def sub[A](l: List[A], r: List[A]) = {
-    l.forall(n => r.contains(n))
   }
 }

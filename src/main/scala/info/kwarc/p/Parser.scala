@@ -533,7 +533,7 @@ class Parser(origin: SourceOrigin, input: String) {
       case Lambda(ins,bd) =>
         // awkward: if parseExpression was able to turn the pattern into a lambda, undo that here
         val p = if (ins.decls.length != 1)
-          Tuple(ins.decls.reverseMap(_.toRef))
+          Tuple(Util.reverseMap(ins.decls)(_.toRef))
         else
           VarRef(ins.decls.head.name)
         MatchCase(null, p.copyFrom(ins), bd)
@@ -558,7 +558,7 @@ class Parser(origin: SourceOrigin, input: String) {
     var rest = eos
     var last = lastExp
     // shift: shifted.reverse | hd tl last ---> shifted hd | tl last
-    def shift {
+    def shift = {
       shifted ::= rest.head
       rest = rest.tail
     }

@@ -5,7 +5,7 @@ import SyntaxFragment.matchC
 object Checker {
   private val debug = true
 
-  case class Error(cause: SyntaxFragment,msg: String) extends PError(cause.loc + ": " + msg + " while checking " + cause.toString)
+  case class Error(cause: SyntaxFragment,msg: String) extends PError(cause.loc.toString + ": " + msg + " while checking " + cause.toString)
   private def fail(m: String)(implicit cause: SyntaxFragment) =
     throw Error(cause,m)
   private def expected(exp: SyntaxFragment, found: SyntaxFragment): String = expected(exp.toString, found.toString)

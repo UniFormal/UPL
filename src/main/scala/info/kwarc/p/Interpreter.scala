@@ -15,7 +15,7 @@ trait MutableExpressionStore {
     case Some(f) => f.value
     case None => throw IError("variable does not exist: " + n)
   }
-  def set(n: String, v: Expression) {
+  def set(n: String, v: Expression) = {
     fields.find(_.name == n).get.value = v
   }
 }
@@ -35,7 +35,7 @@ object LocalEnvironment {
 case class RegionalEnvironment(name: String, region: Option[Instance], local: LocalEnvironment) {
   override def toString = name + ": " + region + fields.mkString(", ")
   def fields = local.fields
-  def allocate(n: String, vl: Expression) {
+  def allocate(n: String, vl: Expression) = {
     local.fields ::= MutableExpression(n, vl)
     addedInBlock = (addedInBlock.head + 1) :: addedInBlock.tail
   }
@@ -80,7 +80,7 @@ class Interpreter(vocInit: Module) {
   private def stack = env.regions
   private def frame = stack.head
 
-  def interpretDeclaration(d: Declaration) {
+  def interpretDeclaration(d: Declaration) = {
     // TODO
     env.voc = env.voc.append(d)
   }
@@ -469,18 +469,18 @@ class ProductIterator[A,B](aI: Iterator[A], bI: Iterator[B]) extends Iterator[(A
   def next() = {
     if (!current.hasNext) {
       if (nextFromA && aI.hasNext) {
-        val a = aI.next
+        val a = aI.next()
         as ::= a
         current = bs.iterator.map(b => (a,b))
         if (bI.hasNext) nextFromA = false
       } else if (bI.hasNext) {
-        val b = bI.next
+        val b = bI.next()
         bs ::= b
         current = as.iterator.map(a => (a,b))
         if (aI.hasNext) nextFromA = true
       }
     }
-    current.next
+    current.next()
   }
 }
 
