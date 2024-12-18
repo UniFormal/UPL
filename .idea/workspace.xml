@@ -23,7 +23,12 @@
       <state>
         <projects_view>
           <tree_state>
-            <expand />
+            <expand>
+              <path>
+                <item name="" type="6a2764b6:ExternalProjectsStructure$RootNode" />
+                <item name="UPL" type="f1a62948:ProjectNode" />
+              </path>
+            </expand>
             <select />
           </tree_state>
         </projects_view>
@@ -59,8 +64,9 @@
   </component>
   <component name="RunManager">
     <configuration name="Build" type="Application" factoryName="Application">
+      <option name="ALTERNATIVE_JRE_PATH" value="BUNDLED" />
       <option name="MAIN_CLASS_NAME" value="info.kwarc.p.Main" />
-      <module name="P" />
+      <module name="UPL" />
       <option name="PROGRAM_PARAMETERS" value="test.p main" />
       <method v="2">
         <option name="Make" enabled="true" />
@@ -112,7 +118,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Syntax.scala</url>
-          <line>1285</line>
+          <line>1286</line>
           <option name="timeStamp" value="84" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">

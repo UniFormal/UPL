@@ -259,6 +259,7 @@ class Interpreter(vocInit: Module) {
             }
         }
         if (runCases) doCases(cases) else eI
+      case _:MatchCase => fail("match case outside match")
       case lam: Lambda =>
         // lambdas must be interpreted at call-time, and the body is relative to the current frame
         val lamC = lam.copy() // the same lambda can be interpreted in different frames
@@ -370,7 +371,7 @@ class Interpreter(vocInit: Module) {
         new Iterator[Expression] {
           var current = begin
           def hasNext = end.isEmpty || current <= end.get
-          def next = {val n = current; current += step; IntValue(n)}
+          def next() = {val n = current; current += step; IntValue(n)}
         }
       case _ => fail("cannot iterate")(tp)
     }
@@ -465,7 +466,7 @@ class ProductIterator[A,B](aI: Iterator[A], bI: Iterator[B]) extends Iterator[(A
   private var current: Iterator[(A,B)] = Iterator.empty
   private var nextFromA = true
   def hasNext = current.hasNext || aI.hasNext || bI.hasNext
-  def next = {
+  def next() = {
     if (!current.hasNext) {
       if (nextFromA && aI.hasNext) {
         val a = aI.next
@@ -496,7 +497,7 @@ object Enumeration {
   object Naturals extends Iterator[BigInt] {
     private var current = -1
     def hasNext = true
-    def next = {
+    def next() = {
       current += 1;
       current
     }

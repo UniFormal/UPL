@@ -1230,6 +1230,7 @@ object Operator {
         ((pf,as.head)) match {
           case (UMinus,(IntOrRatValue(x,y))) => IntOrRatValue(-x,y)
           case (Not,BoolValue(b)) => BoolValue(!b)
+          case _ => throw IError("missing case for " + pf)
         }
       case inf: InfixOperator =>
         (inf,as(0),as(1)) match {
@@ -1294,6 +1295,7 @@ object Operator {
         ((pf,res)) match {
           case (UMinus,(IntOrRatValue(x,y))) => Some(List(IntOrRatValue(-x,y)))
           case (Not,BoolValue(b)) => Some(List(BoolValue(!b)))
+          case _ => throw IError("operator not invertible: " + pf)
         }
       case inf: InfixOperator =>
         // TODO: only legal for certain collection kinds
