@@ -1182,7 +1182,7 @@ object Checker {
     val matchingTypes = matchResults.flatMap(_.toList)
     if (matchingTypes.length == 0)
       fail("ill-typed operator")
-    val outs = matchingTypes.map(_._1.out).distinct
+    val outs = Util.distinct(matchingTypes.map(_._1.out))
     // infer return type if all possible types agree
     val out = if (outs.length == 1) outs.head else
       fail("cannot disambiguate operator")
@@ -1291,7 +1291,7 @@ object Checker {
   }
   /** applies assignments returned by matchTypes */
   private def assignAsMatched(as: TypeAssignments) = {
-    as.distinct.foreach {case (u,a) =>
+    Util.distinct(as).foreach {case (u,a) =>
       u.set(a)
     }
   }
