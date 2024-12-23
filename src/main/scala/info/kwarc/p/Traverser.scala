@@ -66,8 +66,9 @@ abstract class Traverser[A] {
       }
     case ClosedRef(n) => ClosedRef(n)
     case OpenRef(p) => OpenRef(apply(p))
-    case OwnedType(e, o) => OwnedType(apply(e), apply(o)(gc.push(RegionalContext(null,Some(e))),a))
+    case OwnedType(e, d, o) => OwnedType(apply(e), apply(d), apply(o)(gc.push(RegionalContext(d,Some(e))),a))
     case b: BaseType => b
+    case ExceptionType => tp
     case IntervalType(l,u) => IntervalType(l map apply, u map apply)
     case ClassType(thy) => ClassType(apply(thy))
     case ExprsOver(thy,q) => ExprsOver(apply(thy), apply(q)(gc.push(thy),a))
@@ -86,7 +87,7 @@ abstract class Traverser[A] {
     case _: VarRef => exp
     case ClosedRef(n) => ClosedRef(n)
     case OpenRef(p) => OpenRef(apply(p))
-    case OwnedExpr(o, e) => OwnedExpr(apply(o), apply(e)(gc.push(RegionalContext(null,Some(o))),a))
+    case OwnedExpr(o, d, e) => OwnedExpr(apply(o), apply(d), apply(e)(gc.push(RegionalContext(d,Some(o))),a))
     case BaseOperator(o,tp) => BaseOperator(o, apply(tp))
     case Instance(thy) => Instance(apply(thy))
     case vd:VarDecl => applyVarDecl(vd)._1
@@ -171,40 +172,40 @@ object EvalTraverser {
 
 class OwnerSubstitutor(shallow: Boolean) extends StatelessTraverser {
   private def owners(implicit gc: GlobalContext) = gc.regions.collect {
-    case r if r._2.owner.isDefined => r._2.owner.get
+    case r if r.region.owner.isDefined => (r.region.theory,r.region.owner.get)
   }
   private def makeType(tp: Type)(implicit gc: GlobalContext) = {
-    owners.foldLeft(tp) {case (sofar,next) => OwnedType(next, sofar)}
+    owners.foldLeft(tp) {case (sofar,(d,o)) => OwnedType(o,d,sofar)}
   }
   private def makeExpr(e: Expression)(implicit gc: GlobalContext) = {
-    owners.foldLeft(e) {case (sofar,next) => OwnedExpr(sofar, next)}
+    owners.foldLeft(e) {case (sofar,(d,o)) => OwnedExpr(o,d,sofar)}
   }
   override def apply(tp: Type)(implicit gc: GlobalContext, a: Unit) = if (shallow) makeType(tp) else matchC(tp) {
     case c: ClosedRef => makeType(c)
     case e: ExprsOver => makeType(e)
-    case OwnedType(o,t) => apply(t)(gc.push(RegionalContext(null,Some(o))), a)
+    case OwnedType(o,d,t) => apply(t)(gc.push(RegionalContext(d,Some(o))), a)
     case _ => applyDefault(tp)
   }
   override def apply(exp: Expression)(implicit gc: GlobalContext, a: Unit) = if (shallow) makeExpr(exp) else matchC(exp) {
     case c: ClosedRef => makeExpr(c)
     case e: ExprOver => EvalTraverser(e) {ev => apply(ev)}
-    case OwnedExpr(e,o) => apply(e)(gc.push(RegionalContext(null,Some(o))), a)
+    case OwnedExpr(e,d,o) => apply(e)(gc.push(RegionalContext(d,Some(o))), a)
     case _ => applyDefault(exp)
   }
 }
 object OwnerSubstitutor {
-  private def initGC(o: Expression) = GlobalContext("").push(RegionalContext(null,Some(o)))
-  def apply(own: Expression, d: Declaration): Declaration = {
+  private def initGC(o: Expression, dom: Theory) = GlobalContext("").push(RegionalContext(dom,Some(o)))
+  def apply(own: Expression, dom: Theory, d: Declaration): Declaration = {
     val os = new OwnerSubstitutor(true)
-    os.apply(d)(initGC(own),())
+    os.apply(d)(initGC(own,dom),())
   }
-  def apply(own: Expression, tp: Type): Type = {
+  def apply(own: Expression, dom: Theory, tp: Type): Type = {
     val os = new OwnerSubstitutor(false)
-    os.apply(tp)(initGC(own),())
+    os.apply(tp)(initGC(own,dom),())
   }
-  def apply(own: Expression, e: Expression): Expression = {
+  def apply(own: Expression, dom: Theory, e: Expression): Expression = {
     val os = new OwnerSubstitutor(false)
-    os.apply(e)(initGC(own),())
+    os.apply(e)(initGC(own, dom),())
   }
 }
 

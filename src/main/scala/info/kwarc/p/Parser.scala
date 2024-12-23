@@ -46,6 +46,17 @@ object PContext {
   def empty = PContext(List(LocalContext.empty), false)
 }
 
+object Parser {
+  def file(f: File) = {
+    val p = new Parser(f.toSourceOrigin, File.read(f))
+    Module.anonymous(p.parseDeclarations)
+  }
+  def expression(origin: String, s: String) = {
+    val p = new Parser(SourceOrigin(origin), s)
+    p.parseExpression(PContext.empty)
+  }
+}
+
 class Parser(origin: SourceOrigin, input: String) {
   private var index = 0
   private val inputLength = input.length
@@ -98,8 +109,14 @@ class Parser(origin: SourceOrigin, input: String) {
     if (startsWithS(t)) true else {skipT(f); false}
   }
 
-  // parses all whitespace at the current position
-  def trim = {while (!atEnd && next.isWhitespace) index += 1}
+  // skip all whitespace and comments
+  def trim: Unit = {
+    while (!atEnd && (next.isWhitespace || startsWith("//")))
+      if (next.isWhitespace) index += 1
+      else {
+        while (!atEnd && next != '\n') index += 1
+      }
+  }
 
   // parses the string s and throws it away
   def skip(s: String) = {
@@ -416,7 +433,7 @@ class Parser(origin: SourceOrigin, input: String) {
       } // end exp =
       trim
       // avoid trying to parse nonsense if we can already tell
-      val tryPostOps = exp match {
+      var tryPostOps = exp match {
         case _:BaseValue | _: Block | _: Assign | _: VarDecl | _:While | _:For | _: Return => false
         case _ => true
       }
@@ -430,16 +447,24 @@ class Parser(origin: SourceOrigin, input: String) {
           val e = parseExpression
           skip("]")
           exp = ListElem(exp,e)
-        } else if (startsWithS(".")) {
-          val nB = index
-          val n = setRef(ClosedRef(parseName), nB)
-          exp = OwnedExpr(exp,n)
+        } else if (startsWith(".")) {
+          val btp = index
+          skip(".")
+          if (!atEnd && next.isWhitespace) {
+            // . only works if followed by identifier; this allows using ". " in a quantifier without ambiguity
+            index = btp
+            tryPostOps = false
+          } else {
+            val nB = index
+            val owned = setRef(ClosedRef(parseName),nB)
+            exp = OwnedExpr(exp,null,owned)
+          }
         } else if (startsWithS("{")) {
           // conflict between M{decls} and exp{exp}
           // we look back and ahead to see if it is the former, in which case looksLikeInstanceOf.isDefined
           // check if there was a Path before
           def asPath(e: Expression): Option[Path] = e match {
-            case OwnedExpr(e,ClosedRef(n)) => asPath(e).map(_ / n)
+            case OwnedExpr(e,_,ClosedRef(n)) => asPath(e).map(_ / n)
             case ClosedRef(n) => Some(Path(List(n)))
             case _ => None
           }
@@ -466,7 +491,7 @@ class Parser(origin: SourceOrigin, input: String) {
               Instance(ExtendedTheory(p,sds).copyFrom(exp))
             case None =>
               val e = parseExpression(ctxs.push()) // in e{q}, q is a closed expression in a different theory
-              OwnedExpr(exp,e)
+              OwnedExpr(exp,null,e)
           }
           skip("}")
         }
@@ -600,13 +625,27 @@ class Parser(origin: SourceOrigin, input: String) {
     val tpBegin = index
     var tp = if (startsWithS(".")) {
         OpenRef(parsePath)
-      } else if (startsWithS("int")) {IntType}
+      } else if (startsWithS("int")) {
+        trim
+        if (startsWithS("[")) {
+          trim
+          val l = if (startsWith(";")) None else Some(parseExpression)
+          trim
+          skipT(";")
+          val u = if (startsWith("]")) None else Some(parseExpression)
+          trim
+          skip("]")
+          IntervalType(l,u)
+        } else
+          IntType
+      }
       //else if (startsWith("float")) {skip("float"); FloatType}
       //else if (startsWith("char")) {skip("char"); CharType}
       else if (startsWithS("rat")) RatType
       else if (startsWithS("string")) StringType
       else if (startsWithS("bool")) BoolType
       else if (startsWithS("empty")) EmptyType
+      else if (startsWithS("exn")) ExceptionType
       else if (startsWithAny("[" :: CollectionKind.allKeywords :_*)) {
         val kind = if (startsWith("[")) CollectionKind.List
         else CollectionKind.allKinds.find(k => startsWithS(k._1)).get._2
@@ -644,8 +683,8 @@ class Parser(origin: SourceOrigin, input: String) {
           val tp = exp match {
             case r: ClosedRef => r
             case o: OpenRef => o
-            case OwnedExpr(o,r: ClosedRef) => OwnedType(o,r)
-            case OwnedExpr(o,r: OpenRef) => OwnedType(o,r)
+            case OwnedExpr(o,d,r: ClosedRef) => OwnedType(o,d,r)
+            case OwnedExpr(o,d,r: OpenRef) => OwnedType(o,d,r)
             case Instance(thy) => ClassType(thy)
             case _ => fail("type expected")
           }

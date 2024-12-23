@@ -27,12 +27,13 @@ object LocalEnvironment {
 }
 
 /** @param name frame name, only used for error reporting
-  * @param owner the [[Instance]] relative to which [[ClosedRef]]s are interpreted,
+  * @param region the [[Instance]] relative to which [[ClosedRef]]s are interpreted,
   *  e.g., empty if we are in an open module
-  * @param fields the visible local variables
+  * @param local the visible local variables
+  * @param transparent whether lookups may continue in the previous frame
   *  e.g., the (immutable) arguments of the called functions, and mutable local declarations
   */
-case class RegionalEnvironment(name: String, region: Option[Instance], local: LocalEnvironment) {
+case class RegionalEnvironment(name: String, region: Option[Instance] = None, local: LocalEnvironment = LocalEnvironment.empty, transparent: Boolean = false) {
   override def toString = name + ": " + region + fields.mkString(", ")
   def fields = local.fields
   def allocate(n: String, vl: Expression) = {
@@ -51,21 +52,65 @@ case class RegionalEnvironment(name: String, region: Option[Instance], local: Lo
   private var addedInBlock: List[Int] = Nil
 }
 
-object RegionalEnvironment {
-  def apply(name: String, reg: Option[Instance] = None): RegionalEnvironment = RegionalEnvironment(name, reg, LocalEnvironment.empty)
-}
-
 class GlobalEnvironment(var voc: Module) {
-  var regions = List(RegionalEnvironment("toplevel", None, LocalEnvironment.empty))
+  var regions = List(RegionalEnvironment("toplevel", None, LocalEnvironment.empty, false))
   def frame = regions.head
   def inFrame[A](f: RegionalEnvironment)(a: => A) = {
     regions ::= f
     try {a}
     finally {regions = regions.tail}
   }
+
+  def lookupLocal(n: String): Expression = {
+    var rs = regions
+    while (rs.nonEmpty) {
+      rs.head.local.getO(n) match {
+        case Some(v) => return v.value
+        case None =>
+          if (rs.head.transparent) rs = rs.tail
+          else rs = Nil
+      }
+    }
+    throw IError("unknown variable")
+  }
+
+  def lookupRegional(n: String): Expression = {
+    var rs = regions
+    while (rs.nonEmpty) {
+      rs.head.region match {
+        case None =>
+          throw IError("no instance")
+        case Some(inst) =>
+          // try in instance
+          inst.getO(n) match {
+            case Some(v) =>
+              return v.value
+            case None =>
+              // try inherited theories
+              GlobalContext(voc).push(inst.theory).lookupRegional(n) match {
+                case Some(ed: ExprDecl) => return ed.dfO.get
+                case Some(d) => throw IError("unexpected declaration")
+                case None =>
+                  // try surrounding frame
+                  if (rs.head.transparent) rs = rs.tail
+                  else rs = Nil
+              }
+          }
+      }
+    }
+    throw IError("unknown field")
+  }
 }
 
 // ********************************* interpretation
+
+object Interpreter {
+  def run(p: Program) = {
+    val ip = new Interpreter(p.toModule)
+    val r = ip.interpretExpression(p.main)
+    (ip,r)
+  }
+}
 
 class Interpreter(vocInit: Module) {
   private val debug = false
@@ -77,12 +122,21 @@ class Interpreter(vocInit: Module) {
   case class RuntimeError(msg: String) extends PError(msg)
 
   private val env = new GlobalEnvironment(vocInit)
+  def voc = env.voc
   private def stack = env.regions
   private def frame = stack.head
 
   def interpretDeclaration(d: Declaration) = {
-    // TODO
-    env.voc = env.voc.append(d)
+    d match {
+      case ed: ExprDecl if ed.dfO.isDefined =>
+        val df = ed.dfO.get
+        val dfI = interpretExpression(df)
+        val edI = ed.copy(dfO = Some(dfI))
+        edI.global = true
+        env.voc = env.voc.append(edI)
+        edI
+      case _ => fail("uninterpretable")(d)
+    }
   }
 
   def interpretExpressionInFrame(f: RegionalEnvironment, exp: Expression) = {
@@ -96,23 +150,6 @@ class Interpreter(vocInit: Module) {
     exp match {
       case _: BaseValue => exp
       case _: BaseOperator => exp
-      case ClosedRef(n) => frame.region match {
-        case None =>
-          fail("no owner for closed references") //TODO allow this as an abstract declaration in a module; all elimination forms below must remain uninterpreted
-        case Some(inst) =>
-          inst.getO(n) match {
-            case Some(me) => me.value
-            case None =>
-              val ExtendedTheory(instD,_) = inst.theory
-              env.voc.lookupPath(instD / n) match {
-                case Some(d: ExprDecl) => d.dfO match {
-                  case Some(e) => e
-                  case None => fail("no definiens")
-                }
-                case _ => fail("not an expression")
-              }
-          }
-      }
       case OpenRef(p) =>
         env.voc.lookupPath(p) match {
           case Some(sd: ExprDecl) => sd.dfO match {
@@ -121,7 +158,8 @@ class Interpreter(vocInit: Module) {
           }
           case _ => fail("not an expression")
         }
-      case VarRef(n) => frame.local.get(n) // frame values are always interpreted
+      case ClosedRef(n) => env.lookupRegional(n)
+      case VarRef(n) => env.lookupLocal(n) // frame values are always interpreted
       case VarDecl(n,_,vl,_,_) =>
         val vlI = vl match {
           case None => fail("uninitialized variable")
@@ -145,38 +183,52 @@ class Interpreter(vocInit: Module) {
       case inst: Instance =>
         // instance creation
         val runtimeInst = inst.copy() // create new Java object for every new instance
+        runtimeInst.fields = Nil
         val initDecls = inst.theory.decls
-        // TODO: replace all references to the current frame in initDecls with their current values
-        // otherwise, we would have to keep those frames around; including in lambdas
-        val initDeclsAbsolute = initDecls
-        val re = RegionalEnvironment("new instance",Some(runtimeInst))
+        val re = RegionalEnvironment("new instance",Some(runtimeInst), transparent = true)
+        // execute all fields in the context of this instance
+        case class InterpretationInput(decls: List[Declaration], from: Option[Include])
+        var todo = List(InterpretationInput(initDecls, None))
         env.inFrame(re) {
-          // execute the constructor arguments in the context of this instance
-          initDeclsAbsolute.foreach {
-            case sd: ExprDecl =>
-              val dfI = interpretExpression(sd.dfO.get)
-              runtimeInst.fields ::= MutableExpression(sd.name,dfI)
-            case _ =>
-          }
-          // execute inherited field initializers
-          val instDom = inst.theory match {
-            case PhysicalTheory(p) => p
-            case _ => fail("non-atomic instance")
-          }
-          val mod = env.voc.lookupModule(instDom).getOrElse(fail("unknown module"))
-          // TODO: i.dfO
-          mod.decls.foreach {
-            case sd: ExprDecl if sd.dfO.isDefined =>
-              val d = sd.dfO.get
-              val dI = interpretExpression(d)
-              if (!(d eq dI) || sd.mutable) {
-                runtimeInst.fields ::= MutableExpression(sd.name,dI)
-              }
-            case _ =>
+          while (todo.nonEmpty) {
+            val InterpretationInput(d :: ds, inclO) :: tail = todo
+            todo = if (ds.isEmpty) tail else InterpretationInput(ds,inclO) :: tail
+            d match {
+              case _: TypeDecl => // not needed
+              case sd: ExprDecl if runtimeInst.getO(sd.name).isDefined => // definition from elsewhere already executed
+              case sd: ExprDecl =>
+                val df = inclO match {
+                  case None =>
+                    sd.dfO.getOrElse(fail("no definiens"))
+                  case Some(incl) =>
+                    // execute inherited definition and then apply delegate
+                    OwnedExpr(incl.dfO.get, incl.theory, sd.toRef)
+                }
+                val dfI = interpretExpression(df)
+                // we keep all fields that are local (i.e., a constructor argument),
+                // declared in parent and mutable, or inherited and immutable and not values
+                // other fields can be looked up in the parent, in particular all lambdas
+                // TODO: lambdas may require keeping the previous frame
+                if (inclO.isEmpty || sd.mutable || !(df eq dfI)) {
+                  runtimeInst.fields ::= MutableExpression(sd.name,dfI)
+                }
+              case incl: Include =>
+                // execute inherited field initializers if necessary
+                val delegateO = incl.dfO match {
+                  case Some(df) =>
+                    // execute and remember delegate
+                    val dfI = interpretExpression(df)
+                    Some(incl.copy(dfO = Some(dfI)))
+                  case _ => None
+                }
+                // append at the end so that constructor fields are executed before inherited fields
+                val mod = env.voc.lookupModule(incl.dom).getOrElse(fail("unknown module"))
+                todo = todo ::: List(InterpretationInput(mod.decls, delegateO))
+            }
           }
         }
         runtimeInst
-      case OwnedExpr(own,e) =>
+      case OwnedExpr(own,_,e) =>
         val ownI = interpretExpression(own)
         ownI match {
           case inst: Instance if inst.isRuntime =>
@@ -316,12 +368,14 @@ class Interpreter(vocInit: Module) {
       case Quantifier(q, ctx, bd) =>
         val vds = ctx.variables
         val its = vds.map {vd => makeIterator(vd.tp)}
-        vds.foreach {vd => frame.allocate(vd.name, null)} // initial value irrelevant
-        val it = Enumeration.product(its)
-        it.take(100).foreach {es =>
-          (vds zip es).foreach {case (v,e) => frame.local.set(v.name,e)}
-          val bdI = interpretExpression(bd)
-          if (bdI == BoolValue(!q)) return bdI
+        frame.inNewBlock {
+          vds.foreach {vd => frame.allocate(vd.name,null)} // initial value irrelevant
+          val it = Enumeration.product(its)
+          it.take(100).foreach {es =>
+            (vds zip es).foreach {case (v,e) => frame.local.set(v.name,e)}
+            val bdI = interpretExpression(bd)
+            if (bdI == BoolValue(!q)) return bdI
+          }
         }
         BoolValue(q) // only correct if we've tried all values
       case Assert(f) =>
@@ -436,7 +490,7 @@ class Interpreter(vocInit: Module) {
 
   def applyFunction(name: String, owner: Option[Instance], lam: Lambda, args: List[Expression]) = {
     val fes = (lam.ins.decls.reverse zip args) map {case (i,a) => MutableExpression(i.name,a)}
-    val fr = RegionalEnvironment(name, owner, LocalEnvironment(fes:::lam.frame.fields))
+    val fr = RegionalEnvironment(name, owner, LocalEnvironment(fes:::lam.frame.fields), false)
     interpretExpressionInFrame(fr, lam.body)
   }
 

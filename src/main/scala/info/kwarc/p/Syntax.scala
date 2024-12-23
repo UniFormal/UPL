@@ -104,7 +104,7 @@ object Type {
 
 /** typed expressions */
 sealed trait Expression extends Object {
-  def field(f: String) = OwnedExpr(this,ClosedRef(f))
+  def field(dom: Theory, f: String) = OwnedExpr(this,dom,ClosedRef(f))
   def substitute(sub: Substitution) = Substituter(GlobalContext(""), sub, this)
 }
 
@@ -291,9 +291,9 @@ case class BiContext(lr: List[(VarDecl,VarDecl)]) {
   * @param local the local context
   */
 case class RegionalContext(theory: Theory, owner: Option[Expression], local: LocalContext) extends Context[RegionalContext] {
-  override def toString = owner.getOrElse(theory).toString + s"{$local}"
-  def physical = theory.physical && owner.isEmpty
+  override def toString = owner.getOrElse(theory).toString + s"($local)"
   def copyLocal(c: LocalContext) = copy(local = c)
+  def add(d: Declaration) = copy(theory = theory.add(d))
 }
 object RegionalContext {
   val empty = RegionalContext(Theory.empty, None, LocalContext.empty)
@@ -301,6 +301,8 @@ object RegionalContext {
     RegionalContext(thy, owner, LocalContext.empty)
   def apply(p: Path): RegionalContext = RegionalContext(PhysicalTheory(p))
 }
+
+case class RegionalContextFrame(region: RegionalContext, transparent: Boolean, physical: Boolean)
 
 /** program-level context: provides the vocabulary and the stack of regional+local contexts
   *
@@ -311,52 +313,81 @@ object RegionalContext {
   * Therefore, they are maintained as a stack. Only the top element is accessible at any given time.
   * However, each element carries an additional Boolean; if true, it is transparent, and the element beneath is accessible too.
   */
-case class GlobalContext private (voc: Module, regions: List[(Boolean,RegionalContext)]) extends Context[GlobalContext] {
-  def currentRegion = regions.head._2
-  def currentIsTransparent = regions.head._1
+case class GlobalContext private (voc: Module, regions: List[RegionalContextFrame]) extends Context[GlobalContext] {
+  def currentRegion = regions.head.region
+  def currentIsTransparent = regions.head.transparent
   def theory = currentRegion.theory
   def local = currentRegion.local
-  def visibleLocals = LocalContext(regions.takeWhile(_._1).flatMap(_._2.local.decls))
+  def visibleLocals = LocalContext(regions.takeWhile(_.transparent).flatMap(_.region.local.decls))
   def freshName = {
     var i = 0
     while (local.decls.exists(vd => vd.name.startsWith("_" + i))) i+=1
     "_"+i
   }
+  def enter(n: String) = pushFrame(RegionalContext(currentParent/n),true,true)
   def push(t: Theory, owner: Option[Expression] = None): GlobalContext = push(RegionalContext(t,owner))
-  def push(e: RegionalContext): GlobalContext = copy(regions = (false,e)::regions)
+  def push(e: RegionalContext): GlobalContext = pushFrame(e,false,false)
+  def pushEmpty() = pushFrame(RegionalContext.empty, true,false)
+  private def pushFrame(r: RegionalContext, trans: Boolean, phys: Boolean) = {
+    val f = RegionalContextFrame(r, trans, phys)
+    copy(regions = f::regions)
+  }
   def pop() = copy(regions = regions.tail)
   /** true if the local environment is given by the current parent(s) (as opposed to other ones that we have pushed) */
-  def inPhysicalTheory = regions.forall(_._2.physical)
+  def inPhysicalTheory = regions.forall(_.physical)
   def copyLocal(lc: LocalContext) = {
     val regC = currentRegion.copyLocal(lc)
-    copy(regions = (regions.head._1, regC) :: regions.tail)
+    copy(regions = regions.head.copy(region=regC)::regions.tail)
+  }
+  /** adds a declaration to the current physical theory (if any) or the current region */
+  def add(d: Declaration) = {
+    if (inPhysicalTheory) {
+      copy(voc = voc.addIn(currentParent,d))
+    } else {
+      val frame::tail = regions
+      val frameA = frame.copy(region = frame.region.add(d))
+      copy(regions = frameA :: tail)
+    }
   }
   /** checks if this == smaller.append(result) */
   def unappend(smaller: GlobalContext): Option[LocalContext] = {
     // voc may be longer than shorter.voc, but that is not checked here
     if (this.regions.length != smaller.regions.length) return None
     if (this.regions.tail != smaller.regions.tail) return None // should be reference equal in practice and succeed immediately
-    this.regions.head._2.local unappend smaller.regions.head._2.local
+    this.currentRegion.local unappend smaller.currentRegion.local
   }
 
   private def currentParent: Path = {
-    if (!inPhysicalTheory) throw IError("not in physical theory")
-    currentRegion.theory.pathO.get
+    if (!inPhysicalTheory)
+      throw IError("not in physical theory")
+    currentRegion.theory.decls.head match {
+      case Include(p,None,false) => p
+      case _ => throw IError("not a physical theory")
+    }
   }
-  def enter(n: String) = copy(regions = (true, RegionalContext(currentParent/n)) :: regions)
-  def add(d: Declaration) = copy(voc = voc.addIn(currentParent,d))
   def parentDecl = voc.lookupModule(currentParent).getOrElse {throw Checker.Error(voc, "unknown parent")}
+  /** declarations of the current parent/region */
+  def parentDecls = {
+    if (inPhysicalTheory) parentDecl.decls
+    else currentRegion.theory.decls
+  }
   /** dereferences an ambiguous relative path: looks up in transparent physical parent regions and returns the first that exists */
   def resolvePath(p: Path): Option[(Path, NamedDeclaration)] = {
-    if (!inPhysicalTheory) return None
-    val pp = currentParent/p
-    voc.lookupPath(pp) match {
-      case Some(d) => Some((pp,d))
-      case None =>
-        if (regions.length > 1 && currentIsTransparent) {
-          // current region is transparent and there is a previous one to try
-          pop().resolvePath(p)
-        } else None
+    if (!inPhysicalTheory) {
+      currentRegion.theory.lookupPath(p) match {
+        case Some(d) => Some((p,d))
+        case None => pop().resolvePath(p)
+      }
+    } else {
+      val pp = currentParent / p
+      voc.lookupPath(pp) match {
+        case Some(d) => Some((pp,d))
+        case None =>
+          if (regions.length > 1 && currentIsTransparent) {
+            // current region is transparent and there is a previous one to try
+            pop().resolvePath(p)
+          } else None
+      }
     }
   }
   def resolveName(obj: Object): Option[(Object,Option[NamedDeclaration])] = {
@@ -416,15 +447,15 @@ case class GlobalContext private (voc: Module, regions: List[(Boolean,RegionalCo
 }
 object GlobalContext {
   def apply(n: String): GlobalContext = GlobalContext(Module(n, false, Nil))
-  def apply(m: Module): GlobalContext = GlobalContext(m, List((true,RegionalContext(Path.empty))))
+  def apply(m: Module): GlobalContext = GlobalContext(m, List(RegionalContextFrame(RegionalContext(Path.empty), true, true)))
 }
 
 
 // ***************** Programs and Declarations **************************************
 
-/** top non-terminal; represents a set of declarations and an initial expression to evaluate */
+/** toplevel non-terminal; represents a set of declarations and an initial expression to evaluate */
 case class Program(voc: List[Declaration], main: Expression) extends SyntaxFragment {
-  override def toString = voc.mkString("\n") + "\n" + main
+  override def toString = voc.mkString("\n") + main
   def toModule = Module.anonymous(voc)
 }
 
@@ -467,10 +498,10 @@ case class Module(name: String, closed: Boolean, decls: List[Declaration]) exten
   }
 
   /** for efficient sequential building of declarations: prepends to the last module
-    * @param parent the path of the last module (not quite redundant when modules are nested)
+    * @param parent the path of the last module (almost redundant, but needed when modules are nested)
     */
   private[p] def addIn(parent: Path, d: Declaration): Module = {
-    if (parent.isRoot) copy(decls = d::decls).copyFrom(this)
+    if (parent.isRoot) append(d).copyFrom(this)
     else {
       decls.headOption match {
         case Some(m: Module) if m.name.contains(parent.head) =>
@@ -481,7 +512,7 @@ case class Module(name: String, closed: Boolean, decls: List[Declaration]) exten
     }
   }
 
-  def append(d: Declaration) = copy(decls = decls ::: List(d))
+  def append(d: Declaration) = copy(decls = d::decls)
 
   /** dereferences a path inside this module, returns the result followed by its ancestors */
   def lookupPathAndParents(path: Path, parents: List[NamedDeclaration]): Option[List[NamedDeclaration]] = path.names match {
@@ -503,6 +534,7 @@ case class Module(name: String, closed: Boolean, decls: List[Declaration]) exten
 
 object Module {
   def anonymous(decls: List[Declaration]) = Module("", false, decls)
+  def apply(name: String, closed: Boolean): Module = Module(name, closed, Nil)
 }
 
 /** parent of all declarations that do not nest other declarations */
@@ -513,7 +545,8 @@ sealed trait AtomicDeclaration extends Declaration {
 
 /** include within a module */
 case class Include(dom: Path, dfO: Option[Expression], realize: Boolean) extends UnnamedDeclaration with AtomicDeclaration {
-  def tp = ClassType(PhysicalTheory(dom))
+  def theory = PhysicalTheory(dom)
+  def tp = ClassType(theory)
   override def toString = {
     val kw = if (realize) "realize" else "include"
     val dfS = dfO match {case None | Some(null) => "" case Some(d) => " = " + d.toString}
@@ -563,11 +596,10 @@ case class Theory(decls: List[Declaration]) extends SyntaxFragment {
       case _ => decls.mkString("{", ", ", "}")
     }
   }
-  def pathO = decls match {
-    case Include(p,None,_) :: Nil => Some(p)
-    case _ => None
-  }
-  def physical = pathO.isDefined
+
+  /** prepend a declaration */
+  def add(d: Declaration) = copy(decls = d::decls)
+
   private[p] var isFlat = false
   override def copyFrom(sf: SyntaxFragment): this.type = {
     super.copyFrom(sf)
@@ -644,18 +676,20 @@ case class ClosedRef(n: String) extends Expression with Type {
 sealed trait OwnedObject extends Object {
   /** the translation, must evaluate to an [[Instance]] */
   def owner: Expression
+  /** the theory of the owner */
+  def ownerDom: Theory
   /** the original object */
   def owned: Object
   override def toString = s"$owner.$owned"
 }
 
 /**
-  * expressions translated into another lc
+  * expressions translated into another regional context
   *
   * If t is ClosedRef(n), this is the usual field access o.n known from OOP. See also [[Expression.field]]
   * By allowing arbitrary terms, we can delay traversing expressions, which might have to duplicate owner.
   */
-case class OwnedExpr(owner: Expression, owned: Expression) extends Expression with OwnedObject
+case class OwnedExpr(owner: Expression, ownerDom: Theory, owned: Expression) extends Expression with OwnedObject
 
 /** types translated to another environment
   *
@@ -668,7 +702,7 @@ case class OwnedExpr(owner: Expression, owned: Expression) extends Expression wi
 // checker must ensure owner is Pure (compare Scala path types: owner must be variable to separate side effects from type field access.)
 // interpreter invariant: semantics should not depend on types other than class refs, computation of types should never be needed,
 // i.e., removing all types from declarations and type fields from modules/instances should be allowed
-case class OwnedType(owner: Expression, owned: Type) extends Type with OwnedObject {
+case class OwnedType(owner: Expression, ownerDom: Theory, owned: Type) extends Type with OwnedObject {
   def finite = false
 }
 
@@ -786,8 +820,16 @@ case object AnyType extends BaseType("any") {
   def finite = false
 }
 
+/** user-declared excpetions */
+case object ExceptionType extends Type {
+  override def toString = "exn"
+  def finite = false
+}
+
 /** interval of integers, unbounded if bounds absent, including lower and upper bound if present */
 case class IntervalType(lower: Option[Expression], upper: Option[Expression]) extends Type {
+  private def boundString(e: Option[Expression]) = e.map(_.toString).getOrElse("")
+  override def toString = s"int[${boundString(lower)};${boundString(upper)}]"
   def finite = lower.isDefined && upper.isDefined
   def concrete = lower.forall(_.isInstanceOf[IntValue]) && upper.forall(_.isInstanceOf[IntValue])
 }

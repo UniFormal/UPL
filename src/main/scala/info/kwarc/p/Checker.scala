@@ -2,8 +2,10 @@ package info.kwarc.p
 
 import SyntaxFragment.matchC
 
+import scala.scalajs.js.|
+
 object Checker {
-  private val debug = true
+  private val debug = false
 
   case class Error(cause: SyntaxFragment,msg: String) extends PError(cause.loc.toString + ": " + msg + " while checking " + cause.toString)
   private def fail(m: String)(implicit cause: SyntaxFragment) =
@@ -15,7 +17,7 @@ object Checker {
     case Program(voc,mn) =>
       val gc = GlobalContext("")
       voc.foreach {d => d.global = true}
-      val vocC = checkDeclarationsAndFlatten(gc, voc, true)
+      val vocC = checkDeclarationsAndFlatten(gc, voc, true)(p)
       val gcC = GlobalContext(Module.anonymous(vocC))
       val mnC = checkExpression(gcC,mn,AnyType)
       Program(vocC, mnC)
@@ -32,17 +34,6 @@ object Checker {
           m.decls.foreach {_.global = true}
         }
         val declsC = checkDeclarationsAndFlatten(envM, m.decls, true)
-        // check if this module has definitions for every abstract declaration in a realized theory
-        val defines = declsC.collect {
-          case sd: SymbolDeclaration if sd.dfO.isDefined => sd.name
-        }
-        declsC.foreach {
-          case id: Include if id.realize => gc.voc.lookupModule(id.dom).get.undefined.foreach {sd =>
-            if (!defines.contains(sd.name))
-              fail("missing definition of " + id.dom/sd.name)
-          }
-          case _ =>
-        }
         m.copy(decls = declsC)
         // TODO instance creation may occur before or while a theory is checked - needs 2-phase approach
       case id: Include =>
@@ -71,7 +62,7 @@ object Checker {
     declC
   }
 
-  private case class FlattenInput(decls: List[Declaration], alsoCheck: Boolean, alsoTranslate: Option[Expression]) {
+  private case class FlattenInput(decls: List[Declaration], alsoCheck: Boolean, alsoTranslate: Option[Include]) {
     def tail = copy(decls = decls.tail)
   }
   /** checking and flattening a list of declarations
@@ -88,7 +79,8 @@ object Checker {
      - Declarations are marked to retain the original list.
      keepFull determines what is returned: all non-subsumed declarations or only the subsuming ones and includes
     */
-  private def checkDeclarationsAndFlatten(gc: GlobalContext, decls: List[Declaration], keepFull: Boolean): List[Declaration] = {
+  private def checkDeclarationsAndFlatten(gc: GlobalContext, decls: List[Declaration], keepFull: Boolean)
+                                         (implicit cause: SyntaxFragment): List[Declaration] = {
     /* a FIFO queue of lists of declarations that must be flattened
      * Later on included lists of declarations will be prefixed with that flag negated and the definiens of the include.
      * It would be equivalent to keep a List[Declaration] instead of what is essentially a list of lists of declarations
@@ -103,10 +95,13 @@ object Checker {
     def add(d: Declaration, current: FlattenInput): Boolean = {
       val dT = current.alsoTranslate match {
         case None => d
-        case Some(o) => OwnerSubstitutor(o, d)
+        case Some(incl) => incl.dfO match {
+          case None => d
+          case Some(df) => OwnerSubstitutor(df,incl.theory,d)
+        }
       }
       val old = gcC
-      val existing = gcC.parentDecl.decls.view.map {e =>
+      val existing = gcC.parentDecls.view.map {e =>
         (e,Declaration.compare(e,dT))
       }.find {case (e,c) => c != Declaration.Independent}
       existing match {
@@ -148,21 +143,44 @@ object Checker {
       val changed = add(dC, current)
       // if it is a non-redundant include, queue the body as well
       if (changed) dC match {
-        case Include(p, dfO, _) =>
+        case i@Include(p,_,_) =>
           val m: Module = gc.voc.lookupModule(p).get
-          todo ::= FlattenInput(m.decls, false, dfO)
+          todo ::= FlattenInput(m.decls, false, Some(i))
         case _ =>
       }
     }
-    // reverse 'done' while skipping redundant declarations
+    // reverse 'done' while skipping redundant declarations and collecting info for totality check
     var result: List[Declaration] = Nil
-    gcC.parentDecl.decls.foreach {d =>
+    var defines: List[String] = Nil // defined symbols
+    var delegates: List[Path] = Nil // defined includes
+    var realizes: List[Path] = Nil  // needed for totality
+    gcC.parentDecls.foreach {_d =>
+      var d = _d
+      d match {
+        case sd: SymbolDeclaration if sd.dfO.isDefined => defines ::= sd.name
+        case id: Include if id.dfO.isDefined => delegates ::= id.dom
+        case id: Include if id.realize =>
+          realizes ::= id.dom
+          d = id.copy(realize = false).copyFrom(id) // remove realize flags, which are redundant after checking
+        case _ =>
+      }
       if (!d.subsumed && (keepFull || d.subsuming || d.isInstanceOf[Include])) {
         result ::= d
       }
       // reset flags to avoid messing up the state in included modules
       d.subsumed = false
       d.subsuming = false
+    }
+    // totality check
+    realizes.foreach {p =>
+      if (delegates.contains(p)) {
+        // nothing to do
+      } else {
+        gc.voc.lookupModule(p).get.undefined.foreach {sd =>
+          if (!defines.contains(sd.name))
+            fail("missing definition of " + p / sd.name)(cause)
+        }
+      }
     }
     result
   }
@@ -246,18 +264,13 @@ object Checker {
     }
   }
 
-  // TODO totality check of realize
   def checkTheory(gc: GlobalContext, thy: Theory)(implicit cause: SyntaxFragment): Theory = {
     if (thy.isFlat) return thy
+    // TODO simply retrieve theory if physical
     val mod = thy.toModule
-    val gcI = gc.add(mod.copy(decls = Nil)).enter(mod.name)
+    val gcI = gc.pushEmpty()
     val declsC = checkDeclarationsAndFlatten(gcI,thy.decls,false)
-    // remove realize flags, which are irrelevant from the outside
-    val declsCN = declsC map {
-      case id : Include if id.realize => id.copy(realize = false)
-      case d => d
-    }
-    val t = Theory(declsCN)
+    val t = Theory(declsC)
     t.isFlat = true
     t
   }
@@ -383,17 +396,18 @@ object Checker {
           case Some(_: TypeDecl) => tp
           case _ => fail("not a type")
         }
-      case OwnedType(owner,tp) =>
+      case OwnedType(owner,dom,tp) =>
         val (ownerC,ownerI) = inferExpressionNorm(gc,owner)
         PurityChecker(ownerC)(gc,())
         ownerI match {
-          case ClassType(d) =>
-            val envO = gc.push(d,Some(ownerC))
+          case ClassType(domC) =>
+            if (dom != null && dom != domC) fail("unexpected theory")
+            val envO = gc.push(domC,Some(ownerC))
             val tpC = checkType(envO,tp)
-            OwnedType(ownerC,tpC)
+            OwnedType(ownerC,domC,tpC)
           case _ => fail("owner must be an instance")
         }
-      case _: BaseType => tp
+      case _: BaseType | ExceptionType => tp
       case IntervalType(l,u) =>
         val lC = l map {e => checkExpressionPure(gc,e,IntType)}
         val uC = l map {e => checkExpressionPure(gc,e,IntType)}
@@ -637,10 +651,11 @@ object Checker {
           }
           case _ => fail("illegal type")(tp) // impossible if tp is checked
         }
-      case OwnedType(own, t) =>
-        val tpS = OwnerSubstitutor(own, t)
+      case OwnedType(own, dom, t) =>
+        val tS = typeNormalize(gc.push(dom,Some(own)), t)
+        val tpS = OwnerSubstitutor(own, dom, tS)
         if (tpS != tp) typeNormalize(gc, tpS) else tpS
-      case _: BaseType => tp
+      case _: BaseType | ExceptionType => tp
       case IntervalType(l,u) =>
         val lS = l map {e => simplifyExpression(gc, e)}
         val uS = u map {e => simplifyExpression(gc, e)}
@@ -715,12 +730,13 @@ object Checker {
         val gcB = withReturnVar(gcI, outType)
         val bdC = checkExpression(gcB,bd,outType)
         Lambda(insC,bdC)
-      case (OwnedExpr(oe, e), OwnedType(ot, tp)) if oe == ot =>
+      case (OwnedExpr(oe, de, e), OwnedType(ot, dt, tp)) if oe == ot =>
         val (oC,oI) = inferExpression(gc, oe)
         oI match {
-          case ClassType(d) =>
-            val eC = checkExpression(gc.push(d,Some(oC)), e, tp)
-            OwnedExpr(oC, eC)
+          case ClassType(dC) =>
+            if ((de != null && de != dC) || (dt != null && dt != dC)) fail("unexpected given theory")
+            val eC = checkExpression(gc.push(dC,Some(oC)), e, tp)
+            OwnedExpr(oC, dC, eC)
           case _ => fail("owner must be class type")
         }
       case (Instance(thyA), ClassType(thyB)) =>
@@ -779,11 +795,11 @@ object Checker {
         val (eC,eI) = inferExpression(gc,exp)
         val mf = new MagicFunctions(gc)
         (tp,eI) match {
-          case (StringType, mf.asstring(_,StringType)) =>
-            mf.asstring.insert(eC,Nil)
-          case (s:CollectionType, mf.iteration(_,t:CollectionType)) =>
+          case (StringType, mf.asstring(dom,StringType)) =>
+            mf.asstring.insert(dom,eC,Nil)
+          case (s:CollectionType, mf.iteration(dom,t:CollectionType)) =>
             checkSubtype(gc,t,s)
-            mf.iteration.insert(eC,Nil)
+            mf.iteration.insert(dom,eC,Nil)
           case _ =>
             checkSubtype(gc,eI,tpN)
             eC
@@ -820,6 +836,7 @@ object Checker {
       if (!vd.tp.known) fail("free variable whose type cannot be infered: " + vd.name)(e)
       vd.copy(tp = vd.tp.skipUnknown)
     }
+    PatternChecker(eC)(gc,())
     (fctxIS, eC)
   }
 
@@ -872,13 +889,14 @@ object Checker {
           case Some(ed: ExprDecl) => (exp, ed.tp)
           case _ => fail("not an expression")
         }
-      case OwnedExpr(owner, e) =>
+      case OwnedExpr(owner, dom, e) =>
         val (ownerC, ownerI) = inferExpressionNorm(gc, owner)
         ownerI match {
-          case ClassType(d) =>
-            val envO = gc.push(d,Some(ownerC))
+          case ClassType(domC) =>
+            if (dom != null && dom != domC) fail("unexpected given theory")
+            val envO = gc.push(domC,Some(ownerC))
             val (eC, eI) = inferExpression(envO, e)
-            (OwnedExpr(ownerC, eC), OwnedType(ownerC, eI))
+            (OwnedExpr(ownerC, domC, eC), OwnedType(ownerC, domC, eI))
           case _ => fail("owner must be an instance")
         }
       case VarRef(n) =>
@@ -902,8 +920,8 @@ object Checker {
           case ExprsOver(eT,q) =>
             if (!isSubtheory(eT, gc.theory)) fail("quoted over wrong theory")
             (Eval(eC),q)
-          case mf.evaluation(_,a) =>
-            (mf.evaluation.insert(eC, Nil), a)
+          case mf.evaluation(dom,a) =>
+            (mf.evaluation.insert(dom,eC, Nil), a)
           case _ => fail("not a quoted expression")
         }
       case MatchCase(ctx, p, b) =>
@@ -943,7 +961,7 @@ object Checker {
                 val uo = Type.unknown(gcI)
                 u.set(FunType(uis,uo))
                 (fC,uis,uo)
-              case mf.application(_,FunType(i,o)) => (mf.application.insert(fC,as),i,o)
+              case mf.application(dom,FunType(i,o)) => (mf.application.insert(dom,fC,as),i,o)
               case _ => fail("not a function")(f)
             }
             if (as.length != ins.length) fail("wrong number of arguments")
@@ -967,8 +985,8 @@ object Checker {
             val sub = precedingCompDecls.substitute(precedingProjs)
             val projI = Substituter(gc,sub,componentType)
             (Projection(tupC,p), projI)
-          case mfp(_,a) =>
-            (mfp.insert(tupC, List(IntValue(p))), a)
+          case mfp(dom,a) =>
+            (mfp.insert(dom,tupC, List(IntValue(p))), a)
           case _ => fail("not a tuple")
         }
       case CollectionValue(es) =>
@@ -1017,9 +1035,9 @@ object Checker {
         }
         (IfThenElse(condC, thnC, elsOC), eI)
       case Match(e,cs,h) =>
-        val (eC,eI) = inferExpression(gc,e)
+        val (eC,eI) = inferExpressionNorm(gc,e)
         val (patType,bodyType) = if (h) {
-          (AnyType,Some(eI))
+          (ExceptionType,Some(eI))
         } else {
           (eI,None)
         }
@@ -1045,12 +1063,24 @@ object Checker {
         val (bdC,bdI) = inferExpression(gc.append(vdC), bd)
         (For(vdC, rangeC, bdC), CollectionKind.List(bdI)) // map may introduce repetitions
       case Return(e,thrw) =>
-        val rt = if (thrw) AnyType else gc.getOutput.getOrElse(fail("return not allowed here"))
+        val rt = if (thrw) ExceptionType else gc.getOutput.getOrElse(fail("return not allowed here"))
         val eC = checkExpression(gc,e,rt)
         (Return(eC,thrw), EmptyType)
     }
     expC.copyFrom(exp)
     (expC,expI)
+  }
+
+  /** checks if an expression may be used as a pattern */
+  private object PatternChecker extends StatelessTraverser {
+    override def apply(e: Expression)(implicit gc: GlobalContext,a:Unit): Expression = e match {
+      case _:BaseValue | _: Tuple | _: CollectionValue => applyDefault(e)
+      case _: VarRef => return e
+      case _: ExprOver => return e
+      case Application(bo: BaseOperator, args) =>
+        if (bo.operator.invertible) {args map apply; e} else fail("non-invertible operator in pattern")
+      case _ => fail("non-constructor in pattern")
+    }
   }
 
   private object PurityChecker extends StatelessTraverser {
@@ -1117,7 +1147,7 @@ object Checker {
     case Application(f,as) => collectDeclarations(f::as)
     case CollectionValue(es) => collectDeclarations(es)
     case ListElem(l,i) => collectDeclarations(List(l,i))
-    case OwnedExpr(o,e) => collectDeclarations(o)
+    case OwnedExpr(o,_,_) => collectDeclarations(o)
     case _ => Nil
   }
   def collectDeclarations(exp: List[Expression]): List[VarDecl] = exp.flatMap(collectDeclarations)
@@ -1306,7 +1336,7 @@ object Checker {
 
 class MagicFunctions(gc: GlobalContext) {
   class MagicFunction(name: String) {
-    def insert(owner: Expression,args: List[Expression]) = Application(owner.field(name),args)
+    def insert(dom: Theory, owner: Expression, args: List[Expression]) = Application(owner.field(dom,name),args)
     def unapply(tp: Type) = tp match {
       case ClassType(thy) => gc.push(thy,None).lookupRegional(name) match {
         case Some(d: ExprDecl) => Some((thy,d.tp))

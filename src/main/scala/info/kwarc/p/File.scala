@@ -13,6 +13,57 @@ case class File(toJava: java.io.File) {
    def canonical : File = File(toJava.getCanonicalPath)
    override def toString = toJava.toString
    def toSourceOrigin = SourceOrigin(toString)
+
+  /** @return the last file extension (if any) */
+  def getExtension: Option[String] = {
+    val name = toJava.getName
+    val posOfDot = name.lastIndexOf(".")
+    if (posOfDot == -1) None else Some(name.substring(posOfDot + 1))
+  }
+
+  /** sets the file extension (replaces existing extension, if any) */
+  def setExtension(ext: String): File = getExtension match {
+    case None => File(toString + "." + ext)
+    case Some(s) => File(toString.substring(0, toString.length - s.length) + ext)
+  }
+
+  /** appends a file extension (possibly resulting in multiple extensions) */
+  def addExtension(ext: String): File = getExtension match {
+    case None => setExtension(ext)
+    case Some(e) => setExtension(e + "." + ext)
+  }
+
+  /** parent directory */
+  def up: File = {
+    val par = Option(toJava.getParentFile)
+    if (par.isEmpty) this else File(par.get)
+  }
+
+  /** resolves an absolute or relative path string against this */
+  def resolve(s: String): File = {
+    val sf = new java.io.File(s)
+    val newfile = if (sf.isAbsolute)
+      sf
+    else
+      new java.io.File(toJava, s)
+    File(newfile.getCanonicalPath)
+  }
+
+  /** @return children of this directory */
+  def children: List[File] = {
+    if (toJava.isFile) Nil else {
+      val ls = toJava.list()
+      if (ls == null) throw IError("directory does not exist or is not accessible: " + toString)
+      ls.toList.sorted.map(this / _)
+    }
+  }
+  /** @return subdirectories of this directory */
+  def subdirs: List[File] = children.filter(_.toJava.isDirectory)
+
+  /** @return all files in this directory or any subdirectory */
+  def descendants: List[File] = children.flatMap {c =>
+    if (c.toJava.isDirectory) c.descendants else List(c)
+  }
 }
 
 /** copied from mmt-api */
@@ -52,5 +103,26 @@ object File {
     } finally {
       r.close
     }
+  }
+
+  def readPropertiesFromString(s: String): mutable.Map[String, String] = {
+    val properties = new scala.collection.mutable.ListMap[String, String]
+    s.split("\n") foreach {line =>
+      // usually continuation lines start with a space but we ignore those
+      val tline = line.trim
+      if (!tline.startsWith("//")) {
+        val p = tline.indexOf(":")
+        if (p > 0) {
+          // make sure line contains colon and the key is non-empty
+          val key = tline.substring(0, p).trim
+          val value = tline.substring(p + 1).trim
+          properties(key) = properties.get(key) match {
+            case None => value
+            case Some(old) => old + " " + value
+          }
+        }
+      }
+    }
+    properties
   }
 }

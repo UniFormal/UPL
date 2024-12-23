@@ -2,22 +2,14 @@ package info.kwarc.p
 
 object Main {
   def main(args: Array[String]): Unit = {
-    val path = File(args(0))
-    val src = File.read(path)
-    val parser = new Parser(path.toSourceOrigin, src)
-    val decls = parser.parseDeclarations
-    val main = if (args.length > 1) {
-      val s = args(1)
-      val parserM = new Parser(path.toSourceOrigin, s)
-      parserM.parseExpression(PContext.empty)
-    } else {
-      UnitValue
-    }
-    val prog = Program(decls, main)
-    val progC = Checker.checkProgram(prog)
-    val intp = new Interpreter(Module.anonymous(progC.voc))
-    val res = intp.interpretExpression(progC.main)
-    println(progC)
-    println(res)
+    var left = args.toList
+    def next = {val h = left.head; left = left.tail; h}
+    val interactive = if (left.headOption contains "--repl") {next; true} else false
+    val path = if (left.nonEmpty) File(next) else File("")
+    val mn = if (left.nonEmpty) Some(next) else None
+    val proj = new Project(path, mn)
+    //println(proj)
+    proj.process(interactive)
+    //println(proj.prog)
   }
 }
