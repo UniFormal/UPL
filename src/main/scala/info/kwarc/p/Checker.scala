@@ -1258,6 +1258,12 @@ object Checker {
       case (k, u: UnknownType) if k.known && u.isSolvable =>
         solveType(gc,cons,u,k,false)
       // recursive cases
+      /** case (NumberType(k), NumberType(l)) =>
+        if (k == l ||
+          (subTypeDirection.contains(true)  && (k sub l).contains(true)) ||
+          (subTypeDirection.contains(false) && (l sub k).contains(true))
+        ) Some(List())
+        else None */
       case _ if aK.getClass != bK.getClass => None // fail quickly
       case (ProdType(as), ProdType(bs)) => matchTypeLists(as,bs,cons,false)
       case (FunType(as,c), FunType(bs,d)) =>

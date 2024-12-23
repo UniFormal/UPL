@@ -22,3 +22,5 @@ module Algebra {
     mult : Magma {type U = U}
   }
 }
+
+// int = BiMagma {type U = int, add = intAdd, mult = intMult}

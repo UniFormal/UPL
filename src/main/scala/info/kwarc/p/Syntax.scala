@@ -834,6 +834,44 @@ case class IntervalType(lower: Option[Expression], upper: Option[Expression]) ex
   def concrete = lower.forall(_.isInstanceOf[IntValue]) && upper.forall(_.isInstanceOf[IntValue])
 }
 
+// TODO merge all number types into NumberType(kind: NumberKind), add shortcut for Nat
+// remove redundant operator types; use first matching type when infering operator types
+
+case class NumberKind(lower: Option[Expression], upper: Option[Expression], fractions: Boolean) {
+  def sub(that: NumberKind): Option[Boolean] = {
+    if (this.fractions && !that.fractions) return Some(false)
+    val l = NumberType.lessEq(that.lower,this.lower,false).getOrElse(return None)
+    val r = NumberType.lessEq(this.upper,that.upper,true).getOrElse(return None)
+    Some(l && r)
+  }
+}
+
+object NumberType {
+  def apply(nk: NumberKind) = {
+    if (nk.lower.isEmpty && nk.upper.isEmpty) {
+      if (nk.fractions) RatType else IntType
+    } else {
+      if (nk.fractions) throw IError("rational interval") else IntervalType(nk.lower,nk.upper)
+    }
+  }
+  def unapply(y: Type) = y match {
+    case IntType => Some(NumberKind(None,None,false))
+    case RatType => Some(NumberKind(None,None,true))
+    case IntervalType(lower, upper) => Some(NumberKind(lower,upper,false))
+    case _ => None
+  }
+  /** compares integer values, using None for sign*infinity */
+  def lessEq(e: Option[Expression], f: Option[Expression], sign: Boolean) = {
+    (e,f) match {
+      case (None,None) => Some(true)
+      case (None,Some(_)) => Some(!sign)
+      case (Some(_),None) => Some(sign)
+      case (Some(IntValue(m)),Some(IntValue(n))) => Some(m<=n)
+      case _ => None
+    }
+  }
+}
+
 /** dependent functions
   * Declarations in ins are given in context-order
   */
