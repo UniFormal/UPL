@@ -115,11 +115,13 @@ object Interpreter {
 class Interpreter(vocInit: Module) {
   private val debug = false
   /** unexpected error, e.g., typing error in input or expression does not simplify into value */
-  case class Error(stack: List[RegionalEnvironment], msg: String) extends PError(msg)
-  def fail(msg: String)(implicit sf: SyntaxFragment) =
-    throw Error(stack, msg + ": " + sf)
+  case class Error(cause: SyntaxFragment, stack: List[RegionalEnvironment], msg: String) extends PError(cause.loc, msg)
   /** run-time error while processing well-formed input, e.g., index out of bounds */
-  case class RuntimeError(msg: String) extends PError(msg)
+  case class RuntimeError(cause: Expression, msg: String) extends PError(cause.loc, msg)
+  def fail(msg: String)(implicit sf: SyntaxFragment) =
+    throw Error(sf, stack, msg + ": " + sf)
+  def abort(msg: String)(implicit sf: Expression) =
+    throw RuntimeError(sf, msg + ": " + sf)
 
   private val env = new GlobalEnvironment(vocInit)
   def voc = env.voc
@@ -194,6 +196,7 @@ class Interpreter(vocInit: Module) {
             val InterpretationInput(d :: ds, inclO) :: tail = todo
             todo = if (ds.isEmpty) tail else InterpretationInput(ds,inclO) :: tail
             d match {
+              case _:Module => fail("unexpected module in instance")
               case _: TypeDecl => // not needed
               case sd: ExprDecl if runtimeInst.getO(sd.name).isDefined => // definition from elsewhere already executed
               case sd: ExprDecl =>
@@ -322,7 +325,10 @@ class Interpreter(vocInit: Module) {
         val asI = as map interpretExpression
         fI match {
           case o: BaseOperator =>
-            Operator.simplify(o.operator, asI)
+            try {Operator.simplify(o.operator, asI)}
+            catch {case u: UndefinedOperation =>
+              fail(u.getMessage)
+            }
           case lam: Lambda =>
             // interpretation of lam has recorded the frame at abstraction time because
             // names in lam.body are relative to that
@@ -361,7 +367,7 @@ class Interpreter(vocInit: Module) {
         }
         val len = esI.length
         if (iI < -len || iI >= len) {
-          throw RuntimeError("index out of bounds")
+          abort("index out of bounds")
         }
         val n = if (iI < 0) iI + len else iI
         esI(n.toInt)
@@ -382,8 +388,8 @@ class Interpreter(vocInit: Module) {
         val fI = interpretExpression(f)
         fI match {
           case BoolValue(true) =>
-          case BoolValue(false) => throw RuntimeError("assertion failed: " + f)
-          case _ => throw RuntimeError("assertion inconclusive: " + f)
+          case BoolValue(false) => abort("assertion failed: " + f)
+          case _ => abort("assertion inconclusive: " + f)
         }
         UnitValue
     } // end match
@@ -432,11 +438,12 @@ class Interpreter(vocInit: Module) {
   }
 
   /** called if assign fails */
-  private def assignFail(msg: String)(implicit failOnMismatch: Boolean) = {
-    if (failOnMismatch) throw RuntimeError(msg)
+  private def assignFail(msg: String)(implicit failOnMismatch: Boolean, cause: Expression) = {
+    if (failOnMismatch) abort(msg)
     else false
   }
   private def assign(target: Expression, value: Expression)(implicit failOnMismatch: Boolean): Boolean = {
+    implicit val cause = target
     (target,value) match {
       case (VarRef(""), _) =>
         true // ignore value

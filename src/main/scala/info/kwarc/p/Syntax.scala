@@ -8,13 +8,14 @@ case class Location(origin: SourceOrigin, from: Int, to: Int) {
 // ***************************** root classes and auxiliary data structures
 
 /** parent of all errors */
-abstract class PError(msg: String) extends Exception(msg)
+abstract class PError(val loc: Location, msg: String) extends Exception(msg)
 
 /** implementation errors */
-case class IError(msg: String) extends PError(msg)
+case class IError(msg: String) extends Exception(msg)
 
 /** run-time errors */
-case class DivisionByZero() extends PError("")
+abstract class UndefinedOperation(msg: String) extends Exception(msg)
+case class DivisionByZero() extends UndefinedOperation("division by zero")
 
 /** parent of all classes in the AST */
 sealed abstract class SyntaxFragment {
@@ -447,16 +448,26 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
 }
 object GlobalContext {
   def apply(n: String): GlobalContext = GlobalContext(Module(n, false, Nil))
+  def apply(v: Vocabulary): GlobalContext = GlobalContext(Module.anonymous(v.decls))
   def apply(m: Module): GlobalContext = GlobalContext(m, List(RegionalContextFrame(RegionalContext(Path.empty), true, true)))
 }
 
 
 // ***************** Programs and Declarations **************************************
 
-/** toplevel non-terminal; represents a set of declarations and an initial expression to evaluate */
-case class Program(voc: List[Declaration], main: Expression) extends SyntaxFragment {
-  override def toString = voc.mkString("\n") + main
-  def toModule = Module.anonymous(voc)
+/** toplevel non-terminal; represents a set of declarations, e.g., in a source file or library */
+case class Vocabulary(decls: List[Declaration]) extends SyntaxFragment {
+  override def toString = decls.mkString("\n")
+}
+
+object Vocabulary {
+  val empty = Vocabulary(Nil)
+}
+
+/** vocabulary + an initial expression to evaluate */
+case class Program(voc: Vocabulary, main: Expression) extends SyntaxFragment {
+  override def toString = voc.toString + "\n" + main
+  def toModule = Module.anonymous(voc.decls)
 }
 
 /** A declaration that nests other declarations.

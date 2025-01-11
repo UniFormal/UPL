@@ -1,0 +1,28 @@
+{
+    "name": "upl",
+    "version": "1.0.0",
+    "engines": {
+        "vscode": "^1.94.0"
+    },
+    "publisher": "kwarc",
+    "activationEvents": [],
+    "main": "./extension.js",
+    "contributes": {
+        "languages": [{
+            "id": "upl",
+            "extensions": [".p",".upl"],
+            "configuration": "./upl-config.json"
+        }],
+        "grammars": [
+            {
+              "language": "upl",
+              "scopeName": "source.upl",
+              "path": "./syntaxes/upl.tmGrammar.json"
+            }
+          ],
+        "commands": [{
+            "command": "upl.build",
+            "title": "Build"
+        }]
+    }
+}

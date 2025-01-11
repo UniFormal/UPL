@@ -49,10 +49,14 @@ object PContext {
 object Parser {
   def file(f: File) = {
     val p = new Parser(f.toSourceOrigin, File.read(f))
-    Module.anonymous(p.parseDeclarations)
+    Vocabulary(p.parseDeclarations)
   }
-  def expression(origin: String, s: String) = {
-    val p = new Parser(SourceOrigin(origin), s)
+  def text(so: SourceOrigin, s: String) = {
+    val p = new Parser(so, s)
+    Vocabulary(p.parseDeclarations)
+  }
+  def expression(origin: SourceOrigin, s: String) = {
+    val p = new Parser(origin, s)
     p.parseExpression(PContext.empty)
   }
 }
@@ -62,7 +66,7 @@ class Parser(origin: SourceOrigin, input: String) {
   private val inputLength = input.length
   override def toString = input.substring(index)
 
-  case class Error(msg: String) extends PError(msg)
+  case class Error(msg: String) extends PError(makeRef(index), msg)
   def fail(msg: String) = {
     throw Error(msg + "; found " + input.substring(index))
   }

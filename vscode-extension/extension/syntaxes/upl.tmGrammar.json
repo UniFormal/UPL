@@ -1,0 +1,22 @@
+{
+    "scopeName": "source.upl",
+    "patterns": [{ "include": "#keyword" }, { "include": "#operator" }, { "include": "#name" }, { "include": "#builtin" }],
+    "repository": {
+      "name": {
+        "match": "[a-zA-Z_0-9]",
+        "name": "variable.upl"
+      },
+      "builtin": {
+        "match": "true|false|int|rat|bool|string|Set|List|Bag|Option",
+        "name": "constant.language.upl"
+      },
+      "operator": {
+        "match": "\\+|\\*|\\-|\\.|\\:|=|\\&|\\!|->|==|\\|",
+        "name": "keyword.operator.upl"
+      },
+      "keyword": {
+        "match": "module|class|include|realize|type|val|var|while|if",
+        "name": "keyword.control.upl"
+      }
+    }
+  }

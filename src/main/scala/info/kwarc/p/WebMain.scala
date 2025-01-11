@@ -6,9 +6,8 @@ import scala.scalajs.js.annotation._
 object WebMain {
   @JSExport
   def checkProgram(input: String) = {
-    val parser = new Parser(SourceOrigin("anonymous"),input)
-    val decls = parser.parseDeclarations
-    val prog = Program(decls, UnitValue)
+    val voc = Parser.text(SourceOrigin("anonymous"),input)
+    val prog = Program(voc, UnitValue)
     Checker.checkProgram(prog)
   }
 

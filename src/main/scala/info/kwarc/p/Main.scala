@@ -8,10 +8,9 @@ object Main {
     val interactive = if (left.headOption contains "--repl") {next; true} else false
     val path = if (left.nonEmpty) File(next) else File(".")
     val mn = if (left.nonEmpty) Some(next) else None
-    val proj = new Project(path, mn)
+    val proj = Project.fromFile(path, mn)
     //println(proj)
-    proj.process(interactive)
-    //println(proj.prog)
+    proj.run(interactive)
   }
 
   val doc =
@@ -19,6 +18,6 @@ object Main {
 where
 PATH: project file or source file/folder
 EXPR: toplevel call relative to sources
---repl: drop into REPL
+--repl: drop into REPL after running ('exit' to quit)
 """
 }

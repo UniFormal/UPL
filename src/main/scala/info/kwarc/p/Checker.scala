@@ -7,18 +7,23 @@ import scala.scalajs.js.|
 object Checker {
   private val debug = false
 
-  case class Error(cause: SyntaxFragment,msg: String) extends PError(cause.loc.toString + ": " + msg + " while checking " + cause.toString)
+  case class Error(cause: SyntaxFragment,msg: String) extends PError(cause.loc, msg + " while checking " + cause.toString)
   private def fail(m: String)(implicit cause: SyntaxFragment) =
     throw Error(cause,m)
   private def expected(exp: SyntaxFragment, found: SyntaxFragment): String = expected(exp.toString, found.toString)
   private def expected(exp: String, found: String): String = s"expected $exp; found $found"
 
+  def checkVocabulary(gc: GlobalContext, voc: Vocabulary, keepFull: Boolean)(implicit cause: SyntaxFragment) = {
+    val dsC = checkDeclarationsAndFlatten(gc, voc.decls, keepFull)
+    Vocabulary(dsC)
+  }
+
   def checkProgram(p: Program): Program = matchC(p) {
     case Program(voc,mn) =>
       val gc = GlobalContext("")
-      voc.foreach {d => d.global = true}
-      val vocC = checkDeclarationsAndFlatten(gc, voc, true)(p)
-      val gcC = GlobalContext(Module.anonymous(vocC))
+      voc.decls.foreach {d => d.global = true}
+      val vocC = checkVocabulary(gc, voc, true)(p)
+      val gcC = GlobalContext(vocC)
       val mnC = checkExpression(gcC,mn,AnyType)
       Program(vocC, mnC)
   }
