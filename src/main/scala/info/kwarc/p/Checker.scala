@@ -2,14 +2,34 @@ package info.kwarc.p
 
 import SyntaxFragment.matchC
 
+import java.awt.event.FocusEvent.Cause
 import scala.scalajs.js.|
 
-object Checker {
+class Checker(errorHandler: ErrorHandler) {
   private val debug = false
 
-  case class Error(cause: SyntaxFragment,msg: String) extends PError(cause.loc, msg + " while checking " + cause.toString)
-  private def fail(m: String)(implicit cause: SyntaxFragment) =
-    throw Error(cause,m)
+  case class Error(cause: SyntaxFragment,msg: String) extends SError(cause.loc, msg + " while checking " + cause.toString)
+  case class Abort() extends Exception
+  private def fail(m: String)(implicit cause: SyntaxFragment) = {
+    reportError(m)
+    throw Abort()
+  }
+  def reportError(msg: String)(implicit cause: SyntaxFragment) = {
+    val e = Error(cause,msg)
+    errorHandler(e)
+  }
+  @inline
+  def recoverWith[A](recover: A)(code: => A): A = try {code} catch {
+    case Abort() => recover
+    case ASTError(m) =>
+      val sf = recover match {
+        case s: SyntaxFragment => s
+        case (s: SyntaxFragment,_) => s // only needed for inferExpression
+        case _ => throw IError("unknown result type")
+      }
+      reportError(m)(sf); recover
+  }
+
   private def expected(exp: SyntaxFragment, found: SyntaxFragment): String = expected(exp.toString, found.toString)
   private def expected(exp: String, found: String): String = s"expected $exp; found $found"
 
@@ -28,7 +48,7 @@ object Checker {
       Program(vocC, mnC)
   }
 
-  def checkDeclaration(gc: GlobalContext, decl: Declaration): Declaration = {
+  def checkDeclaration(gc: GlobalContext, decl: Declaration): Declaration = recoverWith(decl) {
     if (debug) println("checking: " + decl)
     implicit val cause = decl
     val declC = decl match {
@@ -129,7 +149,7 @@ object Checker {
             gcC = gcC.add(dT)
           case Declaration.Clashing =>
             // declarations could be incompatible; further comparison needed
-            fail("declaration clash")(d)
+            reportError("declaration clash")(d)
           case Declaration.Independent =>
             throw IError("impossible case")
         }
@@ -183,7 +203,7 @@ object Checker {
       } else {
         gc.voc.lookupModule(p).get.undefined.foreach {sd =>
           if (!defines.contains(sd.name))
-            fail("missing definition of " + p / sd.name)(cause)
+            reportError("missing definition of " + p / sd.name)(cause)
         }
       }
     }
@@ -202,9 +222,9 @@ object Checker {
     sdP match {
       // switch on inherited
       case Some(abs: SymbolDeclaration) =>
-        if (abs.kind != sd.kind) fail("name is inherited but has kind " + abs.kind)
+        if (abs.kind != sd.kind) reportError("name is inherited but has kind " + abs.kind)
         // Concrete: error
-        if (abs.dfO.isDefined) fail("name is inherited and already defined")
+        if (abs.dfO.isDefined) reportError("name is inherited and already defined")
         // Abstract: inherit type
         val expectedTp = abs.tp
         val tpC = if (!sd.tp.known) {
@@ -244,7 +264,7 @@ object Checker {
     }
   }
 
-  def checkRegional(gc: GlobalContext, rc: RegionalContext): RegionalContext = {
+  private def checkRegional(gc: GlobalContext, rc: RegionalContext): RegionalContext = recoverWith(rc) {
     if (rc.theory == null && rc.owner.isEmpty) fail("underspecified region")(rc)
     val (thyC,ownC) = if (rc.theory == null) {
       val (oC,oI) = inferExpressionNorm(gc, rc.owner.get)
@@ -262,14 +282,14 @@ object Checker {
     val ctxC = checkLocal(gc.push(RegionalContext(thyC,ownC)), rc.local, false, false)
     RegionalContext(thyC,ownC,ctxC)
   }
-  def checkTheoryPath(gc: GlobalContext, p: Path)(implicit cause: SyntaxFragment) = {
+  private def checkTheoryPath(gc: GlobalContext, p: Path)(implicit cause: SyntaxFragment) = recoverWith(p) {
     gc.resolvePath(p) match {
       case Some((pC, m: Module)) => pC
       case _ => fail("not a module")
     }
   }
 
-  def checkTheory(gc: GlobalContext, thy: Theory)(implicit cause: SyntaxFragment): Theory = {
+  def checkTheory(gc: GlobalContext, thy: Theory)(implicit cause: SyntaxFragment): Theory = recoverWith(thy) {
     if (thy.isFlat) return thy
     // TODO simply retrieve theory if physical
     val mod = thy.toModule
@@ -279,8 +299,8 @@ object Checker {
     t.isFlat = true
     t
   }
-  def checkLocal(gc: GlobalContext,c: LocalContext,allowDefinitions: Boolean,allowMutable: Boolean): LocalContext = {
-    if (!c.namesUnique) fail("name clash in local context")(c)
+  def checkLocal(gc: GlobalContext,c: LocalContext,allowDefinitions: Boolean,allowMutable: Boolean): LocalContext = recoverWith(c) {
+    if (!c.namesUnique) reportError("name clash in local context")(c)
     var gcL = gc
     c.map {vd =>
       val vdC = checkVarDecl(gcL,vd,allowDefinitions,allowMutable)
@@ -291,8 +311,8 @@ object Checker {
 
   def checkVarDecl(gc: GlobalContext,vd: VarDecl,allowDefinitions: Boolean,allowMutable: Boolean): VarDecl = {
     implicit val cause = vd
-    if (vd.mutable && !allowMutable) fail("mutable variable not allowed here")
-    if (vd.defined && !allowDefinitions) fail("defined variable not allowed here")
+    if (vd.mutable && !allowMutable) reportError("mutable variable not allowed here")
+    if (vd.defined && !allowDefinitions) reportError("defined variable not allowed here")
     val tpC = checkType(gc,vd.tp)
     val dfC = vd.dfO map {d => checkExpression(gc,d,tpC, returnToHere = true)}
     VarDecl(vd.name,tpC.skipUnknown,dfC,vd.mutable)
@@ -300,11 +320,11 @@ object Checker {
 
   /** gc |- sub: ctx */
   def checkSubstitution(gc: GlobalContext, sub: Substitution, ctx: LocalContext): Substitution = {
-    if (sub.length != ctx.length) fail("wrong number of substitutes")(sub)
+    if (sub.length != ctx.length) reportError("wrong number of substitutes")(sub)
     var subC = Substitution.empty
     (ctx.decls.reverse zip sub.decls.reverse).foreach {case (vd,df) =>
-      if (vd.dfO.isDefined) fail("defined variable in expected context")(ctx)
-      if (vd.name != df.name) fail("wrong name in substitution: " + expected(vd.name,df.name))(sub)
+      if (vd.dfO.isDefined) reportError("defined variable in expected context")(ctx)
+      if (vd.name != df.name) reportError("wrong name in substitution: " + expected(vd.name,df.name))(sub)
       val e = df.dfO.get
       val tpE = Substituter(gc, subC, vd.tp)
       val eC = checkExpression(gc, e, tpE)
@@ -318,7 +338,7 @@ object Checker {
     * returns substitution as -> bs
     */
   def checkSubtypes(gc: GlobalContext, as: LocalContext, bs: LocalContext)(implicit cause: SyntaxFragment): Substitution = {
-    if (as.length != bs.length) fail("wrong number of components: " + as.length + ", expected " + bs.length)
+    if (as.length != bs.length) reportError("wrong number of components: " + as.length + ", expected " + bs.length)
     var subI = Substitution.empty
     (as.decls.reverse zip bs.decls.reverse).foreach {case (a,b) =>
       val bS = Substituter(gc,subI, b.tp)
@@ -335,12 +355,12 @@ object Checker {
   def typesUnionOrIntersection(union: Boolean)
                               (gc: GlobalContext, as: LocalContext, bs: LocalContext)
                               (implicit cause: SyntaxFragment): (LocalContext,Substitution) = {
-    if (as.length != bs.length) fail("wrong number of components: " + expected(as.length.toString,bs.length.toString))
+    if (as.length != bs.length) reportError("wrong number of components: " + expected(as.length.toString,bs.length.toString))
     var gcI = gc
     var subI = Substitution.empty
     var abs = LocalContext.empty
     (as.decls.reverse zip bs.decls.reverse).foreach {case (a,b) =>
-      if (a.defined || b.defined) fail("union with defined variables")
+      if (a.defined || b.defined) reportError("union with defined variables")
       val bS = Substituter(gcI, subI, b.tp)
       val ab = if (union) typeUnion(gcI, a.tp, bS) else typeIntersection(gcI, a.tp, bS)
       val vd = VarDecl(a.name, ab)
@@ -372,7 +392,7 @@ object Checker {
     checkSubtype(gc, tpC, bound)(tp)
     tpC
   }
-  def checkType(gc: GlobalContext, tpA: Type): Type = {
+  def checkType(gc: GlobalContext, tpA: Type): Type = recoverWith(tpA) {
     implicit val cause = tpA
     def r(x:Type): Type = checkType(gc,x)
     disambiguateOwnedObject(gc, tpA).foreach {corrected => return checkType(gc, corrected)}
@@ -392,7 +412,7 @@ object Checker {
           case td: TypeDecl => tp
           case m: Module =>
             // indeterminate use of module as type interpreted as class type
-            if (!m.closed) fail("open module not a type")
+            if (!m.closed) reportError("open module not a type")
             ClassType(PhysicalTheory(rC.path))
           case _ => fail(s"$r is not a type")
         }
@@ -406,7 +426,7 @@ object Checker {
         PurityChecker(ownerC)(gc,())
         ownerI match {
           case ClassType(domC) =>
-            if (dom != null && dom != domC) fail("unexpected theory")
+            if (dom != null && dom != domC) reportError("unexpected theory")
             val envO = gc.push(domC,Some(ownerC))
             val tpC = checkType(envO,tp)
             OwnedType(ownerC,domC,tpC)
@@ -458,24 +478,24 @@ object Checker {
       case (a: IntervalType, b: IntervalType) =>
         (a.lower,b.lower) match {
           case (_,None) =>
-          case (None,Some(_)) => fail("interval is not subtype")
+          case (None,Some(_)) => reportError("interval is not subtype")
           case (Some(i),Some(j)) =>
             val c = simplifyExpression(gc,GreaterEq(i,j))
             if (c == BoolValue(true)) {}
-            else if (c == BoolValue(false)) fail("interval is not subtype")
+            else if (c == BoolValue(false)) reportError("interval is not subtype")
             else {} // type-checking incomplete}
         }
         (a.upper,b.upper) match {
           case (_, None) =>
-          case (None, Some(_)) => fail("interval is not subtype")
+          case (None, Some(_)) => reportError("interval is not subtype")
           case (Some(i), Some(j)) =>
             val c = simplifyExpression(gc, LessEq(i,j))
             if (c == BoolValue(true)) {}
-            else if (c == BoolValue(false)) fail("interval is not subtype")
+            else if (c == BoolValue(false)) reportError("interval is not subtype")
             else {}// type-checking incomplete}
         }
       case (CollectionType(a,k),CollectionType(b,l)) =>
-        if (!(k sub l)) fail(s"collection type $k is not subtype of collection type $l")
+        if (!(k sub l)) reportError(s"collection type $k is not subtype of collection type $l")
         checkSubtype(gc,a,b)
       case (ProdType(as),ProdType(bs)) =>
         checkSubtypes(gc, as, bs)
@@ -483,19 +503,19 @@ object Checker {
         checkSubtypes(gc, bs, as)
         checkSubtype(gc.append(bs),o,p)
       case (ExprsOver(aT,u),ExprsOver(bT,v)) =>
-        if (!isSubtheory(aT,bT)) fail("not quoted from the same theory")
+        if (!isSubtheory(aT,bT)) reportError("not quoted from the same theory")
         checkSubtype(gc.push(aT),u,v)
       case (ClassType(aT),ClassType(bT)) =>
         // model of aT or model of bT, i.e., model of intersection
         if (!isSubtheory(bT,aT)) // larger theory = smaller type
-          fail("subtype must be larger theory")
+          reportError("subtype must be larger theory")
       case _ =>
         val aN = typeNormalize(gc, a)
         val bN = typeNormalize(gc, b)
         if (a != aN || b != bN)
           checkSubtype(gc,aN,bN)
         else
-          fail(s"found: $a; expected: $b")
+          reportError(s"found: $a; expected: $b")
     }
   }
 
@@ -547,7 +567,7 @@ object Checker {
         val op = typeUnion(gcI,o,pS)
         FunType(abs,op)
       case (ExprsOver(aT,u), ExprsOver(bT, v)) =>
-        if (aT != bT) fail("not quoted from the same theory")
+        if (aT != bT) reportError("not quoted from the same theory")
         val thyU = theoryUnion(gc, aT, bT)
         // aT-expression of type u or bT-expression of type v, i.e., expression over union of union type
         ExprsOver(thyU, typeUnion(gc.push(thyU), u, v))
@@ -689,12 +709,12 @@ object Checker {
     * This is helpful for infering omitted information in introduction forms from their expected type.
     * In most cases, this defers to type inference and subtype checking.
     */
-  def checkExpression(gc: GlobalContext,exp: Expression,tp: Type, returnToHere: Boolean = false): Expression = {
+  def checkExpression(gc: GlobalContext,exp: Expression,tp: Type, returnToHere: Boolean = false): Expression = recoverWith(exp) {
     implicit val cause = exp
     def withReturnVar(q: GlobalContext, o: Type) = if (returnToHere) q.append(VarDecl.output(o)) else q
     disambiguateOwnedObject(gc, exp).foreach {corrected => return checkExpression(gc, corrected, tp)}
     val tpN = typeNormalize(gc, tp)
-    val eC = (exp,tpN) match {
+    val eC: Expression = (exp,tpN) match {
       case (i, IntervalType(l,u)) =>
         val (iC,iI) = inferExpression(gc,i)
         iI match {
@@ -704,19 +724,19 @@ object Checker {
             val uCond = u map {b => LessEq(i,b)} getOrElse BoolValue(true)
             simplifyExpression(gc, And(lCond,uCond)) match {
               case BoolValue(true) =>
-              case BoolValue(false) => fail("out of interval")
-              case _ => fail("cannot determine interval mebmership")// incomplete
+              case BoolValue(false) => reportError("out of interval")
+              case _ => reportError("cannot determine interval mebmership")// incomplete
             }
           case _ =>
             checkSubtype(gc,iI,tpN)
         }
         iC
       case (CollectionValue(es), CollectionType(t,kind)) =>
-        if (kind.sizeOne && es.length > 1) fail("option type must have at most one element")
+        if (kind.sizeOne && es.length > 1) reportError("option type must have at most one element")
         val esC = es.map(e => checkExpression(gc,e,t))
         CollectionValue(esC)
       case (Tuple(es),ProdType(ts)) =>
-        if (es.length != ts.length) fail("wrong number of components in tuple")
+        if (es.length != ts.length) reportError("wrong number of components in tuple")
         val esC = checkSubstitution(gc, ts.substitute(es), ts)
         Tuple(esC.exprs)
       case (Lambda(ins,bd), ft) =>
@@ -739,7 +759,7 @@ object Checker {
         val (oC,oI) = inferExpression(gc, oe)
         oI match {
           case ClassType(dC) =>
-            if ((de != null && de != dC) || (dt != null && dt != dC)) fail("unexpected given theory")
+            if ((de != null && de != dC) || (dt != null && dt != dC)) reportError("unexpected given theory")
             val eC = checkExpression(gc.push(dC,Some(oC)), e, tp)
             OwnedExpr(oC, dC, eC)
           case _ => fail("owner must be class type")
@@ -750,7 +770,7 @@ object Checker {
       case (ExprOver(scE,e), ExprsOver(scT, tp)) =>
         val scTC = checkTheory(gc, scT)
         if (scE != null) {
-          if (!isSubtheory(scE, scTC)) fail("quoted scope not part of expected type")
+          if (!isSubtheory(scE, scTC)) reportError("quoted scope not part of expected type")
         }
         val eC = checkExpression(gc.push(scTC), e, tp)
         ExprOver(scTC, eC)
@@ -762,7 +782,7 @@ object Checker {
       case (BaseOperator(op,opTp),ft:FunType) =>
         opTp.skipUnknown match {
           case u: UnknownType =>
-            if (!ft.simple) fail("operators cannot have dependent type")
+            if (!ft.simple) reportError("operators cannot have dependent type")
             if (u.originalContext != null || u.sub != null) throw IError("unexpected context in unknown operator type")
             val outI = inferOperator(gc,op,ft.simpleInputs)
             checkSubtype(gc,outI,ft.out)
@@ -790,7 +810,7 @@ object Checker {
             // remember variables for later expressions
             val eDs = LocalContext(collectDeclarations(eC))
             if (!eDs.namesUnique)
-              fail("clashing names declared in expression")
+              reportError("clashing names declared in expression")
             gcL = gcL.append(eDs)
             eC
           }
@@ -838,7 +858,7 @@ object Checker {
     }
     val eC = checkExpression(gcI, e, tp)
     val fctxIS = fctxI.map {vd =>
-      if (!vd.tp.known) fail("free variable whose type cannot be infered: " + vd.name)(e)
+      if (!vd.tp.known) reportError("free variable whose type cannot be infered: " + vd.name)(e)
       vd.copy(tp = vd.tp.skipUnknown)
     }
     PatternChecker(eC)(gc,())
@@ -855,7 +875,7 @@ object Checker {
     *
     * This defers to [[checkExpression]] if it knows the expected type.
     */
-  def inferExpression(gc: GlobalContext,expA: Expression): (Expression,Type) = {
+  def inferExpression(gc: GlobalContext,expA: Expression): (Expression,Type) = recoverWith[(Expression,Type)]((expA,AnyType)) {
     implicit val cause = expA
     val mf = new MagicFunctions(gc)
     // exp != expA only if exp is an unresolved reference
@@ -866,11 +886,11 @@ object Checker {
     }
     disambiguateOwnedObject(gc, exp).foreach {corrected => return inferExpression(gc, corrected)}
     // check exp and infer its type
-    val (expC,expI) = exp match {
+    val (expC: Expression,expI: Type) = exp match {
       case e: BaseValue => (e,e.tp)
       case op: BaseOperator =>
         if (!op.tp.known) {
-          fail("cannot infer type of operator")
+          reportError("cannot infer type of operator")
         }
         val ft = typeNormalize(gc,op.tp) match {
           case ft: FunType if ft.simple => ft
@@ -1034,7 +1054,7 @@ object Checker {
           case Some(els) =>
             val (elsC, elsI) = inferExpressionNorm(gc, els)
             val u = typeUnion(gc, thnI, elsI)
-            if (u == AnyType) fail(s"branches have incompatible types: $thnI vs. $elsI")
+            if (u == AnyType) reportError(s"branches have incompatible types: $thnI vs. $elsI")
             (Some(elsC), u)
           case None => (None,UnitType)
         }
@@ -1060,7 +1080,7 @@ object Checker {
           (MatchCase(ctxC,pC,bC),bI)
         }.unzip
         val mI = if (h) eI else typeUnion(gc,csI)
-        if (mI == AnyType) fail(s"branches have incompatible types: " + csI.mkString(", "))
+        if (mI == AnyType) reportError(s"branches have incompatible types: " + csI.mkString(", "))
         (Match(eC,csC,h),mI)
       case For(vd, range, bd) =>
         val vdC = checkVarDecl(gc,vd,false,false)

@@ -3,35 +3,29 @@ package info.kwarc.p
 import scala.scalajs.js.annotation._
 
 @JSExportTopLevel("UPL")
+@JSExportAll
 object WebMain {
-  @JSExport
+  val checker = new Checker(ErrorThrower)
   def checkProgram(input: String) = {
-    val voc = Parser.text(SourceOrigin("anonymous"),input)
+    val voc = Parser.text(SourceOrigin("anonymous"),input, ErrorThrower)
     val prog = Program(voc, UnitValue)
-    Checker.checkProgram(prog)
+    checker.checkProgram(prog)
   }
 
-  @JSExport
   def runIn(prog: Program, expS: String) = {
-    val parser = new Parser(SourceOrigin("anonymous"),expS)
+    val parser = new Parser(SourceOrigin("anonymous"),expS, ErrorThrower)
     val mod = prog.toModule
     val exp = parser.parseExpression(PContext.empty)
-    val (expC,expI) = Checker.inferExpression(GlobalContext(mod), exp)
+    val (expC,expI) = checker.inferExpression(GlobalContext(mod), exp)
     val intp = new Interpreter(mod)
     intp.interpretExpression(expC)
   }
 
-  @JSExport
   def run(input: String, mnS: String) : String = {
-    try {
-      val prog = checkProgram(input)
-      val r = runIn(prog, mnS)
-      print(r)
-    } catch {
-      case e: PError => e.toString
-    }
+    val prog = checkProgram(input)
+    val r = runIn(prog, mnS)
+    print(r)
   }
 
-  @JSExport
   def print(sf: SyntaxFragment) = sf.toString
 }

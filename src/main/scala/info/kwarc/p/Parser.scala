@@ -47,28 +47,33 @@ object PContext {
 }
 
 object Parser {
-  def file(f: File) = {
-    val p = new Parser(f.toSourceOrigin, File.read(f))
+  def file(f: File, eh: ErrorHandler) = {
+    val p = new Parser(f.toSourceOrigin, File.read(f), eh)
     Vocabulary(p.parseDeclarations)
   }
-  def text(so: SourceOrigin, s: String) = {
-    val p = new Parser(so, s)
+  def text(so: SourceOrigin, s: String, eh: ErrorHandler) = {
+    val p = new Parser(so, s, eh)
     Vocabulary(p.parseDeclarations)
   }
-  def expression(origin: SourceOrigin, s: String) = {
-    val p = new Parser(origin, s)
+  def expression(origin: SourceOrigin, s: String, eh: ErrorHandler) = {
+    val p = new Parser(origin, s, eh)
     p.parseExpression(PContext.empty)
   }
 }
 
-class Parser(origin: SourceOrigin, input: String) {
+class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   private var index = 0
   private val inputLength = input.length
   override def toString = input.substring(index)
-
-  case class Error(msg: String) extends PError(makeRef(index), msg)
+  case class Error(msg: String) extends SError(makeRef(index), msg)
+  private case class Abort() extends Exception
+  def reportError(msg: String) = {
+    val e = Error(msg + "; found " + input.substring(index))
+    eh(e)
+  }
   def fail(msg: String) = {
-    throw Error(msg + "; found " + input.substring(index))
+    reportError(msg)
+    throw Abort()
   }
 
   def makeRef(from: Int) = Location(origin, from, index)
@@ -124,8 +129,11 @@ class Parser(origin: SourceOrigin, input: String) {
 
   // parses the string s and throws it away
   def skip(s: String) = {
-    if (!startsWith(s)) fail("expected " + s)
-    index += s.length
+    if (!startsWith(s)) {
+      reportError("expected " + s)
+    } else {
+      index += s.length
+    }
   }
   def skipT(s: String) = {skip(s); trim}
 
@@ -200,7 +208,12 @@ class Parser(origin: SourceOrigin, input: String) {
       if (atEnd || startsWith("}")) {break = true}
       else {
         if (startsWith(",")) skip(",")
-        decls ::= parseDeclaration
+        val d = try {
+          parseDeclaration
+        } catch {
+          case Abort() => return decls.reverse // unclear how we could recover here
+        }
+        decls ::= d
       }
     }
     decls.reverse
@@ -360,8 +373,8 @@ class Parser(origin: SourceOrigin, input: String) {
         val el = if (startsWithS("else")) {
           Some(parseExpression)
         } else {
-          if (!allowS) fail("else branch expected")
-          else None
+          if (!allowS) reportError("else branch expected")
+          None
         }
         IfThenElse(c,th,el)
       } else if (allowS && startsWithAny("return","throw")) {
@@ -414,7 +427,7 @@ class Parser(origin: SourceOrigin, input: String) {
         val es = parseExpressions("[","]")
         CollectionValue(es)
       } else if (startsWithS("`")) {
-        if (ctxs.contexts.length <= 1) fail("eval outside quotation")
+        if (ctxs.contexts.length <= 1) reportError("eval outside quotation")
         val e = parseExpression(ctxs.pop())
         skip("`")
         Eval(e)
@@ -488,9 +501,9 @@ class Parser(origin: SourceOrigin, input: String) {
             case Some(p) =>
               // p{decls}
               val ds = parseDeclarations
-              val sds = ds.collect {
-                case sd: SymbolDeclaration => sd
-                case _ => fail("symbol declaration expected")
+              val sds = ds.flatMap {
+                case sd: SymbolDeclaration => List(sd)
+                case _ => reportError("symbol declaration expected"); Nil
               }
               Instance(ExtendedTheory(p,sds).copyFrom(exp))
             case None =>
@@ -536,7 +549,7 @@ class Parser(origin: SourceOrigin, input: String) {
         } else if (startsWithAny("match","catch")) {
           val handle = skipEither("catch","match")
           skip("{")
-          val cs = parseList(parseMatchCase,"}",false)
+          val cs = parseList(parseMatchCase,"}",false).filterNot(_==null)
           skip("}")
           Match(exp,cs,handle)
         } else exp
@@ -566,7 +579,7 @@ class Parser(origin: SourceOrigin, input: String) {
         else
           VarRef(ins.decls.head.name)
         MatchCase(null, p.copyFrom(ins), bd)
-      case _ => fail("match case expected")
+      case _ => reportError("match case expected"); null
     }
   }
 
@@ -690,7 +703,7 @@ class Parser(origin: SourceOrigin, input: String) {
             case OwnedExpr(o,d,r: ClosedRef) => OwnedType(o,d,r)
             case OwnedExpr(o,d,r: OpenRef) => OwnedType(o,d,r)
             case Instance(thy) => ClassType(thy)
-            case _ => fail("type expected")
+            case _ => reportError("type expected"); AnyType
           }
           tp.copyFrom(exp)
         }

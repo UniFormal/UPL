@@ -115,9 +115,9 @@ object Interpreter {
 class Interpreter(vocInit: Module) {
   private val debug = false
   /** unexpected error, e.g., typing error in input or expression does not simplify into value */
-  case class Error(cause: SyntaxFragment, stack: List[RegionalEnvironment], msg: String) extends PError(cause.loc, msg)
+  case class Error(cause: SyntaxFragment, stack: List[RegionalEnvironment], msg: String) extends SError(cause.loc, msg)
   /** run-time error while processing well-formed input, e.g., index out of bounds */
-  case class RuntimeError(cause: Expression, msg: String) extends PError(cause.loc, msg)
+  case class RuntimeError(cause: Expression, msg: String) extends SError(cause.loc, msg)
   def fail(msg: String)(implicit sf: SyntaxFragment) =
     throw Error(sf, stack, msg + ": " + sf)
   def abort(msg: String)(implicit sf: Expression) =
@@ -326,8 +326,8 @@ class Interpreter(vocInit: Module) {
         fI match {
           case o: BaseOperator =>
             try {Operator.simplify(o.operator, asI)}
-            catch {case u: UndefinedOperation =>
-              fail(u.getMessage)
+            catch {case ASTError(m) =>
+              fail(m)
             }
           case lam: Lambda =>
             // interpretation of lam has recorded the frame at abstraction time because
@@ -400,7 +400,7 @@ class Interpreter(vocInit: Module) {
   }
 
   private def makeIterator(tp: Type): Iterator[Expression] = {
-    val tpN = Checker.typeNormalize(GlobalContext(env.voc), tp)
+    val tpN = new Checker(ErrorThrower).typeNormalize(GlobalContext(env.voc), tp)
     val tpI = TypeInterpreter(tpN)(null,())
     tpI match {
       case EmptyType => Iterator.empty

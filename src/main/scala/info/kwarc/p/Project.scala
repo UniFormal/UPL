@@ -4,7 +4,7 @@ class ProjectEntry(val source: SourceOrigin) {
   var parsed: Vocabulary = Vocabulary.empty
   var checked: Vocabulary = Vocabulary.empty
   var checkedIsDirty = false
-  var errors: List[PError] = Nil
+  var errors = new ErrorCollector
 }
 
 class Project(var entries: List[ProjectEntry], main: Option[Expression] = None) {
@@ -15,6 +15,9 @@ class Project(var entries: List[ProjectEntry], main: Option[Expression] = None) 
     e
   }
 
+  def hasErrors = entries.exists(_.errors.hasErrors)
+  def getErrors = entries.flatMap(_.errors.getErrors)
+
   private def makeGlobalContext(so: SourceOrigin) = {
     val ds = entries.takeWhile(_.source != so).flatMap(_.checked.decls)
     GlobalContext(Module.anonymous(ds))
@@ -22,40 +25,55 @@ class Project(var entries: List[ProjectEntry], main: Option[Expression] = None) 
 
   def update(so: SourceOrigin, src: String) = {
     val le = get(so)
-    le.errors = Nil
-    le.parsed = try {
-      Parser.text(so, src)
-    } catch {
-      case e: PError => le.errors = List(e); Vocabulary.empty
-    }
+    le.errors.clear
+    le.parsed = Parser.text(so, src, le.errors)
     le.checkedIsDirty = true
   }
   def check(so: SourceOrigin): Unit = {
     val le = get(so)
     if (!le.checkedIsDirty) return
     val gc = makeGlobalContext(so)
-    val vocC = try {
-      Checker.checkVocabulary(gc, le.parsed, true)(le.parsed)
-    } catch {
-      case e: PError => le.errors ::= e; le.parsed
-    }
+    val ch = new Checker(le.errors)
+    val vocC = ch.checkVocabulary(gc, le.parsed, true)(le.parsed)
     le.checked = vocC
+    le.checkedIsDirty = false
   }
 
   def check() = {
     val ds = entries.flatMap(_.parsed.decls)
     val voc = Vocabulary(ds)
-    Checker.checkVocabulary(GlobalContext(""), voc, true)(voc)
+    val ec = new ErrorCollector
+    val ch = new Checker(ec)
+    val vocC = ch.checkVocabulary(GlobalContext(""), voc, true)(voc)
+    ec.getErrors.groupBy(e => e.loc.origin).foreach {case (o, es) =>
+      val eh = get(o).errors
+      es foreach eh.apply
+    }
+    vocC
   }
 
-  def run(interactive: Boolean) = {
+  def run(interactive: Boolean): Unit = {
     val voc = check()
+    if (hasErrors) {
+      println(getErrors.mkString("\n"))
+      return
+    }
     val e = main.getOrElse(UnitValue)
-    val (eC,_) = Checker.inferExpression(GlobalContext(voc), e)
-    val prog = Program(voc, eC)
-    val (ip,r) = Interpreter.run(prog)
-    if (r != UnitValue) println(e)
-    if (interactive) repl(ip)
+    val ec = new ErrorCollector
+    val ch = new Checker(ec)
+    val (eC,_) = ch.inferExpression(GlobalContext(voc), e)
+    if (ec.hasErrors) {
+      println(ec)
+    } else {
+      val prog = Program(voc,eC)
+      try {
+        val (ip,r) = Interpreter.run(prog)
+        if (r != UnitValue) println(r)
+        if (interactive) repl(ip)
+      } catch {
+        case e: PError => println(e)
+      }
+    }
   }
 
   def repl(ip: Interpreter): Unit = {
@@ -64,13 +82,28 @@ class Project(var entries: List[ProjectEntry], main: Option[Expression] = None) 
     while (true) {
       val s = scala.io.StdIn.readLine()
       if (s == "exit") return
-      val e = Parser.expression(so,s)
-      val (eC,eI) = Checker.inferExpression(GlobalContext(ip.voc),e)
-      val ed = ExprDecl("res" + i.toString,eI,Some(eC),false)
-      i += 1
-      println(ed)
-      val edI = ip.interpretDeclaration(ed)
-      println(edI)
+      val ec = new ErrorCollector
+      val e = Parser.expression(so,s,ec)
+      if (ec.hasErrors) {
+        println(ec.getErrors.mkString("\n"))
+      } else {
+        val ec = new ErrorCollector
+        val ch = new Checker(ec)
+        val (eC,eI) = ch.inferExpression(GlobalContext(ip.voc),e)
+        val ed = ExprDecl("res" + i.toString,eI,Some(eC),false)
+        i += 1
+        println(ed)
+        if (ec.hasErrors) {
+          println(ec)
+        } else {
+          try {
+            val edI = ip.interpretDeclaration(ed)
+            println(edI)
+          } catch {case e: PError =>
+            println(e)
+          }
+        }
+      }
     }
   }
 }
@@ -98,7 +131,7 @@ object Project {
     } else {
       (pFiles(projFile), main)
     }
-    val mainE = mainS.map(s => Parser.expression(projFile.toSourceOrigin, s))
+    val mainE = mainS.map(s => Parser.expression(projFile.toSourceOrigin, s, ErrorThrower))
     val es = paths.map {p =>
       new ProjectEntry(p.toSourceOrigin)
     }

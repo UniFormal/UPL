@@ -7,16 +7,6 @@ case class Location(origin: SourceOrigin, from: Int, to: Int) {
 
 // ***************************** root classes and auxiliary data structures
 
-/** parent of all errors */
-abstract class PError(val loc: Location, msg: String) extends Exception(msg)
-
-/** implementation errors */
-case class IError(msg: String) extends Exception(msg)
-
-/** run-time errors */
-abstract class UndefinedOperation(msg: String) extends Exception(msg)
-case class DivisionByZero() extends UndefinedOperation("division by zero")
-
 /** parent of all classes in the AST */
 sealed abstract class SyntaxFragment {
   private[p] var loc: Location = null // set by parser to remember location in source
@@ -366,7 +356,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
       case _ => throw IError("not a physical theory")
     }
   }
-  def parentDecl = voc.lookupModule(currentParent).getOrElse {throw Checker.Error(voc, "unknown parent")}
+  def parentDecl = voc.lookupModule(currentParent).getOrElse {throw ASTError("unknown parent")}
   /** declarations of the current parent/region */
   def parentDecls = {
     if (inPhysicalTheory) parentDecl.decls
@@ -518,7 +508,7 @@ case class Module(name: String, closed: Boolean, decls: List[Declaration]) exten
         case Some(m: Module) if m.name.contains(parent.head) =>
           val mA = m.addIn(parent.tail, d)
           copy(decls = mA::decls.tail).copyFrom(this)
-        case _ => throw Checker.Error(d,"unexpected path")
+        case _ => throw ASTError("unexpected path")
       }
     }
   }
@@ -1332,7 +1322,7 @@ object Operator {
           case (Minimum, IntOrRatValue(u,v), IntOrRatValue(x,y)) => IntOrRatValue((u*y) min (v*x), v*y)
           case (Maximum, IntOrRatValue(u,v), IntOrRatValue(x,y)) => IntOrRatValue((u*y) max (v*x), v*y)
           case (Divide,IntOrRatValue(u,v),IntOrRatValue(x,y)) =>
-            if (x == 0) throw DivisionByZero() else IntOrRatValue(u * y,v * x)
+            if (x == 0) throw ASTError("division by 0") else IntOrRatValue(u * y,v * x)
           case (c: Comparison,IntOrRatValue(u,v),IntOrRatValue(x,y)) =>
             val d = u * y - v * x
             val s = if (d > 0) 1 else if (d < 0) -1 else 0

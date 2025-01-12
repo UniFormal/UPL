@@ -45,7 +45,8 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
     proj.update(so, doc.getText())
     proj.check(so)
     val pe = proj.get(so)
-    val diags = pe.errors.map {e =>
+    println(pe.errors)
+    val diags = pe.errors.getErrors.map {e =>
       val rg = new Range(doc.positionAt(e.loc.from), doc.positionAt(e.loc.to))
       new Diagnostic(rg, e.getMessage)
     }
