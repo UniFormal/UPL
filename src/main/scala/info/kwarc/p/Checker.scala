@@ -808,7 +808,7 @@ class Checker(errorHandler: ErrorHandler) {
             // other expressions can have any type
             val (eC,_) = inferExpression(gcL,e)
             // remember variables for later expressions
-            val eDs = LocalContext(collectDeclarations(eC))
+            val eDs = LocalContext.collectContext(eC)
             if (!eDs.namesUnique)
               reportError("clashing names declared in expression")
             gcL = gcL.append(eDs)
@@ -1160,22 +1160,6 @@ class Checker(errorHandler: ErrorHandler) {
       case _ => fail("expression not assignable")
     }
   }
-
-  /** collects the declarations introduced by this expression */
-  def collectDeclarations(exp: Expression): List[VarDecl] = exp match {
-    case vd: VarDecl =>
-      val vdNoDef = if (vd.defined && vd.mutable) vd.copy(dfO = None) else vd
-      List(vdNoDef)
-    case Assign(t,v) => collectDeclarations(List(t,v))
-    case Tuple(es) => collectDeclarations(es)
-    case Projection(e,_) => collectDeclarations(e)
-    case Application(f,as) => collectDeclarations(f::as)
-    case CollectionValue(es) => collectDeclarations(es)
-    case ListElem(l,i) => collectDeclarations(List(l,i))
-    case OwnedExpr(o,_,_) => collectDeclarations(o)
-    case _ => Nil
-  }
-  def collectDeclarations(exp: List[Expression]): List[VarDecl] = exp.flatMap(collectDeclarations)
 
   def simplifyExpression(gc: GlobalContext, exp: Expression) = Simplify(exp)(gc,())
 

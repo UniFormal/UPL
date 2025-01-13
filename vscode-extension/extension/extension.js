@@ -15,7 +15,6 @@ function activate(context) {
 	UPL = new upl.VSCodeBridge(vscode, uplDiagnostics);
 
 	function update(event) {
-		// console.log("update " + event.document.fileName);
 		UPL.update(event.document);
 	}
 	vscode.workspace.onDidOpenTextDocument(update);
@@ -25,22 +24,35 @@ function activate(context) {
 	push(vscode.commands.registerCommand('upl.build', () => {
 		vscode.window.showInformationMessage('UPL is active');
 	}));
-	// hovering
-	push(vscode.languages.registerHoverProvider('upl', {
-		provideHover(doc, pos, canceltoken) {
-		  return UPL.hover(doc, pos)
-		}
-	}));
 	// auto-completion
 	push(vscode.languages.registerCompletionItemProvider('upl', {
 		provideCompletionItems(document, position, canceltoken) {
 			return [new vscode.CompletionItem("complete")];
 		}
-	}, '.', '\"'))
+	}, '.', '\"'));
 	// outline
-	// registerDocumentSymbolProvider
+	push(vscode.languages.registerDocumentSymbolProvider('upl', {
+		provideDocumentSymbols(doc, canceltoken) {
+			return UPL.symbols(doc);
+		}
+	}))
+	// interaction with symbol under cursor
+	push(vscode.languages.registerHoverProvider('upl', {
+		provideHover(doc, pos, canceltoken) {
+		  return UPL.hover(doc, pos)
+		}
+	}));
+	push(vscode.languages.registerDefinitionProvider('upl', {
+		provideDefinition(doc, pos, canceltoken) {
+			return UPL.definitionLocation(doc,pos);
+		}
+	}))
+	push(vscode.languages.registerSignatureHelpProvider('upl', {
+		provideSignatureHelp(doc, pos, canceltoken, context) {
+			return UPL.signatureHelp(doc,pos);
+		}
+	}, ['.' , '(']))
 }
-
 
 function deactivate() {}
 

@@ -3,6 +3,7 @@ package info.kwarc.p
 class ProjectEntry(val source: SourceOrigin) {
   var parsed: Vocabulary = Vocabulary.empty
   var checked: Vocabulary = Vocabulary.empty
+  def getVocabulary = if (checkedIsDirty) parsed else checked
   var checkedIsDirty = false
   var errors = new ErrorCollector
 }
@@ -18,8 +19,12 @@ class Project(var entries: List[ProjectEntry], main: Option[Expression] = None) 
   def hasErrors = entries.exists(_.errors.hasErrors)
   def getErrors = entries.flatMap(_.errors.getErrors)
 
-  private def makeGlobalContext(so: SourceOrigin) = {
+  def makeGlobalContext(so: SourceOrigin) = {
     val ds = entries.takeWhile(_.source != so).flatMap(_.checked.decls)
+    GlobalContext(Module.anonymous(ds))
+  }
+  def makeGlobalContext() = {
+    val ds = entries.flatMap(_.getVocabulary.decls)
     GlobalContext(Module.anonymous(ds))
   }
 

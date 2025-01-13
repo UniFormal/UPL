@@ -2,6 +2,8 @@ package info.kwarc.p
 
 case class Location(origin: SourceOrigin, from: Int, to: Int) {
   override def toString = s"$origin#$from:$to"
+  def contains(that: Location): Boolean = this.origin == that.origin && this.from <= that.from && that.to <= this.to
+  def contains(that: Int): Boolean = contains(Location(origin, that, that))
 }
 
 
@@ -10,6 +12,7 @@ case class Location(origin: SourceOrigin, from: Int, to: Int) {
 /** parent of all classes in the AST */
 sealed abstract class SyntaxFragment {
   private[p] var loc: Location = null // set by parser to remember location in source
+
   /** moves over mutable fields, may be called after performing traversals
     * if the resulting expression is "the same" as the original in some sense
     * if needed, it is usually to implement the traversal using also SyntaxFragment.matchC in the first place
@@ -18,12 +21,71 @@ sealed abstract class SyntaxFragment {
     loc = sf.loc
     this
   }
+
+  /** short name for the kind of node, e.g., for display in an IDE */
+  def label: String
+
+  /** children of this AST node */
+  def children: List[SyntaxFragment]
+
+  /** children, paired with the additional context, must be overridden if context changes for any child */
+  def childrenInContext: List[SyntaxFragment.Child] = cf(children: _*)
+
+  /** convenience to build children list if no context is changed */
+  protected def cf(fs: SyntaxFragment*): List[SyntaxFragment.Child] = fs.toList.map(c => (None,None,c))
+
+  /** the origin of this element (if no location, depth-first descendant with location) */
+  def origin: SourceOrigin = if (loc != null) loc.origin else {
+    children.foreach {c =>
+      val o = c.origin
+      if (o != null) return o
+    }
+    null
+  }
+
+  /** path to a source position */
+  def pathTo(at: Location): List[SyntaxFragment.PathSegment] = {
+    if (loc == null || (loc != null && loc.contains(at))) {
+      childrenInContext.foreach {case (r,l,s) =>
+        val p = s.pathTo(at)
+        if (p.nonEmpty) return (this,r,l) :: p
+      }
+      if (loc == null) Nil else List((this,None,None))
+    } else
+      Nil
+  }
+  /** same but for an offset */
+  def pathTo(at: Int): List[SyntaxFragment.PathSegment] = pathTo(Location(origin,at,at))
+
+
+  /** object at a source position and its context
+    * @param gc the context of this element
+    */
+  def descendantAt(gc: GlobalContext,at: Location): Option[(GlobalContext,SyntaxFragment)] = {
+    val p = pathTo(at)
+    p.lastOption.map {d =>
+      var gcI = gc
+      p.foreach {case (_,tO,lO) =>
+        tO.foreach {t => gcI = gcI.push(t)}
+        lO.foreach {l => gcI = gcI.append(l)}
+      }
+      println(gcI.regions)
+      (gcI,d._1)
+    }
+  }
+  /** same but for an offset */
+  def descendantAt(gc: GlobalContext,at: Int): Option[(GlobalContext,SyntaxFragment)] = descendantAt(gc, Location(origin,at,at))
 }
+
 object SyntaxFragment {
   /** applies a function, usually by case-matching, and copies mutable data over (see copyFrom) */
   def matchC[A<:SyntaxFragment](a: A)(f: A => A): A = {
     f(a).copyFrom(a)
   }
+  /** child of a SyntaxFragment, with the context introduced by the parent */
+  type Child = (Option[Theory],Option[LocalContext],SyntaxFragment)
+  /** a fragment with the context introduced for a particular child */
+  type PathSegment = (SyntaxFragment,Option[Theory],Option[LocalContext])
 }
 
 sealed trait MaybeNamed extends SyntaxFragment {
@@ -55,6 +117,8 @@ case class Path(names: List[String]) extends SyntaxFragment {
   def /(p: Path) = Path(names:::p.names)
   def up = Path(names.init)
   def isRoot = names.isEmpty
+  def label = toString
+  def children = Nil
 }
 
 object Path {
@@ -117,6 +181,7 @@ sealed abstract class Declaration extends SyntaxFragment with MaybeNamed {
   }
 }
 sealed abstract class NamedDeclaration extends Declaration with Named {
+  def label = name
 }
 sealed abstract class UnnamedDeclaration extends Declaration {
   val nameO = None
@@ -195,6 +260,10 @@ abstract class Context[A] extends SyntaxFragment with HasChildren[VarDecl] {
   */
 case class LocalContext(variables: List[VarDecl]) extends Context[LocalContext] {
   override def toString = variables.reverse.mkString(", ")
+  def label = "binding"
+  def children = variables.reverse
+  override def childrenInContext = variables.tails.toList.reverse.tail.map(l =>
+    (None,Some(LocalContext(l.tail)),l.head))
   def local = this
   def copyLocal(lc: LocalContext) = lc
   /** the n-th declaration (counting from outer-most, starting at 0) */
@@ -229,6 +298,23 @@ object LocalContext {
   val empty = LocalContext(Nil)
   def apply(d: VarDecl): LocalContext = LocalContext(List(d))
   def make(vds: List[VarDecl]) = LocalContext(vds.reverse)
+
+  /** collects the declarations introduced by this expression */
+  def collect(exp: Expression): List[VarDecl] = exp match {
+    case vd: VarDecl =>
+      val vdNoDef = if (vd.defined && vd.mutable) vd.copy(dfO = None) else vd
+      List(vdNoDef)
+    case Assign(t,v) => collect(List(t,v))
+    case Tuple(es) => collect(es)
+    case Projection(e,_) => collect(e)
+    case Application(f,as) => collect(f::as)
+    case CollectionValue(es) => collect(es)
+    case ListElem(l,i) => collect(List(l,i))
+    case OwnedExpr(o,_,_) => collect(o)
+    case _ => Nil
+  }
+  def collectContext(e:Expression) = LocalContext(collect(e))
+  def collect(exp: List[Expression]): List[VarDecl] = exp.flatMap(collect)
 }
 
 /** substitution (for an omitted context) into a target context
@@ -237,6 +323,8 @@ object LocalContext {
   */
 case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
   override def toString = decls.reverseIterator.map(vd => vd.name + "/" + vd.dfO.get).mkString(", ")
+  def label = "substitution"
+  def children = decls
   /** e_1, ..., e_n */
   def exprs = Util.reverseMap(decls)(_.dfO.get)
   def map(f: VarDecl => VarDecl) = Substitution(Util.reverseMap(decls)(f).reverse)
@@ -283,6 +371,9 @@ case class BiContext(lr: List[(VarDecl,VarDecl)]) {
   */
 case class RegionalContext(theory: Theory, owner: Option[Expression], local: LocalContext) extends Context[RegionalContext] {
   override def toString = owner.getOrElse(theory).toString + s"($local)"
+  def label = "region"
+  def children = theory::local.children
+  override def childrenInContext = (None,None,theory)::local.childrenInContext.map{case (_,l,c) => (Some(theory),l,c)}
   def copyLocal(c: LocalContext) = copy(local = c)
   def add(d: Declaration) = copy(theory = theory.add(d))
 }
@@ -305,6 +396,8 @@ case class RegionalContextFrame(region: RegionalContext, transparent: Boolean, p
   * However, each element carries an additional Boolean; if true, it is transparent, and the element beneath is accessible too.
   */
 case class GlobalContext private (voc: Module, regions: List[RegionalContextFrame]) extends Context[GlobalContext] {
+  def label = "global"
+  def children = regions.map(_.region)
   def currentRegion = regions.head.region
   def currentIsTransparent = regions.head.transparent
   def theory = currentRegion.theory
@@ -448,6 +541,8 @@ object GlobalContext {
 /** toplevel non-terminal; represents a set of declarations, e.g., in a source file or library */
 case class Vocabulary(decls: List[Declaration]) extends SyntaxFragment {
   override def toString = decls.mkString("\n")
+  def label = "vocabulary"
+  def children = decls
 }
 
 object Vocabulary {
@@ -458,6 +553,8 @@ object Vocabulary {
 case class Program(voc: Vocabulary, main: Expression) extends SyntaxFragment {
   override def toString = voc.toString + "\n" + main
   def toModule = Module.anonymous(voc.decls)
+  def label = "program"
+  def children = voc.children ::: List(main)
 }
 
 /** A declaration that nests other declarations.
@@ -483,6 +580,12 @@ case class Module(name: String, closed: Boolean, decls: List[Declaration]) exten
   override def toString = {
     val k = if (closed) "class" else "module"
     s"$k $name {\n${decls.mkString("\n").indent(2)}}"
+  }
+
+  def children = decls
+  override def childrenInContext = {
+    val r = Some(PhysicalTheory(Path(name)))
+    decls.map(d => (r,None,d))
   }
 
   /** after checking: all included modules */
@@ -542,6 +645,7 @@ object Module {
 sealed trait AtomicDeclaration extends Declaration {
   def tp: Type
   val dfO: Option[Object]
+  def children = tp::dfO.toList
 }
 
 /** include within a module */
@@ -553,6 +657,7 @@ case class Include(dom: Path, dfO: Option[Expression], realize: Boolean) extends
     val dfS = dfO match {case None | Some(null) => "" case Some(d) => " = " + d.toString}
     kw + " " + dom + dfS
   }
+  def label = "include"
 }
 
 object Include {
@@ -597,6 +702,8 @@ case class Theory(decls: List[Declaration]) extends SyntaxFragment {
       case _ => decls.mkString("{", ", ", "}")
     }
   }
+  def label = "theory"
+  def children = decls
 
   /** prepend a declaration */
   def add(d: Declaration) = copy(decls = d::decls)
@@ -656,12 +763,16 @@ object ExtendedTheory {
 /** reference to a symbol from an open theory */
 case class OpenRef(path: Path) extends Expression with Type {
   override def toString = "." + path
+  def label = path.toString
+  def children = Nil
   override def substitute(s: Substitution) = this // needed due to double-inheritance
   def finite = false
 }
 
 /** reference to a symbol from an included theory */
 case class ClosedRef(n: String) extends Expression with Type {
+  def label = n
+  def children = Nil
   override def toString = n
   override def substitute(s: Substitution) = this // needed due to double-inheritance
   def finite = false
@@ -682,6 +793,9 @@ sealed trait OwnedObject extends Object {
   /** the original object */
   def owned: Object
   override def toString = s"$owner.$owned"
+  def label = "owned"
+  def children = List(owner, ownerDom, owned)
+  override def childrenInContext = List((None,None,owner), (None,None,ownerDom), (Some(ownerDom),None,owned))
 }
 
 /**
@@ -734,6 +848,8 @@ case class UnknownType(originalContext: GlobalContext, container: UnknownTypeCon
     }
   }
   override def toString = container.toString + (if (sub != null && !sub.isIdentity) "[" + sub + "]" else "")
+  def label = "unknown"
+  def children = sub.children
   override def known = container.known
   override def skipUnknown = if (!known) this else container.tp.skipUnknown.substitute(sub)
   /** solves the unknown type
@@ -760,6 +876,8 @@ case class UnknownType(originalContext: GlobalContext, container: UnknownTypeCon
 case class ClassType(domain: Theory) extends Type {
   override def toString = domain.toString
   def finite = false
+  def label = domain.toString
+  def children = Nil
 }
 
 /** the type of instances of any theory */
@@ -778,11 +896,15 @@ object AnyStructure {
 case class ExprsOver(scope: Theory, tp: Type) extends Type {
   override def toString = s"<$scope>$tp"
   def finite = false
+  def label = "quote"
+  def children = List(scope, tp)
 }
 
 /** atomic built-in base types */
 sealed abstract class BaseType(name: String) extends Type {self =>
   override def toString = name
+  def label = name
+  def children = Nil
 }
 object BaseType {
   val B = BoolType
@@ -825,12 +947,16 @@ case object AnyType extends BaseType("any") {
 case object ExceptionType extends Type {
   override def toString = "exn"
   def finite = false
+  def label = toString
+  def children = Nil
 }
 
 /** interval of integers, unbounded if bounds absent, including lower and upper bound if present */
 case class IntervalType(lower: Option[Expression], upper: Option[Expression]) extends Type {
   private def boundString(e: Option[Expression]) = e.map(_.toString).getOrElse("")
   override def toString = s"int[${boundString(lower)};${boundString(upper)}]"
+  def label = "int"
+  def children = lower.toList ::: upper.toList
   def finite = lower.isDefined && upper.isDefined
   def concrete = lower.forall(_.isInstanceOf[IntValue]) && upper.forall(_.isInstanceOf[IntValue])
 }
@@ -878,6 +1004,9 @@ object NumberType {
   */
 case class FunType(ins: LocalContext, out: Type) extends Type {
   override def toString = ProdType(ins).toString + " -> " + out
+  def label = "->"
+  def children = ins.children ::: List(out)
+  override def childrenInContext = ins.childrenInContext ::: List((None,Some(ins),out))
   def finite = (out::ins.decls.map(_.tp)).forall(_.finite)
   def simple = ins.decls.forall(_.anonymous)
   /** only valid if this.simple */
@@ -891,12 +1020,15 @@ object FunType {
   * Declarations in ins are given in context-order
   */
 case class ProdType(comps: LocalContext) extends Type {
-  def decls = comps.decls.reverse
+  def label = "(...)"
+  def children = comps.children
+  override def childrenInContext = comps.childrenInContext
   override def toString = {
     val (open,close) = if (decls.length == 1 && decls.head.anonymous) ("","") else ("(",")")
     val declsS = decls.map(vd => if (vd.anonymous) vd.tp.toString else vd.toString)
     declsS.mkString(open, ",", close)
   }
+  def decls = comps.decls.reverse
   def finite = decls.forall(_.tp.finite)
   def simple = comps.decls.forall(_.anonymous)
   /** only valid if this.simple */
@@ -912,6 +1044,8 @@ case class CollectionType(elem: Type, kind: CollectionKind) extends Type {
   override def toString = {
     s"$kind[$elem]"
   }
+  def label = CollectionKind.allKinds.find(_._2 == kind).map(_._1).getOrElse("collection")
+  def children = List(elem)
   def finite = kind.idemp && elem.finite
 }
 case class CollectionKind(idemp: Boolean, comm: Boolean, sizeOne: Boolean) {
@@ -946,6 +1080,8 @@ object CollectionKind {
 
 case class ProofType(formula: Expression) extends Type {
   override def toString = "|- " + formula
+  def label = "|-"
+  def children = List(formula)
   def finite = true
 }
 
@@ -960,6 +1096,9 @@ case class Instance(theory: Theory) extends Expression with MutableExpressionSto
       s"instance of $theory"
     } else
       theory.toString
+  def label = "new"
+  def children = theory.children
+  override def childrenInContext = theory.children.map(c => (Some(theory),None,c))
   /** non-null exactly for run-time instances, which additionally carry the current values of all fields */
   private[p] var fields: List[MutableExpression] = null
   /** true if this is a run-time instance, e.g., has been initialized already */
@@ -969,10 +1108,14 @@ case class Instance(theory: Theory) extends Expression with MutableExpressionSto
 /** a quoted expressions; introduction form of [[ExprsOver]] */
 case class ExprOver(scope: Theory, expr: Expression) extends Expression {
   override def toString = s"$scope{$expr}>"
+  def label = "quote"
+  def children = List(scope, expr)
 }
 /** backquote/evaluation inside a [[ExprsOver]] */
 case class Eval(syntax: Expression) extends Expression {
   override def toString = s"`$syntax`"
+  def label = "eval"
+  def children = List(syntax)
 }
 
 /*
@@ -995,6 +1138,9 @@ case class Lambda(ins: LocalContext, body: Expression) extends Expression {
     this
   }
   override def toString = s"($ins) -> $body"
+  def label = "lambda"
+  def children = ins.children ::: List(body)
+  override def childrenInContext = ins.childrenInContext ::: List((None,Some(ins),body))
 }
 
 /** function application, elimination form for [[FunType]]
@@ -1008,6 +1154,8 @@ case class Application(fun: Expression, args: List[Expression]) extends Expressi
       case _ => fun.toString + args.mkString("(",", ",")")
     }
   }
+  def label = "apply"
+  def children = fun::args
 }
 
 /** tuples, introduction form for [[ProdType]]
@@ -1015,6 +1163,8 @@ case class Application(fun: Expression, args: List[Expression]) extends Expressi
   */
 case class Tuple(comps: List[Expression]) extends Expression {
   override def toString = comps.mkString("(", ", ", ")")
+  def label = "tuple"
+  def children = comps
 }
 
 /** projection, elimination form for [[ProdType]]
@@ -1022,30 +1172,42 @@ case class Tuple(comps: List[Expression]) extends Expression {
   */
 case class Projection(tuple: Expression, index: Int) extends Expression {
   override def toString = s"$tuple.$index"
+  def label = "proj"
+  def children = List(tuple, IntValue(index))
 }
 
 /** collections, introduction form for [[CollectionType]] */
 case class CollectionValue(elems: List[Expression]) extends Expression {
   override def toString = elems.mkString("[", ",", "]")
+  def label = "collection"
+  def children = elems
 }
 /** list elements access, elimination form for non-commutative [[CollectionType]]s
   * @param position must evaluate to an [[IntValue]] between 0 and length-1; type-checking is undecidable and over-approximates
   */
 case class ListElem(list: Expression, position: Expression) extends Expression {
   override def toString = s"$list[$position]"
+  def label = "element"
+  def children = List(list, position)
 }
 
 case class Quantifier(univ: Boolean, vars: LocalContext, body: Expression) extends Expression {
-  def binder = if (univ) "forall" else "exists"
-  override def toString = s"($binder $vars.$body)"
+  def label = if (univ) "forall" else "exists"
+  override def toString = s"($label $vars.$body)"
+  def children = vars.children ::: List(body)
 }
 
 case class Assert(formula: Expression) extends Expression {
   override def toString = "|- " + formula
+  def label = "assert"
+  def children = List(formula)
 }
 
 /** base values, introduction forms of [[BaseType]] */
-sealed abstract class BaseValue(val value: Any, val tp: BaseType) extends Expression
+sealed abstract class BaseValue(val value: Any, val tp: BaseType) extends Expression {
+  def label = value.toString + "  :" + tp.toString
+  def children = Nil
+}
 
 /** element of [[UnitType]] */
 case object UnitValue extends BaseValue((), UnitType) {
@@ -1097,6 +1259,8 @@ object String {
   */
 case class BaseOperator(operator: Operator, tp: Type) extends Expression {
   override def toString = "(" + operator.symbol + ":" + tp + ")"
+  def label = operator.symbol
+  def children = Nil
 }
 
 // ************************** Standard programming language objects
@@ -1114,6 +1278,8 @@ case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boo
     val vlS = dfO match {case Some(v) => " = " + v.toString case None => ""}
     s"$name$sep $tpS$vlS"
   }
+  def label = if (name != "") name else "_"
+  def children = tp::dfO.toList
   def toRef = VarRef(name).copyFrom(this)
   def toSub = VarDecl.sub(name, toRef)
 }
@@ -1126,10 +1292,14 @@ object VarDecl {
 /** reference to local variable */
 case class VarRef(name: String) extends Expression {
   override def toString = name
+  def label = name
+  def children = Nil
 }
 /** assignment to mutable local variables */
 case class Assign(target: Expression, value: Expression) extends Expression {
   override def toString = s"$target = $value"
+  def label = ":="
+  def children = List(target,value)
 }
 
 /** sequence of expressions, ;-operator
@@ -1137,6 +1307,16 @@ case class Assign(target: Expression, value: Expression) extends Expression {
   */
 case class Block(exprs: List[Expression]) extends Expression {
   override def toString = exprs.mkString("{", "; ", "}")
+  def label = "block"
+  def children = exprs
+  override def childrenInContext = {
+    var ctx = LocalContext.empty
+    exprs.map {e =>
+      val c = (None,Some(ctx),e)
+      ctx = ctx.append(LocalContext.collectContext(e))
+      c
+    }
+  }
 }
 
 /** if-then-else, ternary operators, can be seen as elimination form of [[BoolType]] */
@@ -1145,19 +1325,25 @@ case class IfThenElse(cond: Expression, thn: Expression, els: Option[Expression]
     val elsS = els.map(e => " else " + e).getOrElse("")
     s"if $cond $thn$elsS"
   }
+  def label = "if"
+  def children = cond::thn::els.toList
 }
 
 /** unifies pattern-matching and exception handling */
 case class Match(expr: Expression, cases: List[MatchCase], handler: Boolean) extends Expression {
+  def label = if (handler) "handle" else "match"
   override def toString = {
-    val kw = if (handler) "handle" else "match"
-    expr.toString + " " + kw + " {\n" + cases.mkString("\n") + "}"
+    expr.toString + " " + label + " {\n" + cases.mkString("\n") + "}"
   }
+  def children = expr :: cases
 }
 
 /** case in a match: context |- pattern -> body */
 case class MatchCase(context: LocalContext, pattern: Expression, body: Expression) extends Expression {
   override def toString = pattern.toString + " -> " + body
+  def label = "case"
+  def children = List(context, pattern, body)
+  override def childrenInContext = (None,None,context) :: List(pattern,body).map(e => (None,Some(context),e))
 }
 
 /** for-loop, can be seen as elimination form of [[CollectionType]], behaves like map
@@ -1165,19 +1351,25 @@ case class MatchCase(context: LocalContext, pattern: Expression, body: Expressio
   */
 case class For(vd: VarDecl, range: Expression, body: Expression) extends Expression {
   override def toString = s"for (${vd.name} in $range) $body"
+  def label = "for"
+  def children = List(vd,range,body)
+  override def childrenInContext = cf(vd,range) ::: List((None,Some(LocalContext(vd)),body))
 }
 
 /** while-loop */
 case class While(cond: Expression, body: Expression) extends Expression {
   override def toString = s"while $cond $body"
+  def label = "while"
+  def children = List(cond,body)
 }
 
 /** unifies return and throw statements */
 case class Return(exp: Expression, thrw: Boolean) extends Expression {
+  def label = if (thrw) "throw" else "return"
   override def toString = {
-    val kw = if (thrw) "throw" else "return"
-    kw + " " + exp
+    label + " " + exp
   }
+  def children = List(exp)
 }
 
 // *********************************** Operators *****************************

@@ -20,6 +20,10 @@ object ErrorThrower extends ErrorHandler {
   def apply(e: SError) = throw e
 }
 
+object ErrorIgnorer extends ErrorHandler {
+  def apply(e: SError) = {}
+}
+
 class ErrorCollector extends ErrorHandler {
   override def toString = getErrors.mkString("\n")
   private var errors: List[SError] = Nil
