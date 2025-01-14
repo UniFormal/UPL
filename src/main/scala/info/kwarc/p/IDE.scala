@@ -51,7 +51,9 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
   def update(doc: TextDocument) = {
     // println("parsing " + doc.fileName)
     val so = makeOrigin(doc)
-    proj.update(so, doc.getText())
+    val txt = doc.getText()
+    val txtU = if (doc.fileName.endsWith(".tex")) Tex.detexify(txt) else txt
+    proj.update(so, txtU)
     proj.check(so)
     val pe = proj.get(so)
     val diags = pe.errors.getErrors.map {e =>

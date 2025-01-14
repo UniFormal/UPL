@@ -48,11 +48,14 @@ object PContext {
 
 object Parser {
   def file(f: File,eh: ErrorHandler) = {
-    val p = new Parser(f.toSourceOrigin,getFileContent(f),eh)
+    val p = new Parser(f.toSourceOrigin, getFileContent(f), eh)
     Vocabulary(p.parseDeclarations)
   }
 
-  def getFileContent(f: File) = if (f.getExtension contains "tex") Tex.readFile(f) else File.read(f)
+  def getFileContent(f: File) = {
+    val txt = File.read(f)
+    if (f.getExtension contains ("tex")) Tex.detexify(txt) else txt
+  }
 
   def text(so: SourceOrigin,s: String,eh: ErrorHandler) = {
     val p = new Parser(so,s,eh)
@@ -72,10 +75,10 @@ object Tex {
     * - \uplinlineC...C for some character C, where the command must not span multiple lines
     * Non-UPL characters are replaced with " " to keep the character positions the same
     */
-  def readFile(f: File) = {
+  def detexify(txt: String) = {
     val sb = new StringBuilder
     var inUPL = false
-    File.ReadLineWise(f) {line =>
+    txt.split("\\R").foreach {line =>
       val lineT = line.trim
       val take = if (!inUPL && lineT.startsWith(uplStart)) {
         inUPL = true
@@ -104,6 +107,7 @@ object Tex {
         val lineB = new StringBuilder
         var leaveUPLat: Option[Character] = None
         while (index < len) {
+          // assert(lineB.toString.length == index)
           if (leaveUPLat contains line(index)) {
             leaveUPLat = None
             lineB.append(" ")
@@ -127,6 +131,7 @@ object Tex {
         sb.append(lineB.toString + "\n")
       }
     }
+    // assert(txt.length == sb.toString.length)
     sb.toString
   }
   def toSpaces(s: String) = s.map(_ => ' ').mkString("")
