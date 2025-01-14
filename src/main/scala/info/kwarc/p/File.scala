@@ -14,6 +14,9 @@ case class File(toJava: java.io.File) {
    override def toString = toJava.toString
    def toSourceOrigin = SourceOrigin(toString)
 
+  /** name (including extension) */
+  def getName = toJava.getName
+
   /** @return the last file extension (if any) */
   def getExtension: Option[String] = {
     val name = toJava.getName

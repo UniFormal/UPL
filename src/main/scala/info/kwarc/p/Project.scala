@@ -122,7 +122,8 @@ class Project(var entries: List[ProjectEntry], main: Option[Expression] = None) 
   * - main: the main expression
   */
 object Project {
-  private def pFiles(f: File) = f.descendants.filter(_.getExtension contains "p")
+  private val fileEndings = List(".p", ".p.tex")
+  private def pFiles(f: File) = f.descendants.filter(d => fileEndings.exists(d.getName.endsWith))
   def fromFile(projFile: File, main: Option[String] = None) = {
     val (paths,mainS) = if (projFile.getExtension contains "pp") {
       val props = File.readPropertiesFromString(File.read(projFile))
@@ -141,7 +142,7 @@ object Project {
       new ProjectEntry(p.toSourceOrigin)
     }
     val p = new Project(es,mainE)
-    p.entries.foreach {e => p.update(e.source, File.read(File(e.source.toString)))}
+    p.entries.foreach {e => p.update(e.source, Parser.getFileContent(File(e.source.toString)))}
     p
   }
 }

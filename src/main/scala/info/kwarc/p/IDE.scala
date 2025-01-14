@@ -95,9 +95,9 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
     null
   }
 
-  def hover(doc: TextDocument, pos: Position): VSCode#Hover = {
+  def hover(doc: TextDocument, pos: Position): VSCode#Hover = reportExceptions {
     val (gc,sf) = fragmentAt(doc,pos).getOrElse(return null)
-    println(sf)
+    println(sf.toStringShort)
     val hov = sf match {
       case e: Expression =>
         val (_,tp) = new Checker(ErrorIgnorer).inferExpression(gc,e) // TODO: should not check
@@ -109,10 +109,19 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
     // new Hover("line: " + pos.line + "; character: " + pos.character + "; offset: " + offset)
   }
 
+  @inline
+  private def reportExceptions[A](code: => A) =
+    try {code}
+    catch {
+      case e: Error => println(e.getMessage); e.printStackTrace(); throw e
+      case e: Exception => println(e.getMessage); e.printStackTrace(); throw e
+    }
+
   private def fragmentAt(doc: TextDocument, pos: Position)= {
     val so = makeOrigin(doc)
     val gc = proj.makeGlobalContext()
-    val voc = proj.get(so).getVocabulary
+    val pe = proj.get(so)
+    val voc = pe.getVocabulary
     val offset = doc.offsetAt(pos)
     voc.descendantAt(gc,offset)
   }

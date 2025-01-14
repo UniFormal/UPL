@@ -47,18 +47,96 @@ object PContext {
 }
 
 object Parser {
-  def file(f: File, eh: ErrorHandler) = {
-    val p = new Parser(f.toSourceOrigin, File.read(f), eh)
+  def file(f: File,eh: ErrorHandler) = {
+    val p = new Parser(f.toSourceOrigin,getFileContent(f),eh)
     Vocabulary(p.parseDeclarations)
   }
-  def text(so: SourceOrigin, s: String, eh: ErrorHandler) = {
-    val p = new Parser(so, s, eh)
+
+  def getFileContent(f: File) = if (f.getExtension contains "tex") Tex.readFile(f) else File.read(f)
+
+  def text(so: SourceOrigin,s: String,eh: ErrorHandler) = {
+    val p = new Parser(so,s,eh)
     Vocabulary(p.parseDeclarations)
   }
-  def expression(origin: SourceOrigin, s: String, eh: ErrorHandler) = {
-    val p = new Parser(origin, s, eh)
+
+  def expression(origin: SourceOrigin,s: String,eh: ErrorHandler) = {
+    val p = new Parser(origin,s,eh)
     p.parseExpression(PContext.empty)
   }
+}
+
+object Tex {
+  /** parses a literate UPL file
+    * UPL content must be placed in
+    * - \begin{upl}...\end{upl} blocks, where the begin/end macros must occur on lines by themselves
+    * - \uplinlineC...C for some character C, where the command must not span multiple lines
+    * Non-UPL characters are replaced with " " to keep the character positions the same
+    */
+  def readFile(f: File) = {
+    val sb = new StringBuilder
+    var inUPL = false
+    File.ReadLineWise(f) {line =>
+      val lineT = line.trim
+      val take = if (!inUPL && lineT.startsWith(uplStart)) {
+        inUPL = true
+        Some(false)
+      } else if (inUPL && lineT.startsWith(uplEnd)) {
+        inUPL = false
+        Some(false)
+      } else if (!inUPL && lineT.startsWith(moduleBegin)) {
+        var i = lineT.indexWhere(c => c == ',' || c == ']')
+        if (i == -1) i = i+lineT.length
+        val name = lineT.substring(moduleBeginLen,i)
+        sb.append("module " + name + " {" + toSpaces(line.drop(7 + name.length + 2)) + "\n")
+        None
+      } else if (!inUPL && lineT.startsWith(moduleEnd)) {
+        sb.append("}" + toSpaces(line.drop(1)) + "\n")
+        None
+      } else if (inUPL) {
+        Some(true)
+      } else {
+        Some(false)
+      }
+      if (take contains true) sb.append(line + "\n")
+      else if (take contains false) {
+        var index = 0
+        val len = line.length
+        val lineB = new StringBuilder
+        var leaveUPLat: Option[Character] = None
+        while (index < len) {
+          if (leaveUPLat contains line(index)) {
+            leaveUPLat = None
+            lineB.append(" ")
+            index += 1
+          } else if (leaveUPLat.isDefined) {
+            lineB.append(line(index))
+            index += 1
+          } else if (index + uplinlineLen < len && line.substring(index,index + uplinlineLen) == uplinline) {
+            lineB.append(toSpaces(uplinline))
+            index += uplinlineLen
+            if (index < len) {
+              leaveUPLat = Some(line(index))
+              lineB.append(" ")
+              index += 1
+            }
+          } else {
+            lineB.append(" ")
+            index += 1
+          }
+        }
+        sb.append(lineB.toString + "\n")
+      }
+    }
+    sb.toString
+  }
+  def toSpaces(s: String) = s.map(_ => ' ').mkString("")
+  val moduleBegin = "\\begin{smodule}[id="
+  val moduleBeginLen = moduleBegin.length
+  val moduleEnd = "\\end{smodule}"
+  val uplinline = "\\uplinline"
+  val uplinlineLen = uplinline.length
+  val uplStart = "\\begin{upl}"
+  val uplEnd = "\\end{upl}"
 }
 
 class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {

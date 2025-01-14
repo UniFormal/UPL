@@ -14,11 +14,8 @@ function activate(context) {
     // this should be const, but making it global helps with debugging
 	UPL = new upl.VSCodeBridge(vscode, uplDiagnostics);
 
-	function update(event) {
-		UPL.update(event.document);
-	}
-	vscode.workspace.onDidOpenTextDocument(update);
-	vscode.workspace.onDidChangeTextDocument(update);
+	vscode.workspace.onDidOpenTextDocument(function (d) {UPL.update(d)});
+	vscode.workspace.onDidChangeTextDocument(function (e) {UPL.update(e.document)});
 	
 	// implementing the commands defined in package.json
 	push(vscode.commands.registerCommand('upl.build', () => {
