@@ -107,7 +107,6 @@ object Tex {
         val lineB = new StringBuilder
         var leaveUPLat: Option[Character] = None
         while (index < len) {
-          // assert(lineB.toString.length == index)
           if (leaveUPLat contains line(index)) {
             leaveUPLat = None
             lineB.append(" ")
@@ -127,6 +126,7 @@ object Tex {
             lineB.append(" ")
             index += 1
           }
+          // assert(lineB.toString.length == index)
         }
         sb.append(lineB.toString + "\n")
       }
@@ -351,7 +351,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     TypeDecl(name, tp, df)
   }
 
-  def parseVarDecl(mutable: Boolean, nameMandatory: Boolean)(implicit ctxs: PContext): VarDecl = {
+  def parseVarDecl(mutable: Boolean, nameMandatory: Boolean)(implicit ctxs: PContext): VarDecl = addRef {
     val noStatements = ctxs.setAllowStatement(false)
     val backtrackPoint = index
     val n = parseName
@@ -372,12 +372,12 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     }
   }
 
-  def parseContext(namesMandatory: Boolean)(implicit ctxs: PContext): LocalContext = {
+  def parseContext(namesMandatory: Boolean)(implicit ctxs: PContext): LocalContext = addRef {
     val vds = parseList(parseVarDecl(false, namesMandatory), ",", ")")
     LocalContext.make(vds)
   }
 
-  def parseTheory(implicit ctxs: PContext): Theory = {
+  def parseTheory(implicit ctxs: PContext): Theory = addRef {
     trim
     val ps = parseList(parsePath, "+", "|")
     Theory(ps.map(p => Include(p)))
@@ -651,7 +651,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     null // impossible
   }
 
-  def parseMatchCase(implicit ctxs: PContext) = {
+  def parseMatchCase(implicit ctxs: PContext) = addRef {
     val e = parseExpression
     e match {
       case mc: MatchCase => mc

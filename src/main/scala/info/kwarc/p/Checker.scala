@@ -35,7 +35,7 @@ class Checker(errorHandler: ErrorHandler) {
 
   def checkVocabulary(gc: GlobalContext, voc: Vocabulary, keepFull: Boolean)(implicit cause: SyntaxFragment) = {
     val dsC = checkDeclarationsAndFlatten(gc, voc.decls, keepFull)
-    Vocabulary(dsC)
+    Vocabulary(dsC).copyFrom(voc)
   }
 
   def checkProgram(p: Program): Program = matchC(p) {
@@ -45,7 +45,7 @@ class Checker(errorHandler: ErrorHandler) {
       val vocC = checkVocabulary(gc, voc, true)(p)
       val gcC = GlobalContext(vocC)
       val mnC = checkExpression(gcC,mn,AnyType)
-      Program(vocC, mnC)
+      Program(vocC, mnC).copyFrom(p)
   }
 
   def checkDeclaration(gc: GlobalContext, decl: Declaration): Declaration = recoverWith(decl) {
@@ -84,7 +84,6 @@ class Checker(errorHandler: ErrorHandler) {
         // purity checks?
     }
     declC.copyFrom(decl)
-    declC
   }
 
   private case class FlattenInput(decls: List[Declaration], alsoCheck: Boolean, alsoTranslate: Option[Include]) {
@@ -114,6 +113,7 @@ class Checker(errorHandler: ErrorHandler) {
      */
     // initially, we need to flatten the original list, which must be checked but not translated
     var todo = List(FlattenInput(decls,true,None))
+    val numPriorDecls = gc.parentDecls.length // new declarations are appended to these
     var gcC = gc // will change as we process declarations
     // adds a declaration to the result, possibly merging with an existing one
     // returns true if added (redundant otherwise)
@@ -179,7 +179,8 @@ class Checker(errorHandler: ErrorHandler) {
     var defines: List[String] = Nil // defined symbols
     var delegates: List[Path] = Nil // defined includes
     var realizes: List[Path] = Nil  // needed for totality
-    gcC.parentDecls.foreach {_d =>
+    val totalDecls = gcC.parentDecls
+    totalDecls.take(totalDecls.length-numPriorDecls).foreach {_d =>
       var d = _d
       d match {
         case sd: SymbolDeclaration if sd.dfO.isDefined => defines ::= sd.name
@@ -280,7 +281,7 @@ class Checker(errorHandler: ErrorHandler) {
       (tC,oC)
     }
     val ctxC = checkLocal(gc.push(RegionalContext(thyC,ownC)), rc.local, false, false)
-    RegionalContext(thyC,ownC,ctxC)
+    RegionalContext(thyC,ownC,ctxC).copyFrom(rc)
   }
   private def checkTheoryPath(gc: GlobalContext, p: Path)(implicit cause: SyntaxFragment) = recoverWith(p) {
     gc.resolvePath(p) match {
@@ -292,21 +293,21 @@ class Checker(errorHandler: ErrorHandler) {
   def checkTheory(gc: GlobalContext, thy: Theory)(implicit cause: SyntaxFragment): Theory = recoverWith(thy) {
     if (thy.isFlat) return thy
     // TODO simply retrieve theory if physical
-    val mod = thy.toModule
     val gcI = gc.pushEmpty()
     val declsC = checkDeclarationsAndFlatten(gcI,thy.decls,false)
-    val t = Theory(declsC)
-    t.isFlat = true
-    t
+    val thyC = Theory(declsC).copyFrom(thy)
+    thyC.isFlat = true
+    thyC
   }
-  def checkLocal(gc: GlobalContext,c: LocalContext,allowDefinitions: Boolean,allowMutable: Boolean): LocalContext = recoverWith(c) {
-    if (!c.namesUnique) reportError("name clash in local context")(c)
+  def checkLocal(gc: GlobalContext,lc: LocalContext,allowDefinitions: Boolean,allowMutable: Boolean): LocalContext = recoverWith(lc) {
+    if (!lc.namesUnique) reportError("name clash in local context")(lc)
     var gcL = gc
-    c.map {vd =>
+    val lcC = lc.map {vd =>
       val vdC = checkVarDecl(gcL,vd,allowDefinitions,allowMutable)
       gcL = gcL.append(vdC)
       vdC
     }
+    lcC.copyFrom(lc)
   }
 
   def checkVarDecl(gc: GlobalContext,vd: VarDecl,allowDefinitions: Boolean,allowMutable: Boolean): VarDecl = {
@@ -315,7 +316,8 @@ class Checker(errorHandler: ErrorHandler) {
     if (vd.defined && !allowDefinitions) reportError("defined variable not allowed here")
     val tpC = checkType(gc,vd.tp)
     val dfC = vd.dfO map {d => checkExpression(gc,d,tpC, returnToHere = true)}
-    VarDecl(vd.name,tpC.skipUnknown,dfC,vd.mutable)
+    val vdC = VarDecl(vd.name,tpC.skipUnknown,dfC,vd.mutable)
+    vdC.copyFrom(vd)
   }
 
   /** gc |- sub: ctx */
@@ -330,7 +332,7 @@ class Checker(errorHandler: ErrorHandler) {
       val eC = checkExpression(gc, e, tpE)
       subC = subC.append(vd.name,eC)
     }
-    subC
+    subC.copyFrom(sub)
   }
 
   /** component-wise subtype check,

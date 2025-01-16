@@ -14,6 +14,11 @@ trait VSCode extends js.Object {
   @js.native
   class Range(val start: VSCode#Position, val end: VSCode#Position) extends js.Object
   @js.native
+  trait Selection extends js.Object {
+    def start: Position = js.native
+    def end: Position = js.native
+  }
+  @js.native
   class Hover(text: String) extends js.Object
   @js.native
   class DocumentSymbol(name: String, detail: String, kind: Int, range: Range, selectionRange: Range) extends js.Object {
@@ -21,11 +26,19 @@ trait VSCode extends js.Object {
   }
   @js.native
   class SignatureHelp() extends js.Object
+
+  def window: Window = js.native
 }
 
 @js.native
-trait DiagnosticCollection extends js.Object {
-  def set(uri: Uri, errors: js.Array[VSCode#Diagnostic]): Unit = js.native
+trait Window extends js.Object {
+  def activeTextEditor: TextEditor = js.native
+}
+
+@js.native
+trait TextEditor extends js.Object {
+  def selection: VSCode#Selection = js.native
+  def selections: js.Array[VSCode#Selection] = js.native
 }
 
 @js.native
@@ -37,6 +50,11 @@ trait TextDocument extends js.Object {
   def getText(): String = js.native
   def positionAt(offset: Int): VSCode#Position = js.native
   def offsetAt(pos: VSCode#Position): Int = js.native
+}
+
+@js.native
+trait DiagnosticCollection extends js.Object {
+  def set(uri: Uri, errors: js.Array[VSCode#Diagnostic]): Unit = js.native
 }
 
 @js.native
@@ -98,7 +116,17 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
   }
 
   def hover(doc: TextDocument, pos: Position): VSCode#Hover = reportExceptions {
-    val (gc,sf) = fragmentAt(doc,pos).getOrElse(return null)
+    val so = makeOrigin(doc)
+    val offset = doc.offsetAt(pos)
+    val defaultLoc = info.kwarc.p.Location(so, offset, offset)
+    val loc = vs.window.activeTextEditor.selections.headOption match {
+      case Some(s) =>
+        val sl = info.kwarc.p.Location(so,doc.offsetAt(s.start),doc.offsetAt(s.end))
+        if (sl contains defaultLoc) sl else defaultLoc
+      case None => defaultLoc
+    }
+    val (gc,sf) = proj.fragmentAt(loc).getOrElse(return null)
+    //return new Hover("line: " + pos.line + "; character: " + pos.character + "\n" + sf.toStringShort)
     println(sf.toStringShort)
     val hov = sf match {
       case e: Expression =>
@@ -108,7 +136,6 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
       case _ => sf.toString
     }
     new Hover(hov)
-    // new Hover("line: " + pos.line + "; character: " + pos.character + "; offset: " + offset)
   }
 
   @inline
@@ -119,14 +146,6 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
       case e: Exception => println(e.getMessage); e.printStackTrace(); throw e
     }
 
-  private def fragmentAt(doc: TextDocument, pos: Position)= {
-    val so = makeOrigin(doc)
-    val gc = proj.makeGlobalContext()
-    val pe = proj.get(so)
-    val voc = pe.getVocabulary
-    val offset = doc.offsetAt(pos)
-    voc.descendantAt(gc,offset)
-  }
   private def range(doc: TextDocument, loc: info.kwarc.p.Location) = new Range(doc.positionAt(loc.from), doc.positionAt(loc.to))
 }
 

@@ -19,6 +19,13 @@ class Project(var entries: List[ProjectEntry], main: Option[Expression] = None) 
   def hasErrors = entries.exists(_.errors.hasErrors)
   def getErrors = entries.flatMap(_.errors.getErrors)
 
+  def fragmentAt(loc: info.kwarc.p.Location)= {
+    val gc = makeGlobalContext()
+    val pe = get(loc.origin)
+    val voc = pe.getVocabulary
+    voc.descendantAt(gc,loc)
+  }
+
   def makeGlobalContext(so: SourceOrigin) = {
     val ds = entries.takeWhile(_.source != so).flatMap(_.checked.decls)
     GlobalContext(Module.anonymous(ds))
