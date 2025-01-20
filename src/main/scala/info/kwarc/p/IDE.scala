@@ -127,10 +127,9 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
     }
     val (gc,sf) = proj.fragmentAt(loc).getOrElse(return null)
     //return new Hover("line: " + pos.line + "; character: " + pos.character + "\n" + sf.toStringShort)
-    println(sf.toStringShort)
     val hov = sf match {
       case e: Expression =>
-        val (_,tp) = new Checker(ErrorIgnorer).inferExpression(gc,e) // TODO: should not check
+        val tp = new Checker(ErrorThrower).inferCheckedExpression(gc,e)
         tp.toString
       case tp: Type => tp.toString
       case _ => sf.toString

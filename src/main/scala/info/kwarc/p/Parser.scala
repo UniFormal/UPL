@@ -78,6 +78,7 @@ object Tex {
   def detexify(txt: String) = {
     val sb = new StringBuilder
     var inUPL = false
+    // TODO: might count line endings wrong
     txt.split("\\R").foreach {line =>
       val lineT = line.trim
       val take = if (!inUPL && lineT.startsWith(uplStart)) {

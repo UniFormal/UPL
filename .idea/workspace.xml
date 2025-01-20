@@ -94,7 +94,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Checker.scala</url>
-          <line>1228</line>
+          <line>1282</line>
           <option name="timeStamp" value="48" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
@@ -109,32 +109,27 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Syntax.scala</url>
-          <line>1740</line>
+          <line>1723</line>
           <option name="timeStamp" value="84" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Checker.scala</url>
-          <line>1224</line>
+          <line>1278</line>
           <option name="timeStamp" value="94" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Syntax.scala</url>
-          <line>494</line>
+          <line>495</line>
           <option name="timeStamp" value="107" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Parser.scala</url>
-          <line>154</line>
+          <line>155</line>
           <option name="timeStamp" value="118" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Syntax.scala</url>
-          <line>498</line>
-          <option name="timeStamp" value="137" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="scala-line">
-          <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Syntax.scala</url>
-          <line>491</line>
+          <line>492</line>
           <option name="timeStamp" value="138" />
         </line-breakpoint>
         <breakpoint enabled="true" type="java-exception">

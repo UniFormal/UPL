@@ -1292,9 +1292,9 @@ function $p_Linfo_kwarc_p_Checker__checkDeclarationsAndFlatten__Linfo_kwarc_p_Gl
   var elem$8 = $m_sci_Nil$();
   var elem$9 = null;
   elem$9 = elem$8;
-  var this$33 = $n($n($as_Linfo_kwarc_p_GlobalContext(elem)).parentDecls__sci_List());
-  var this$34 = $n($as_sci_List($p_sc_StrictOptimizedLinearSeqOps__loop$2__I__sc_LinearSeq__sc_LinearSeq(this$33, numPriorDecls, this$33)));
-  var these = this$34;
+  var totalDecls = $n($as_Linfo_kwarc_p_GlobalContext(elem)).parentDecls__sci_List();
+  var this$33 = $n($n(totalDecls).take__I__sci_List((($n(totalDecls).length__I() - numPriorDecls) | 0)));
+  var these = this$33;
   while ((!$n(these).isEmpty__Z())) {
     var arg1$1 = $n(these).head__O();
     var _d = $as_Linfo_kwarc_p_Declaration(arg1$1);
@@ -1305,55 +1305,55 @@ function $p_Linfo_kwarc_p_Checker__checkDeclarationsAndFlatten__Linfo_kwarc_p_Gl
     matchEnd7: {
       if ($is_Linfo_kwarc_p_SymbolDeclaration(x1$1)) {
         var x2$1 = $as_Linfo_kwarc_p_SymbolDeclaration(x1$1);
-        var this$35 = $n($n(x2$1).dfO__s_Option());
-        if ((!this$35.isEmpty__Z())) {
-          var this$36 = $n($as_sci_List(elem$5));
+        var this$34 = $n($n(x2$1).dfO__s_Option());
+        if ((!this$34.isEmpty__Z())) {
+          var this$35 = $n($as_sci_List(elem$5));
           var elem$10 = $n($as_Linfo_kwarc_p_Named(x2$1)).name__T();
-          elem$5 = new $c_sci_$colon$colon(elem$10, this$36);
+          elem$5 = new $c_sci_$colon$colon(elem$10, this$35);
           break matchEnd7;
         }
       }
       if ((x1$1 instanceof $c_Linfo_kwarc_p_Include)) {
         rc6 = true;
         x3$1 = $as_Linfo_kwarc_p_Include(x1$1);
-        var this$37 = $n($n(x3$1).Linfo_kwarc_p_Include__f_dfO);
-        if ((!this$37.isEmpty__Z())) {
-          var this$38 = $n($as_sci_List(elem$7));
+        var this$36 = $n($n(x3$1).Linfo_kwarc_p_Include__f_dfO);
+        if ((!this$36.isEmpty__Z())) {
+          var this$37 = $n($as_sci_List(elem$7));
           var elem$11 = $n(x3$1).Linfo_kwarc_p_Include__f_dom;
-          elem$7 = new $c_sci_$colon$colon(elem$11, this$38);
+          elem$7 = new $c_sci_$colon$colon(elem$11, this$37);
           break matchEnd7;
         }
       }
       if ((rc6 && $n(x3$1).Linfo_kwarc_p_Include__f_realize)) {
-        var this$39 = $n($as_sci_List(elem$9));
+        var this$38 = $n($as_sci_List(elem$9));
         var elem$12 = $n(x3$1).Linfo_kwarc_p_Include__f_dom;
-        elem$9 = new $c_sci_$colon$colon(elem$12, this$39);
+        elem$9 = new $c_sci_$colon$colon(elem$12, this$38);
+        var this$39 = $n(x3$1);
+        var x$2$1 = this$39.Linfo_kwarc_p_Include__f_dom;
         var this$40 = $n(x3$1);
-        var x$2$1 = this$40.Linfo_kwarc_p_Include__f_dom;
-        var this$41 = $n(x3$1);
-        var x$3$2 = this$41.Linfo_kwarc_p_Include__f_dfO;
+        var x$3$2 = this$40.Linfo_kwarc_p_Include__f_dfO;
         $n(x3$1);
         d$1 = new $c_Linfo_kwarc_p_Include(x$2$1, x$3$2, false).copyFrom__Linfo_kwarc_p_SyntaxFragment__Linfo_kwarc_p_Declaration(x3$1);
         break matchEnd7;
       }
     }
     if (((!$n(d$1).Linfo_kwarc_p_Declaration__f_subsumed) && ((keepFull || $n(d$1).Linfo_kwarc_p_Declaration__f_subsuming) || (d$1 instanceof $c_Linfo_kwarc_p_Include)))) {
-      var this$43 = $n($as_sci_List(elem$3));
+      var this$42 = $n($as_sci_List(elem$3));
       var elem$13 = d$1;
-      elem$3 = new $c_sci_$colon$colon(elem$13, this$43);
+      elem$3 = new $c_sci_$colon$colon(elem$13, this$42);
     }
     $n(d$1).Linfo_kwarc_p_Declaration__f_subsumed = false;
     $n(d$1).Linfo_kwarc_p_Declaration__f_subsuming = false;
     these = $as_sci_List($n(these).tail__O());
   }
-  var this$44 = $n($as_sci_List(elem$9));
-  var these$1 = this$44;
+  var this$43 = $n($as_sci_List(elem$9));
+  var these$1 = this$43;
   while ((!$n(these$1).isEmpty__Z())) {
     var arg1$2 = $n(these$1).head__O();
     var p$2 = $as_Linfo_kwarc_p_Path(arg1$2);
     if ((!$n($as_sci_List(elem$7)).contains__O__Z(p$2))) {
-      var this$45 = $n($n($as_Linfo_kwarc_p_Module($n($n($n(gc).Linfo_kwarc_p_GlobalContext__f_voc).lookupModule__Linfo_kwarc_p_Path__s_Option(p$2)).get__O())).undefined__sci_List());
-      var these$2 = this$45;
+      var this$44 = $n($n($as_Linfo_kwarc_p_Module($n($n($n(gc).Linfo_kwarc_p_GlobalContext__f_voc).lookupModule__Linfo_kwarc_p_Path__s_Option(p$2)).get__O())).undefined__sci_List());
+      var these$2 = this$44;
       while ((!$n(these$2).isEmpty__Z())) {
         var arg1$3 = $n(these$2).head__O();
         var sd = $as_Linfo_kwarc_p_SymbolDeclaration(arg1$3);
@@ -2195,7 +2195,7 @@ $c_Linfo_kwarc_p_Checker.prototype.checkDeclaration__Linfo_kwarc_p_GlobalContext
         }
         var x3$2 = $as_s_Some(x1$2);
         var df = $as_Linfo_kwarc_p_Expression($n(x3$2).s_Some__f_value);
-        var x1$3 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, df);
+        var x1$3 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, df, true);
         if ((x1$3 === null)) {
           throw new $c_s_MatchError(x1$3);
         }
@@ -2619,7 +2619,7 @@ $c_Linfo_kwarc_p_Checker.prototype.checkType__Linfo_kwarc_p_GlobalContext__Linfo
         var owner = $n(x4).Linfo_kwarc_p_OwnedType__f_owner;
         var dom = $n(x4).Linfo_kwarc_p_OwnedType__f_ownerDom;
         var tp = $n(x4).Linfo_kwarc_p_OwnedType__f_owned;
-        var x1$6 = this.inferExpressionNorm__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, owner);
+        var x1$6 = this.inferExpressionNorm__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, owner, true);
         if ((x1$6 === null)) {
           throw new $c_s_MatchError(x1$6);
         }
@@ -3593,7 +3593,7 @@ $c_Linfo_kwarc_p_Checker.prototype.checkExpression__Linfo_kwarc_p_GlobalContext_
           var x3 = $as_Linfo_kwarc_p_IntervalType(tpN);
           var l = $n(x3).Linfo_kwarc_p_IntervalType__f_lower;
           var u = $n(x3).Linfo_kwarc_p_IntervalType__f_upper;
-          var x1$2 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, exp);
+          var x1$2 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, exp, true);
           if ((x1$2 === null)) {
             throw new $c_s_MatchError(x1$2);
           }
@@ -3733,7 +3733,7 @@ $c_Linfo_kwarc_p_Checker.prototype.checkExpression__Linfo_kwarc_p_GlobalContext_
             var dt = $n(x17).Linfo_kwarc_p_OwnedType__f_ownerDom;
             var tp$1 = $n(x17).Linfo_kwarc_p_OwnedType__f_owned;
             if (((oe === null) ? (ot === null) : $n(oe).equals__O__Z(ot))) {
-              var x1$6 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, oe);
+              var x1$6 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, oe, true);
               if ((x1$6 === null)) {
                 throw new $c_s_MatchError(x1$6);
               }
@@ -3793,7 +3793,7 @@ $c_Linfo_kwarc_p_Checker.prototype.checkExpression__Linfo_kwarc_p_GlobalContext_
               var this$11 = $n(args);
               var f$1 = ((a$2) => {
                 var a = $as_Linfo_kwarc_p_Expression(a$2);
-                return this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, a);
+                return this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, a, true);
               });
               if ((this$11 === $m_sci_Nil$())) {
                 var $x_2 = $m_sci_Nil$();
@@ -3842,11 +3842,11 @@ $c_Linfo_kwarc_p_Checker.prototype.checkExpression__Linfo_kwarc_p_GlobalContext_
               }
               var outI = this.inferOperator__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Operator__sci_List__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type(gc, op$2, $n(x32).simpleInputs__sci_List(), exp);
               this.checkSubtype__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type__Linfo_kwarc_p_SyntaxFragment__V(gc, outI, $n(x32).Linfo_kwarc_p_FunType__f_out, $as_Linfo_kwarc_p_SyntaxFragment(exp));
-              $n(x2$4).set__Linfo_kwarc_p_Type__V(tpN);
+              $n(x2$4).set__Linfo_kwarc_p_Type__V(x32);
             } else {
-              this.checkSubtype__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type__Linfo_kwarc_p_SyntaxFragment__V(gc, opTp$2, tpN, $as_Linfo_kwarc_p_SyntaxFragment(exp));
+              this.checkSubtype__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type__Linfo_kwarc_p_SyntaxFragment__V(gc, opTp$2, x32, $as_Linfo_kwarc_p_SyntaxFragment(exp));
             }
-            var eC$5 = new $c_Linfo_kwarc_p_BaseOperator(op$2, tpN);
+            var eC$5 = new $c_Linfo_kwarc_p_BaseOperator(op$2, x32);
             break matchEnd37;
           }
         }
@@ -3866,7 +3866,7 @@ $c_Linfo_kwarc_p_Checker.prototype.checkExpression__Linfo_kwarc_p_GlobalContext_
             if ((i$2.sr_IntRef__f_elem === numExprs)) {
               return this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression($as_Linfo_kwarc_p_GlobalContext(gcL.sr_ObjectRef__f_elem), e$5, tpN, false);
             } else {
-              var x1 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2($as_Linfo_kwarc_p_GlobalContext(gcL.sr_ObjectRef__f_elem), e$5);
+              var x1 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2($as_Linfo_kwarc_p_GlobalContext(gcL.sr_ObjectRef__f_elem), e$5, true);
               if ((x1 === null)) {
                 throw new $c_s_MatchError(x1);
               }
@@ -3898,7 +3898,7 @@ $c_Linfo_kwarc_p_Checker.prototype.checkExpression__Linfo_kwarc_p_GlobalContext_
           var eC$5 = new $c_Linfo_kwarc_p_Block(esC$3);
           break matchEnd37;
         }
-        var x1$10 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, exp);
+        var x1$10 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, exp, true);
         if ((x1$10 === null)) {
           throw new $c_s_MatchError(x1$10);
         }
@@ -3984,6 +3984,9 @@ $c_Linfo_kwarc_p_Checker.prototype.checkExpression__Linfo_kwarc_p_GlobalContext_
     }
   }
 });
+$c_Linfo_kwarc_p_Checker.prototype.inferCheckedExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type = (function(gc, exp) {
+  return $as_Linfo_kwarc_p_Type($n(this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, exp, false)).T2__f__2);
+});
 $c_Linfo_kwarc_p_Checker.prototype.checkExpressionPure__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Linfo_kwarc_p_Expression = (function(gc, e, t) {
   var eC = this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, e, t, false);
   $n($p_Linfo_kwarc_p_Checker__PurityChecker__Linfo_kwarc_p_Checker$PurityChecker$(this)).apply__Linfo_kwarc_p_Expression__Linfo_kwarc_p_GlobalContext__jl_Void__Linfo_kwarc_p_Expression(eC, gc, (void 0));
@@ -4029,8 +4032,8 @@ $c_Linfo_kwarc_p_Checker.prototype.checkExpressionPattern__Linfo_kwarc_p_GlobalC
   $n($p_Linfo_kwarc_p_Checker__PatternChecker__Linfo_kwarc_p_Checker$PatternChecker$(this)).apply__Linfo_kwarc_p_Expression__Linfo_kwarc_p_GlobalContext__jl_Void__Linfo_kwarc_p_Expression(eC, gc, (void 0));
   return new $c_T2(fctxIS, eC);
 });
-$c_Linfo_kwarc_p_Checker.prototype.inferExpressionNorm__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2 = (function(gc, e) {
-  var x1 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, e);
+$c_Linfo_kwarc_p_Checker.prototype.inferExpressionNorm__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2 = (function(gc, e, alsoCheck) {
+  var x1 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, e, alsoCheck);
   if ((x1 === null)) {
     throw new $c_s_MatchError(x1);
   }
@@ -4038,7 +4041,7 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpressionNorm__Linfo_kwarc_p_GlobalCont
   var eI = $as_Linfo_kwarc_p_Type($n(x1).T2__f__2);
   return new $c_T2(eC, this.typeNormalize__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type(gc, eI));
 });
-$c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2 = (function(gc, expA) {
+$c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2 = (function(gc, expA, alsoCheck) {
   var nonLocalReturnKey4 = $ct_O__(new $c_O());
   try {
     var recover = new $c_T2(expA, $m_Linfo_kwarc_p_AnyType$());
@@ -4066,17 +4069,19 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
         var exp;
         this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("not an expression", $as_Linfo_kwarc_p_SyntaxFragment(expA));
       }
-      var this$3 = $n($p_Linfo_kwarc_p_Checker__disambiguateOwnedObject__Linfo_kwarc_p_GlobalContext__O__s_Option(this, gc, exp));
-      var f = new $c_sjsr_AnonFunction1(((corrected$2) => {
-        var corrected = $as_Linfo_kwarc_p_Expression(corrected$2);
-        throw new $c_sr_NonLocalReturnControl(nonLocalReturnKey4, this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, corrected));
-      }));
-      if ((!this$3.isEmpty__Z())) {
-        f.apply__O__O(this$3.get__O());
+      if (alsoCheck) {
+        var this$3 = $n($p_Linfo_kwarc_p_Checker__disambiguateOwnedObject__Linfo_kwarc_p_GlobalContext__O__s_Option(this, gc, exp));
+        var f = new $c_sjsr_AnonFunction1(((corrected$2) => {
+          var corrected = $as_Linfo_kwarc_p_Expression(corrected$2);
+          throw new $c_sr_NonLocalReturnControl(nonLocalReturnKey4, this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, corrected, alsoCheck));
+        }));
+        if ((!this$3.isEmpty__Z())) {
+          f.apply__O__O(this$3.get__O());
+        }
       }
       if ((exp instanceof $c_Linfo_kwarc_p_BaseValue)) {
         var x2$2 = $as_Linfo_kwarc_p_BaseValue(exp);
-        var x1$36 = new $c_T2(x2$2, $n(x2$2).Linfo_kwarc_p_BaseValue__f_tp);
+        var x1$37 = new $c_T2(x2$2, $n(x2$2).Linfo_kwarc_p_BaseValue__f_tp);
       } else if ((exp instanceof $c_Linfo_kwarc_p_BaseOperator)) {
         var x3 = $as_Linfo_kwarc_p_BaseOperator(exp);
         if ((!$n($n(x3).Linfo_kwarc_p_BaseOperator__f_tp).known__Z())) {
@@ -4095,8 +4100,10 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
           this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("operator type not a simple function", $as_Linfo_kwarc_p_SyntaxFragment(expA));
         }
         var out = this.inferOperator__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Operator__sci_List__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type(gc, $n(x3).Linfo_kwarc_p_BaseOperator__f_operator, $n(ft).simpleInputs__sci_List(), expA);
-        this.checkSubtype__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type__Linfo_kwarc_p_SyntaxFragment__V(gc, out, $n(ft).Linfo_kwarc_p_FunType__f_out, $as_Linfo_kwarc_p_SyntaxFragment(exp));
-        var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_BaseOperator($n(x3).Linfo_kwarc_p_BaseOperator__f_operator, ft), $n(x3).Linfo_kwarc_p_BaseOperator__f_tp);
+        if (alsoCheck) {
+          this.checkSubtype__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type__Linfo_kwarc_p_SyntaxFragment__V(gc, out, $n(ft).Linfo_kwarc_p_FunType__f_out, $as_Linfo_kwarc_p_SyntaxFragment(exp));
+        }
+        var x1$37 = new $c_T2(new $c_Linfo_kwarc_p_BaseOperator($n(x3).Linfo_kwarc_p_BaseOperator__f_operator, ft), $n(x3).Linfo_kwarc_p_BaseOperator__f_tp);
       } else if ((exp instanceof $c_Linfo_kwarc_p_OpenRef)) {
         var x4 = $as_Linfo_kwarc_p_OpenRef(exp);
         if ((sdCached$2 instanceof $c_s_Some)) {
@@ -4118,20 +4125,20 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
         var rd$2 = $as_Linfo_kwarc_p_NamedDeclaration(x$18.T2__f__2);
         if ((rd$2 instanceof $c_Linfo_kwarc_p_ExprDecl)) {
           var x2$5 = $as_Linfo_kwarc_p_ExprDecl(rd$2);
-          var x1$36 = new $c_T2(rC$2, $n(x2$5).Linfo_kwarc_p_ExprDecl__f_tp);
+          var x1$37 = new $c_T2(rC$2, $n(x2$5).Linfo_kwarc_p_ExprDecl__f_tp);
         } else {
-          var x1$36;
+          var x1$37;
           this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E((x4 + " is not an expression"), $as_Linfo_kwarc_p_SyntaxFragment(expA));
         }
       } else if ((exp instanceof $c_Linfo_kwarc_p_ClosedRef)) {
         matchEnd5: {
-          var x1$36;
+          var x1$37;
           if ((sdCached$2 instanceof $c_s_Some)) {
             var x2$6 = $as_s_Some(sdCached$2);
             var ed = $as_Linfo_kwarc_p_NamedDeclaration($n(x2$6).s_Some__f_value);
             if ((ed instanceof $c_Linfo_kwarc_p_ExprDecl)) {
               var x3$2 = $as_Linfo_kwarc_p_ExprDecl(ed);
-              var x1$36 = new $c_T2(exp, $n(x3$2).Linfo_kwarc_p_ExprDecl__f_tp);
+              var x1$37 = new $c_T2(exp, $n(x3$2).Linfo_kwarc_p_ExprDecl__f_tp);
               break matchEnd5;
             }
           }
@@ -4142,7 +4149,7 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
         var owner = $n(x6).Linfo_kwarc_p_OwnedExpr__f_owner;
         var dom = $n(x6).Linfo_kwarc_p_OwnedExpr__f_ownerDom;
         var e = $n(x6).Linfo_kwarc_p_OwnedExpr__f_owned;
-        var x1$9 = this.inferExpressionNorm__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, owner);
+        var x1$9 = (alsoCheck ? this.inferExpressionNorm__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, owner, alsoCheck) : new $c_T2(owner, new $c_Linfo_kwarc_p_ClassType(dom)));
         if ((x1$9 !== null)) {
           var ownerC = $as_Linfo_kwarc_p_Expression($n(x1$9).T2__f__1);
           var ownerI = $as_Linfo_kwarc_p_Type($n(x1$9).T2__f__2);
@@ -4156,11 +4163,13 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
         if ((ownerI$2 instanceof $c_Linfo_kwarc_p_ClassType)) {
           var x2$7 = $as_Linfo_kwarc_p_ClassType(ownerI$2);
           var domC = $n(x2$7).Linfo_kwarc_p_ClassType__f_domain;
-          if (((dom !== null) && (!((dom === null) ? (domC === null) : $n(dom).equals__O__Z(domC))))) {
-            this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("unexpected given theory", $as_Linfo_kwarc_p_SyntaxFragment(expA));
+          if (alsoCheck) {
+            if (((dom !== null) && (!((dom === null) ? (domC === null) : $n(dom).equals__O__Z(domC))))) {
+              this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("unexpected given theory", $as_Linfo_kwarc_p_SyntaxFragment(expA));
+            }
           }
           var envO = $n(gc).push__Linfo_kwarc_p_Theory__s_Option__Linfo_kwarc_p_GlobalContext(domC, new $c_s_Some(ownerC$2));
-          var x1$11 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(envO, e);
+          var x1$11 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(envO, e, alsoCheck);
           if ((x1$11 !== null)) {
             var eC = $as_Linfo_kwarc_p_Expression($n(x1$11).T2__f__1);
             var eI = $as_Linfo_kwarc_p_Type($n(x1$11).T2__f__2);
@@ -4171,42 +4180,46 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
           }
           var eC$2 = $as_Linfo_kwarc_p_Expression(x$20.T2__f__1);
           var eI$2 = $as_Linfo_kwarc_p_Type(x$20.T2__f__2);
-          var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_OwnedExpr(ownerC$2, domC, eC$2), new $c_Linfo_kwarc_p_OwnedType(ownerC$2, domC, eI$2));
+          var x1$37 = new $c_T2(new $c_Linfo_kwarc_p_OwnedExpr(ownerC$2, domC, eC$2), new $c_Linfo_kwarc_p_OwnedType(ownerC$2, domC, eI$2));
         } else {
-          var x1$36;
+          var x1$37;
           this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("owner must be an instance", $as_Linfo_kwarc_p_SyntaxFragment(expA));
         }
       } else if ((exp instanceof $c_Linfo_kwarc_p_VarRef)) {
         var x7 = $as_Linfo_kwarc_p_VarRef(exp);
         var n = $n(x7).Linfo_kwarc_p_VarRef__f_name;
         var this$4 = $n($n(gc).visibleLocals__Linfo_kwarc_p_LocalContext());
-        var x1$36 = new $c_T2(exp, $n($as_Linfo_kwarc_p_VarDecl($f_Linfo_kwarc_p_HasChildren__lookup__T__Linfo_kwarc_p_MaybeNamed(this$4, n))).Linfo_kwarc_p_VarDecl__f_tp);
+        var x1$37 = new $c_T2(exp, $n($as_Linfo_kwarc_p_VarDecl($f_Linfo_kwarc_p_HasChildren__lookup__T__Linfo_kwarc_p_MaybeNamed(this$4, n))).Linfo_kwarc_p_VarDecl__f_tp);
       } else if ((exp instanceof $c_Linfo_kwarc_p_Instance)) {
         var x8 = $as_Linfo_kwarc_p_Instance(exp);
         var thy = $n(x8).Linfo_kwarc_p_Instance__f_theory;
-        matchEnd4$6$1: {
-          var thyR;
-          if ((thy !== null)) {
-            var o7 = $m_Linfo_kwarc_p_ExtendedTheory$().unapply__Linfo_kwarc_p_Theory__s_Option(thy);
-            if ((!$n(o7).isEmpty__Z())) {
-              var p = $as_Linfo_kwarc_p_Path($n($as_T2($n(o7).get__O())).T2__f__1);
-              var ds = $as_sci_List($n($as_T2($n(o7).get__O())).T2__f__2);
-              var rassoc$3 = new $c_Linfo_kwarc_p_Include(p, $m_s_None$(), true);
-              var this$5 = $n(ds);
-              var thyR = new $c_Linfo_kwarc_p_Theory(new $c_sci_$colon$colon(rassoc$3, this$5));
-              break matchEnd4$6$1;
+        if ((!alsoCheck)) {
+          var thyC = thy;
+        } else {
+          matchEnd4$6$1: {
+            var thyR;
+            if ((thy !== null)) {
+              var o7 = $m_Linfo_kwarc_p_ExtendedTheory$().unapply__Linfo_kwarc_p_Theory__s_Option(thy);
+              if ((!$n(o7).isEmpty__Z())) {
+                var p = $as_Linfo_kwarc_p_Path($n($as_T2($n(o7).get__O())).T2__f__1);
+                var ds = $as_sci_List($n($as_T2($n(o7).get__O())).T2__f__2);
+                var rassoc$3 = new $c_Linfo_kwarc_p_Include(p, $m_s_None$(), true);
+                var this$5 = $n(ds);
+                var thyR = new $c_Linfo_kwarc_p_Theory(new $c_sci_$colon$colon(rassoc$3, this$5));
+                break matchEnd4$6$1;
+              }
             }
+            this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("instance must be of atomic theory", $as_Linfo_kwarc_p_SyntaxFragment(expA));
           }
-          this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("instance must be of atomic theory", $as_Linfo_kwarc_p_SyntaxFragment(expA));
+          var thyC = (alsoCheck ? this.checkTheory__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Theory__Linfo_kwarc_p_SyntaxFragment__Linfo_kwarc_p_Theory(gc, thyR, $as_Linfo_kwarc_p_SyntaxFragment(expA)) : thy);
         }
-        var thyC = this.checkTheory__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Theory__Linfo_kwarc_p_SyntaxFragment__Linfo_kwarc_p_Theory(gc, thyR, $as_Linfo_kwarc_p_SyntaxFragment(expA));
-        var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_Instance(thyC), new $c_Linfo_kwarc_p_ClassType(thyC));
+        var x1$37 = new $c_T2(new $c_Linfo_kwarc_p_Instance(thyC), new $c_Linfo_kwarc_p_ClassType(thyC));
       } else if ((exp instanceof $c_Linfo_kwarc_p_ExprOver)) {
         var x9 = $as_Linfo_kwarc_p_ExprOver(exp);
         var sc = $n(x9).Linfo_kwarc_p_ExprOver__f_scope;
         var q = $n(x9).Linfo_kwarc_p_ExprOver__f_expr;
-        var scC = this.checkTheory__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Theory__Linfo_kwarc_p_SyntaxFragment__Linfo_kwarc_p_Theory(gc, sc, $as_Linfo_kwarc_p_SyntaxFragment(expA));
-        var x1$13 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2($n(gc).push__Linfo_kwarc_p_Theory__s_Option__Linfo_kwarc_p_GlobalContext(scC, ($n(gc), $m_s_None$())), q);
+        var scC = (alsoCheck ? this.checkTheory__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Theory__Linfo_kwarc_p_SyntaxFragment__Linfo_kwarc_p_Theory(gc, sc, $as_Linfo_kwarc_p_SyntaxFragment(expA)) : sc);
+        var x1$13 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2($n(gc).push__Linfo_kwarc_p_Theory__s_Option__Linfo_kwarc_p_GlobalContext(scC, ($n(gc), $m_s_None$())), q, alsoCheck);
         if ((x1$13 !== null)) {
           var qC = $as_Linfo_kwarc_p_Expression($n(x1$13).T2__f__1);
           var qI = $as_Linfo_kwarc_p_Type($n(x1$13).T2__f__2);
@@ -4217,14 +4230,16 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
         }
         var qC$2 = $as_Linfo_kwarc_p_Expression(x$21.T2__f__1);
         var qI$2 = $as_Linfo_kwarc_p_Type(x$21.T2__f__2);
-        var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_ExprOver(scC, qC$2), new $c_Linfo_kwarc_p_ExprsOver(scC, qI$2));
+        var x1$37 = new $c_T2(new $c_Linfo_kwarc_p_ExprOver(scC, qC$2), new $c_Linfo_kwarc_p_ExprsOver(scC, qI$2));
       } else if ((exp instanceof $c_Linfo_kwarc_p_Eval)) {
         var x10 = $as_Linfo_kwarc_p_Eval(exp);
         var e$2 = $n(x10).Linfo_kwarc_p_Eval__f_syntax;
-        if ($n($n(gc).Linfo_kwarc_p_GlobalContext__f_regions).isEmpty__Z()) {
-          this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("eval outside quotation", $as_Linfo_kwarc_p_SyntaxFragment(expA));
+        if (alsoCheck) {
+          if ($n($n(gc).Linfo_kwarc_p_GlobalContext__f_regions).isEmpty__Z()) {
+            this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("eval outside quotation", $as_Linfo_kwarc_p_SyntaxFragment(expA));
+          }
         }
-        var x1$14 = this.inferExpressionNorm__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2($n(gc).pop__Linfo_kwarc_p_GlobalContext(), e$2);
+        var x1$14 = this.inferExpressionNorm__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2($n(gc).pop__Linfo_kwarc_p_GlobalContext(), e$2, alsoCheck);
         if ((x1$14 !== null)) {
           var eC$3 = $as_Linfo_kwarc_p_Expression($n(x1$14).T2__f__1);
           var eI$3 = $as_Linfo_kwarc_p_Type($n(x1$14).T2__f__2);
@@ -4236,16 +4251,18 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
         var eC$4 = $as_Linfo_kwarc_p_Expression(x$22.T2__f__1);
         var eI$4 = $as_Linfo_kwarc_p_Type(x$22.T2__f__2);
         matchEnd5$2: {
-          var x1$36;
+          var x1$37;
           if ((eI$4 instanceof $c_Linfo_kwarc_p_ExprsOver)) {
             var x2$8 = $as_Linfo_kwarc_p_ExprsOver(eI$4);
             var eT = $n(x2$8).Linfo_kwarc_p_ExprsOver__f_scope;
             var q$2 = $n(x2$8).Linfo_kwarc_p_ExprsOver__f_tp;
-            var this$7 = $n(gc);
-            if ((!this.isSubtheory__Linfo_kwarc_p_Theory__Linfo_kwarc_p_Theory__Z(eT, $n(this$7.currentRegion__Linfo_kwarc_p_RegionalContext()).Linfo_kwarc_p_RegionalContext__f_theory))) {
-              this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("quoted over wrong theory", $as_Linfo_kwarc_p_SyntaxFragment(expA));
+            if (alsoCheck) {
+              var this$7 = $n(gc);
+              if ((!this.isSubtheory__Linfo_kwarc_p_Theory__Linfo_kwarc_p_Theory__Z(eT, $n(this$7.currentRegion__Linfo_kwarc_p_RegionalContext()).Linfo_kwarc_p_RegionalContext__f_theory))) {
+                this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("quoted over wrong theory", $as_Linfo_kwarc_p_SyntaxFragment(expA));
+              }
             }
-            var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_Eval(eC$4), q$2);
+            var x1$37 = new $c_T2(new $c_Linfo_kwarc_p_Eval(eC$4), q$2);
             break matchEnd5$2;
           }
           if ((eI$4 !== null)) {
@@ -4253,21 +4270,21 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
             if ((!$n(o9).isEmpty__Z())) {
               var dom$2 = $as_Linfo_kwarc_p_Theory($n($as_T2($n(o9).get__O())).T2__f__1);
               var a = $as_Linfo_kwarc_p_Type($n($as_T2($n(o9).get__O())).T2__f__2);
-              var x1$36 = new $c_T2($n(mf.evaluation__Linfo_kwarc_p_MagicFunctions$evaluation$()).insert__Linfo_kwarc_p_Theory__Linfo_kwarc_p_Expression__sci_List__Linfo_kwarc_p_Application(dom$2, eC$4, $m_sci_Nil$()), a);
+              var x1$37 = new $c_T2($n(mf.evaluation__Linfo_kwarc_p_MagicFunctions$evaluation$()).insert__Linfo_kwarc_p_Theory__Linfo_kwarc_p_Expression__sci_List__Linfo_kwarc_p_Application(dom$2, eC$4, $m_sci_Nil$()), a);
               break matchEnd5$2;
             }
           }
           this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("not a quoted expression", $as_Linfo_kwarc_p_SyntaxFragment(expA));
         }
       } else if ((exp instanceof $c_Linfo_kwarc_p_MatchCase)) {
-        var x1$36;
+        var x1$37;
         this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("match case outside of match", $as_Linfo_kwarc_p_SyntaxFragment(expA));
       } else if ((exp instanceof $c_Linfo_kwarc_p_Lambda)) {
         var x12 = $as_Linfo_kwarc_p_Lambda(exp);
         var ins = $n(x12).Linfo_kwarc_p_Lambda__f_ins;
         var bd = $n(x12).Linfo_kwarc_p_Lambda__f_body;
-        var insC = this.checkLocal__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_LocalContext__Z__Z__Linfo_kwarc_p_LocalContext(gc, ins, false, false);
-        var x1$16 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2($as_Linfo_kwarc_p_GlobalContext($n(gc).append__Linfo_kwarc_p_LocalContext__O(insC)), bd);
+        var insC = (alsoCheck ? this.checkLocal__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_LocalContext__Z__Z__Linfo_kwarc_p_LocalContext(gc, ins, false, false) : ins);
+        var x1$16 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2($as_Linfo_kwarc_p_GlobalContext($n(gc).append__Linfo_kwarc_p_LocalContext__O(insC)), bd, alsoCheck);
         if ((x1$16 !== null)) {
           var bdC = $as_Linfo_kwarc_p_Expression($n(x1$16).T2__f__1);
           var bdI = $as_Linfo_kwarc_p_Type($n(x1$16).T2__f__2);
@@ -4278,19 +4295,19 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
         }
         var bdC$2 = $as_Linfo_kwarc_p_Expression(x$23.T2__f__1);
         var bdI$2 = $as_Linfo_kwarc_p_Type(x$23.T2__f__2);
-        var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_Lambda(insC, bdC$2), new $c_Linfo_kwarc_p_FunType(insC, bdI$2));
+        var x1$37 = new $c_T2(new $c_Linfo_kwarc_p_Lambda(insC, bdC$2), new $c_Linfo_kwarc_p_FunType(insC, bdI$2));
       } else if ((exp instanceof $c_Linfo_kwarc_p_Application)) {
         var x13 = $as_Linfo_kwarc_p_Application(exp);
         var f$1 = $n(x13).Linfo_kwarc_p_Application__f_fun;
         var as = $n(x13).Linfo_kwarc_p_Application__f_args;
         matchEnd4$7: {
-          var x1$36;
+          var x1$37;
           if ((f$1 instanceof $c_Linfo_kwarc_p_BaseOperator)) {
             var x2$9 = $as_Linfo_kwarc_p_BaseOperator(f$1);
             if ((!$n($n(x2$9).Linfo_kwarc_p_BaseOperator__f_tp).known__Z())) {
               var $x_1 = $n($n(as).map__F1__sci_List(new $c_sjsr_AnonFunction1(((a$2$2) => {
                 var a$2 = $as_Linfo_kwarc_p_Expression(a$2$2);
-                return this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, a$2);
+                return this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, a$2, alsoCheck);
               }))));
               var this$9 = $m_s_$less$colon$less$();
               var x1$18 = $x_1.unzip__F1__T2(this$9.s_$less$colon$less$__f_singleton);
@@ -4310,11 +4327,11 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
               var x$2$2 = this$10.Linfo_kwarc_p_BaseOperator__f_operator;
               $n(x2$9);
               var opC = new $c_Linfo_kwarc_p_BaseOperator(x$2$2, x$1);
-              var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_Application(opC, asC$2), out$2);
+              var x1$37 = new $c_T2(new $c_Linfo_kwarc_p_Application(opC, asC$2), out$2);
               break matchEnd4$7;
             }
           }
-          var x1$19 = this.inferExpressionNorm__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, f$1);
+          var x1$19 = this.inferExpressionNorm__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, f$1, alsoCheck);
           if ((x1$19 !== null)) {
             var fC = $as_Linfo_kwarc_p_Expression($n(x1$19).T2__f__1);
             var fI = $as_Linfo_kwarc_p_Type($n(x1$19).T2__f__2);
@@ -4344,7 +4361,7 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
                     var this$19 = $n(x4$2);
                     var i$2 = $as_s_math_BigInt(this$19.Linfo_kwarc_p_BaseValue__f_value);
                     var this$20 = $n(i$2);
-                    throw new $c_sr_NonLocalReturnControl(nonLocalReturnKey4, this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, $as_Linfo_kwarc_p_Expression(new $c_Linfo_kwarc_p_Projection(f$1, this$20.intValue__I()).copyFrom__Linfo_kwarc_p_SyntaxFragment__Linfo_kwarc_p_SyntaxFragment($as_Linfo_kwarc_p_SyntaxFragment(exp)))));
+                    throw new $c_sr_NonLocalReturnControl(nonLocalReturnKey4, this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, $as_Linfo_kwarc_p_Expression(new $c_Linfo_kwarc_p_Projection(f$1, this$20.intValue__I()).copyFrom__Linfo_kwarc_p_SyntaxFragment__Linfo_kwarc_p_SyntaxFragment($as_Linfo_kwarc_p_SyntaxFragment(exp))), alsoCheck));
                   }
                 }
               }
@@ -4398,24 +4415,20 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
           var fM$2 = $as_Linfo_kwarc_p_Expression(x$26.T3__f__1);
           var ins$3 = $as_Linfo_kwarc_p_LocalContext(x$26.T3__f__2);
           var out$4 = $as_Linfo_kwarc_p_Type(x$26.T3__f__3);
-          var $x_2 = $n(as).length__I();
-          var this$28 = $n(ins$3);
-          if (($x_2 !== $n(this$28.Linfo_kwarc_p_LocalContext__f_variables).length__I())) {
-            this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("wrong number of arguments", $as_Linfo_kwarc_p_SyntaxFragment(expA));
-          }
-          var asC$3 = this.checkSubstitution__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Substitution__Linfo_kwarc_p_LocalContext__Linfo_kwarc_p_Substitution(gc, $n(ins$3).substitute__sci_List__Linfo_kwarc_p_Substitution(as), ins$3);
+          var sub = $n(ins$3).substitute__sci_List__Linfo_kwarc_p_Substitution(as);
+          var asC$3 = (alsoCheck ? this.checkSubstitution__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Substitution__Linfo_kwarc_p_LocalContext__Linfo_kwarc_p_Substitution(gc, sub, ins$3) : sub);
           var outS = $m_Linfo_kwarc_p_Substituter$().apply__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Substitution__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type(gc, asC$3, out$4);
-          var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_Application(fM$2, $n(asC$3).exprs__sci_List()), outS);
+          var x1$37 = new $c_T2(new $c_Linfo_kwarc_p_Application(fM$2, $n(asC$3).exprs__sci_List()), outS);
         }
       } else if ((exp instanceof $c_Linfo_kwarc_p_Tuple)) {
         var x14 = $as_Linfo_kwarc_p_Tuple(exp);
         var es = $n(x14).Linfo_kwarc_p_Tuple__f_comps;
-        var $x_3 = $n($n(es).map__F1__sci_List(new $c_sjsr_AnonFunction1(((e$3$2) => {
+        var $x_2 = $n($n(es).map__F1__sci_List(new $c_sjsr_AnonFunction1(((e$3$2) => {
           var e$3 = $as_Linfo_kwarc_p_Expression(e$3$2);
-          return this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, e$3);
+          return this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, e$3, alsoCheck);
         }))));
-        var this$30 = $m_s_$less$colon$less$();
-        var x1$23 = $x_3.unzip__F1__T2(this$30.s_$less$colon$less$__f_singleton);
+        var this$29 = $m_s_$less$colon$less$();
+        var x1$23 = $x_2.unzip__F1__T2(this$29.s_$less$colon$less$__f_singleton);
         if ((x1$23 !== null)) {
           var esC = $as_sci_List($n(x1$23).T2__f__1);
           var esI = $as_sci_List($n(x1$23).T2__f__2);
@@ -4426,13 +4439,13 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
         }
         var esC$2 = $as_sci_List(x$27.T2__f__1);
         var esI$2 = $as_sci_List(x$27.T2__f__2);
-        var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_Tuple(esC$2), $m_Linfo_kwarc_p_ProdType$().simple__sci_List__Linfo_kwarc_p_ProdType(esI$2));
+        var x1$37 = new $c_T2(new $c_Linfo_kwarc_p_Tuple(esC$2), $m_Linfo_kwarc_p_ProdType$().simple__sci_List__Linfo_kwarc_p_ProdType(esI$2));
       } else if ((exp instanceof $c_Linfo_kwarc_p_Projection)) {
         var x15 = $as_Linfo_kwarc_p_Projection(exp);
         var tup = $n(x15).Linfo_kwarc_p_Projection__f_tuple;
         var p$2 = $n(x15).Linfo_kwarc_p_Projection__f_index;
         var mfp = new $c_Linfo_kwarc_p_MagicFunctions$projection(mf, p$2);
-        var x1$24 = this.inferExpressionNorm__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, tup);
+        var x1$24 = this.inferExpressionNorm__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, tup, alsoCheck);
         if ((x1$24 !== null)) {
           var tupC = $as_Linfo_kwarc_p_Expression($n(x1$24).T2__f__1);
           var tupI = $as_Linfo_kwarc_p_Type($n(x1$24).T2__f__2);
@@ -4444,27 +4457,29 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
         var tupC$2 = $as_Linfo_kwarc_p_Expression(x$28.T2__f__1);
         var tupI$2 = $as_Linfo_kwarc_p_Type(x$28.T2__f__2);
         matchEnd5$3: {
-          var x1$36;
+          var x1$37;
           if ((tupI$2 instanceof $c_Linfo_kwarc_p_ProdType)) {
             var x2$11 = $as_Linfo_kwarc_p_ProdType(tupI$2);
             var ts = $n(x2$11).Linfo_kwarc_p_ProdType__f_comps;
-            if ((p$2 <= 0)) {
-              this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("non-positive index", $as_Linfo_kwarc_p_SyntaxFragment(expA));
-            }
-            var this$31 = $n(ts);
-            if ((p$2 > $n(this$31.Linfo_kwarc_p_LocalContext__f_variables).length__I())) {
-              this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("index out of bounds", $as_Linfo_kwarc_p_SyntaxFragment(expA));
+            if (alsoCheck) {
+              if ((p$2 <= 0)) {
+                this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("non-positive index", $as_Linfo_kwarc_p_SyntaxFragment(expA));
+              }
+              var this$30 = $n(ts);
+              if ((p$2 > $n(this$30.Linfo_kwarc_p_LocalContext__f_variables).length__I())) {
+                this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("index out of bounds", $as_Linfo_kwarc_p_SyntaxFragment(expA));
+              }
             }
             var componentType = $n($n(ts).apply__I__Linfo_kwarc_p_VarDecl((((-1) + p$2) | 0))).Linfo_kwarc_p_VarDecl__f_tp;
             var precedingCompDecls = $as_Linfo_kwarc_p_LocalContext($n(ts).take__I__O((((-1) + p$2) | 0)));
-            var this$33 = new $c_sci_Range$Exclusive(1, p$2, 1);
-            var precedingProjs = $n($m_sci_Nil$().prependedAll__sc_IterableOnce__sci_List(this$33)).map__F1__sci_List(new $c_sjsr_AnonFunction1(((i$5$2) => {
+            var this$32 = new $c_sci_Range$Exclusive(1, p$2, 1);
+            var precedingProjs = $n($m_sci_Nil$().prependedAll__sc_IterableOnce__sci_List(this$32)).map__F1__sci_List(new $c_sjsr_AnonFunction1(((i$5$2) => {
               var i$5 = $uI(i$5$2);
               return new $c_Linfo_kwarc_p_Projection(tup, i$5);
             })));
-            var sub = $n(precedingCompDecls).substitute__sci_List__Linfo_kwarc_p_Substitution(precedingProjs);
-            var projI = $m_Linfo_kwarc_p_Substituter$().apply__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Substitution__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type(gc, sub, componentType);
-            var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_Projection(tupC$2, p$2), projI);
+            var sub$2 = $n(precedingCompDecls).substitute__sci_List__Linfo_kwarc_p_Substitution(precedingProjs);
+            var projI = $m_Linfo_kwarc_p_Substituter$().apply__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Substitution__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type(gc, sub$2, componentType);
+            var x1$37 = new $c_T2(new $c_Linfo_kwarc_p_Projection(tupC$2, p$2), projI);
             break matchEnd5$3;
           }
           if ((tupI$2 !== null)) {
@@ -4472,10 +4487,10 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
             if ((!$n(o9$3).isEmpty__Z())) {
               var dom$4 = $as_Linfo_kwarc_p_Theory($n($as_T2($n(o9$3).get__O())).T2__f__1);
               var a$3 = $as_Linfo_kwarc_p_Type($n($as_T2($n(o9$3).get__O())).T2__f__2);
-              var this$35 = $m_s_math_BigInt$();
-              var array = [new $c_Linfo_kwarc_p_IntValue(this$35.apply__I__s_math_BigInt(p$2))];
+              var this$34 = $m_s_math_BigInt$();
+              var array = [new $c_Linfo_kwarc_p_IntValue(this$34.apply__I__s_math_BigInt(p$2))];
               var elems = $ct_sjsr_WrappedVarArgs__sjs_js_Array__(new $c_sjsr_WrappedVarArgs(), array);
-              var x1$36 = new $c_T2(mfp.insert__Linfo_kwarc_p_Theory__Linfo_kwarc_p_Expression__sci_List__Linfo_kwarc_p_Application(dom$4, tupC$2, $m_sci_Nil$().prependedAll__sc_IterableOnce__sci_List(elems)), a$3);
+              var x1$37 = new $c_T2(mfp.insert__Linfo_kwarc_p_Theory__Linfo_kwarc_p_Expression__sci_List__Linfo_kwarc_p_Application(dom$4, tupC$2, $m_sci_Nil$().prependedAll__sc_IterableOnce__sci_List(elems)), a$3);
               break matchEnd5$3;
             }
           }
@@ -4484,12 +4499,12 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
       } else if ((exp instanceof $c_Linfo_kwarc_p_CollectionValue)) {
         var x16 = $as_Linfo_kwarc_p_CollectionValue(exp);
         var es$2 = $n(x16).Linfo_kwarc_p_CollectionValue__f_elems;
-        var $x_4 = $n($n(es$2).map__F1__sci_List(new $c_sjsr_AnonFunction1(((e$4$2) => {
+        var $x_3 = $n($n(es$2).map__F1__sci_List(new $c_sjsr_AnonFunction1(((e$4$2) => {
           var e$4 = $as_Linfo_kwarc_p_Expression(e$4$2);
-          return this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, e$4);
+          return this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, e$4, alsoCheck);
         }))));
-        var this$41 = $m_s_$less$colon$less$();
-        var x1$26 = $x_4.unzip__F1__T2(this$41.s_$less$colon$less$__f_singleton);
+        var this$40 = $m_s_$less$colon$less$();
+        var x1$26 = $x_3.unzip__F1__T2(this$40.s_$less$colon$less$__f_singleton);
         if ((x1$26 !== null)) {
           var esC$3 = $as_sci_List($n(x1$26).T2__f__1);
           var esI$3 = $as_sci_List($n(x1$26).T2__f__2);
@@ -4502,98 +4517,157 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
         var esI$4 = $as_sci_List(x$29.T2__f__2);
         var eI$5 = this.typeUnion__Linfo_kwarc_p_GlobalContext__sci_List__Linfo_kwarc_p_SyntaxFragment__Linfo_kwarc_p_Type(gc, esI$4, $as_Linfo_kwarc_p_SyntaxFragment(expA));
         var kind = (($n(es$2).length__I() <= 1) ? $m_Linfo_kwarc_p_CollectionKind$().Linfo_kwarc_p_CollectionKind$__f_Option : $m_Linfo_kwarc_p_CollectionKind$().Linfo_kwarc_p_CollectionKind$__f_List);
-        var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_CollectionValue(esC$4), new $c_Linfo_kwarc_p_CollectionType(eI$5, kind));
+        var x1$37 = new $c_T2(new $c_Linfo_kwarc_p_CollectionValue(esC$4), new $c_Linfo_kwarc_p_CollectionType(eI$5, kind));
       } else if ((exp instanceof $c_Linfo_kwarc_p_ListElem)) {
         var x17 = $as_Linfo_kwarc_p_ListElem(exp);
         var l = $n(x17).Linfo_kwarc_p_ListElem__f_list;
         var p$3 = $n(x17).Linfo_kwarc_p_ListElem__f_position;
-        var u = $m_Linfo_kwarc_p_Type$().unknown__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_UnknownType(gc);
-        var lC = this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, l, new $c_Linfo_kwarc_p_CollectionType(u, $m_Linfo_kwarc_p_CollectionKind$().Linfo_kwarc_p_CollectionKind$__f_UList), false);
-        var pC = this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, p$3, $m_Linfo_kwarc_p_IntType$(), false);
-        var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_ListElem(lC, pC), u);
+        if (alsoCheck) {
+          var u = $m_Linfo_kwarc_p_Type$().unknown__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_UnknownType(gc);
+          var lC = this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, l, new $c_Linfo_kwarc_p_CollectionType(u, $m_Linfo_kwarc_p_CollectionKind$().Linfo_kwarc_p_CollectionKind$__f_UList), false);
+          var pC = this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, p$3, $m_Linfo_kwarc_p_IntType$(), false);
+          var x1$37 = new $c_T2(new $c_Linfo_kwarc_p_ListElem(lC, pC), u);
+        } else {
+          var x1$27 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, l, alsoCheck);
+          matchEnd7$1: {
+            var a$5;
+            if ((x1$27 !== null)) {
+              var p3$2 = $as_Linfo_kwarc_p_Type($n(x1$27).T2__f__2);
+              if ((p3$2 instanceof $c_Linfo_kwarc_p_CollectionType)) {
+                var x4$4 = $as_Linfo_kwarc_p_CollectionType(p3$2);
+                var a$4 = $n(x4$4).Linfo_kwarc_p_CollectionType__f_elem;
+                var a$5 = a$4;
+                break matchEnd7$1;
+              }
+            }
+            throw new $c_s_MatchError(x1$27);
+          }
+          var x1$37 = new $c_T2(exp, a$5);
+        }
       } else if ((exp instanceof $c_Linfo_kwarc_p_Quantifier)) {
         var x18 = $as_Linfo_kwarc_p_Quantifier(exp);
         var q$3 = $n(x18).Linfo_kwarc_p_Quantifier__f_univ;
         var vars = $n(x18).Linfo_kwarc_p_Quantifier__f_vars;
         var bd$2 = $n(x18).Linfo_kwarc_p_Quantifier__f_body;
-        var varsC = this.checkLocal__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_LocalContext__Z__Z__Linfo_kwarc_p_LocalContext(gc, vars, false, false);
-        var bdC$3 = this.checkExpressionPure__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Linfo_kwarc_p_Expression($as_Linfo_kwarc_p_GlobalContext($n(gc).append__Linfo_kwarc_p_LocalContext__O(varsC)), bd$2, $m_Linfo_kwarc_p_BoolType$());
-        var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_Quantifier(q$3, varsC, bdC$3), $m_Linfo_kwarc_p_BoolType$());
+        if (alsoCheck) {
+          var varsC = this.checkLocal__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_LocalContext__Z__Z__Linfo_kwarc_p_LocalContext(gc, vars, false, false);
+          var bdC$3 = this.checkExpressionPure__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Linfo_kwarc_p_Expression($as_Linfo_kwarc_p_GlobalContext($n(gc).append__Linfo_kwarc_p_LocalContext__O(varsC)), bd$2, $m_Linfo_kwarc_p_BoolType$());
+          var eC$5 = new $c_Linfo_kwarc_p_Quantifier(q$3, varsC, bdC$3);
+        } else {
+          var eC$5 = exp;
+        }
+        var x1$37 = new $c_T2(eC$5, $m_Linfo_kwarc_p_BoolType$());
       } else if ((exp instanceof $c_Linfo_kwarc_p_Assert)) {
         var x19 = $as_Linfo_kwarc_p_Assert(exp);
         var f$2 = $n(x19).Linfo_kwarc_p_Assert__f_formula;
-        var fC$3 = this.checkExpressionPure__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Linfo_kwarc_p_Expression(gc, f$2, $m_Linfo_kwarc_p_BoolType$());
-        var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_Assert(fC$3), $m_Linfo_kwarc_p_UnitType$());
+        var fC$3 = (alsoCheck ? this.checkExpressionPure__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Linfo_kwarc_p_Expression(gc, f$2, $m_Linfo_kwarc_p_BoolType$()) : f$2);
+        var x1$37 = new $c_T2(new $c_Linfo_kwarc_p_Assert(fC$3), $m_Linfo_kwarc_p_UnitType$());
       } else if ((exp instanceof $c_Linfo_kwarc_p_Block)) {
-        var x1$36 = $p_Linfo_kwarc_p_Checker__inferExpressionViaCheck__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(this, gc, exp);
+        var x20 = $as_Linfo_kwarc_p_Block(exp);
+        var es$3 = $n(x20).Linfo_kwarc_p_Block__f_exprs;
+        if (alsoCheck) {
+          var x1$37 = $p_Linfo_kwarc_p_Checker__inferExpressionViaCheck__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(this, gc, exp);
+        } else {
+          if ($n(es$3).isEmpty__Z()) {
+            var tp$1 = $m_Linfo_kwarc_p_UnitType$();
+          } else {
+            var gcL = new $c_sr_ObjectRef(gc);
+            var this$42 = $n($as_sci_List($n(es$3).init__O()));
+            var f$3 = new $c_sjsr_AnonFunction1(((e$5$2) => {
+              var e$5 = $as_Linfo_kwarc_p_Expression(e$5$2);
+              gcL.sr_ObjectRef__f_elem = $as_Linfo_kwarc_p_GlobalContext($n($as_Linfo_kwarc_p_GlobalContext(gcL.sr_ObjectRef__f_elem)).append__Linfo_kwarc_p_LocalContext__O($m_Linfo_kwarc_p_LocalContext$().collectContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_LocalContext(e$5)));
+            }));
+            var these = this$42;
+            while ((!$n(these).isEmpty__Z())) {
+              f$3.apply__O__O($n(these).head__O());
+              these = $as_sci_List($n(these).tail__O());
+            }
+            var tp$1 = this.inferCheckedExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type($as_Linfo_kwarc_p_GlobalContext(gcL.sr_ObjectRef__f_elem), $as_Linfo_kwarc_p_Expression($n(es$3).last__O()));
+          }
+          var x1$37 = new $c_T2(exp, tp$1);
+        }
       } else if ((exp instanceof $c_Linfo_kwarc_p_VarDecl)) {
         var x21 = $as_Linfo_kwarc_p_VarDecl(exp);
         var n$3 = $n(x21).Linfo_kwarc_p_VarDecl__f_name;
-        var tp$1 = $n(x21).Linfo_kwarc_p_VarDecl__f_tp;
+        var tp$2 = $n(x21).Linfo_kwarc_p_VarDecl__f_tp;
         var dfO$1 = $n(x21).Linfo_kwarc_p_VarDecl__f_dfO;
         var mut = $n(x21).Linfo_kwarc_p_VarDecl__f_mutable;
         var output = $n(x21).Linfo_kwarc_p_VarDecl__f_output;
-        var tpC = this.checkType__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type(gc, tp$1);
-        var this$42 = $n(dfO$1);
-        var f$3 = new $c_sjsr_AnonFunction1(((df$2) => {
-          var df = $as_Linfo_kwarc_p_Expression(df$2);
-          return this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, df, tpC, false);
-        }));
-        var dfOC = (this$42.isEmpty__Z() ? $m_s_None$() : new $c_s_Some(f$3.apply__O__O(this$42.get__O())));
-        var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_VarDecl(n$3, tpC, dfOC, mut, output), tpC);
+        if (alsoCheck) {
+          var tpC = this.checkType__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type(gc, tp$2);
+          var this$43 = $n(dfO$1);
+          var f$4 = new $c_sjsr_AnonFunction1(((df$2) => {
+            var df = $as_Linfo_kwarc_p_Expression(df$2);
+            return this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, df, tpC, false);
+          }));
+          var dfOC = (this$43.isEmpty__Z() ? $m_s_None$() : new $c_s_Some(f$4.apply__O__O(this$43.get__O())));
+          var x1$37 = new $c_T2(new $c_Linfo_kwarc_p_VarDecl(n$3, tpC, dfOC, mut, output), tpC);
+        } else {
+          var x1$37 = new $c_T2(exp, tp$2);
+        }
       } else if ((exp instanceof $c_Linfo_kwarc_p_Assign)) {
         var x22 = $as_Linfo_kwarc_p_Assign(exp);
-        var e$5 = $n(x22).Linfo_kwarc_p_Assign__f_target;
+        var e$6 = $n(x22).Linfo_kwarc_p_Assign__f_target;
         var df$3 = $n(x22).Linfo_kwarc_p_Assign__f_value;
-        var x1$27 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, e$5);
-        if ((x1$27 !== null)) {
-          var eC$5 = $as_Linfo_kwarc_p_Expression($n(x1$27).T2__f__1);
-          var eI$6 = $as_Linfo_kwarc_p_Type($n(x1$27).T2__f__2);
-          var x$30 = new $c_T2(eC$5, eI$6);
+        if (alsoCheck) {
+          var x1$28 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, e$6, alsoCheck);
+          if ((x1$28 !== null)) {
+            var eC$6 = $as_Linfo_kwarc_p_Expression($n(x1$28).T2__f__1);
+            var eI$6 = $as_Linfo_kwarc_p_Type($n(x1$28).T2__f__2);
+            var x$30 = new $c_T2(eC$6, eI$6);
+          } else {
+            var x$30;
+            throw new $c_s_MatchError(x1$28);
+          }
+          var eC$7 = $as_Linfo_kwarc_p_Expression(x$30.T2__f__1);
+          var eI$7 = $as_Linfo_kwarc_p_Type(x$30.T2__f__2);
+          var dfC = this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, df$3, eI$7, false);
+          $p_Linfo_kwarc_p_Checker__checkAssignable__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__V(this, gc, e$6);
+          var expC = new $c_Linfo_kwarc_p_Assign(eC$7, dfC);
         } else {
-          var x$30;
-          throw new $c_s_MatchError(x1$27);
+          var expC = exp;
         }
-        var eC$6 = $as_Linfo_kwarc_p_Expression(x$30.T2__f__1);
-        var eI$7 = $as_Linfo_kwarc_p_Type(x$30.T2__f__2);
-        var dfC = this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, df$3, eI$7, false);
-        $p_Linfo_kwarc_p_Checker__checkAssignable__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__V(this, gc, e$5);
-        var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_Assign(eC$6, dfC), $m_Linfo_kwarc_p_UnitType$());
+        var x1$37 = new $c_T2(expC, $m_Linfo_kwarc_p_UnitType$());
       } else if ((exp instanceof $c_Linfo_kwarc_p_While)) {
         var x23 = $as_Linfo_kwarc_p_While(exp);
         var cond = $n(x23).Linfo_kwarc_p_While__f_cond;
         var bd$3 = $n(x23).Linfo_kwarc_p_While__f_body;
-        var condC = this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, cond, $m_Linfo_kwarc_p_BoolType$(), false);
-        var bdC$4 = this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, bd$3, $m_Linfo_kwarc_p_AnyType$(), false);
-        var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_While(condC, bdC$4), $m_Linfo_kwarc_p_UnitType$());
+        if (alsoCheck) {
+          var condC = this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, cond, $m_Linfo_kwarc_p_BoolType$(), false);
+          var bdC$4 = this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, bd$3, $m_Linfo_kwarc_p_AnyType$(), false);
+          var expC$2 = new $c_Linfo_kwarc_p_While(condC, bdC$4);
+        } else {
+          var expC$2 = exp;
+        }
+        var x1$37 = new $c_T2(expC$2, $m_Linfo_kwarc_p_UnitType$());
       } else if ((exp instanceof $c_Linfo_kwarc_p_IfThenElse)) {
         var x24 = $as_Linfo_kwarc_p_IfThenElse(exp);
         var cond$2 = $n(x24).Linfo_kwarc_p_IfThenElse__f_cond;
         var thn = $n(x24).Linfo_kwarc_p_IfThenElse__f_thn;
         var elsO = $n(x24).Linfo_kwarc_p_IfThenElse__f_els;
-        var condC$2 = this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, cond$2, $m_Linfo_kwarc_p_BoolType$(), false);
-        var x1$28 = this.inferExpressionNorm__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, thn);
-        if ((x1$28 !== null)) {
-          var thnC = $as_Linfo_kwarc_p_Expression($n(x1$28).T2__f__1);
-          var thnI = $as_Linfo_kwarc_p_Type($n(x1$28).T2__f__2);
+        var condC$2 = (alsoCheck ? this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, cond$2, $m_Linfo_kwarc_p_BoolType$(), false) : cond$2);
+        var x1$29 = this.inferExpressionNorm__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, thn, alsoCheck);
+        if ((x1$29 !== null)) {
+          var thnC = $as_Linfo_kwarc_p_Expression($n(x1$29).T2__f__1);
+          var thnI = $as_Linfo_kwarc_p_Type($n(x1$29).T2__f__2);
           var x$31 = new $c_T2(thnC, thnI);
         } else {
           var x$31;
-          throw new $c_s_MatchError(x1$28);
+          throw new $c_s_MatchError(x1$29);
         }
         var thnC$2 = $as_Linfo_kwarc_p_Expression(x$31.T2__f__1);
         var thnI$2 = $as_Linfo_kwarc_p_Type(x$31.T2__f__2);
         if ((elsO instanceof $c_s_Some)) {
           var x2$12 = $as_s_Some(elsO);
           var els = $as_Linfo_kwarc_p_Expression($n(x2$12).s_Some__f_value);
-          var x1$30 = this.inferExpressionNorm__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, els);
-          if ((x1$30 !== null)) {
-            var elsC = $as_Linfo_kwarc_p_Expression($n(x1$30).T2__f__1);
-            var elsI = $as_Linfo_kwarc_p_Type($n(x1$30).T2__f__2);
+          var x1$31 = this.inferExpressionNorm__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, els, alsoCheck);
+          if ((x1$31 !== null)) {
+            var elsC = $as_Linfo_kwarc_p_Expression($n(x1$31).T2__f__1);
+            var elsI = $as_Linfo_kwarc_p_Type($n(x1$31).T2__f__2);
             var x$32 = new $c_T2(elsC, elsI);
           } else {
             var x$32;
-            throw new $c_s_MatchError(x1$30);
+            throw new $c_s_MatchError(x1$31);
           }
           var elsC$2 = $as_Linfo_kwarc_p_Expression(x$32.T2__f__1);
           var elsI$2 = $as_Linfo_kwarc_p_Type(x$32.T2__f__2);
@@ -4602,209 +4676,226 @@ $c_Linfo_kwarc_p_Checker.prototype.inferExpression__Linfo_kwarc_p_GlobalContext_
           if (((u$2 !== null) && $n(u$2).equals__O__Z(x$4))) {
             this.reportError__T__Linfo_kwarc_p_SyntaxFragment__V(((("branches have incompatible types: " + thnI$2) + " vs. ") + elsI$2), $as_Linfo_kwarc_p_SyntaxFragment(expA));
           }
-          var x1$31 = new $c_T2(new $c_s_Some(elsC$2), u$2);
+          var x1$32 = new $c_T2(new $c_s_Some(elsC$2), u$2);
         } else {
           var x$5 = $m_s_None$();
           if ((x$5 === elsO)) {
-            var x1$31 = new $c_T2($m_s_None$(), $m_Linfo_kwarc_p_UnitType$());
+            var x1$32 = new $c_T2($m_s_None$(), $m_Linfo_kwarc_p_UnitType$());
           } else {
-            var x1$31;
+            var x1$32;
             throw new $c_s_MatchError(elsO);
           }
         }
-        var elsOC = $as_s_Option(x1$31.T2__f__1);
-        var eI$8 = $as_Linfo_kwarc_p_Type(x1$31.T2__f__2);
+        var elsOC = $as_s_Option(x1$32.T2__f__1);
+        var eI$8 = $as_Linfo_kwarc_p_Type(x1$32.T2__f__2);
         var x$33 = new $c_T2(elsOC, eI$8);
         var elsOC$2 = $as_s_Option(x$33.T2__f__1);
         var eI$9 = $as_Linfo_kwarc_p_Type(x$33.T2__f__2);
-        var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_IfThenElse(condC$2, thnC$2, elsOC$2), eI$9);
+        var x1$37 = new $c_T2(new $c_Linfo_kwarc_p_IfThenElse(condC$2, thnC$2, elsOC$2), eI$9);
       } else if ((exp instanceof $c_Linfo_kwarc_p_Match)) {
         var x25 = $as_Linfo_kwarc_p_Match(exp);
-        var e$6 = $n(x25).Linfo_kwarc_p_Match__f_expr;
+        var e$7 = $n(x25).Linfo_kwarc_p_Match__f_expr;
         var cs = $n(x25).Linfo_kwarc_p_Match__f_cases;
         var h = $n(x25).Linfo_kwarc_p_Match__f_handler;
-        var x1$32 = this.inferExpressionNorm__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, e$6);
-        if ((x1$32 !== null)) {
-          var eC$7 = $as_Linfo_kwarc_p_Expression($n(x1$32).T2__f__1);
-          var eI$10 = $as_Linfo_kwarc_p_Type($n(x1$32).T2__f__2);
-          var x$34 = new $c_T2(eC$7, eI$10);
+        var x1$33 = this.inferExpressionNorm__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, e$7, alsoCheck);
+        if ((x1$33 !== null)) {
+          var eC$8 = $as_Linfo_kwarc_p_Expression($n(x1$33).T2__f__1);
+          var eI$10 = $as_Linfo_kwarc_p_Type($n(x1$33).T2__f__2);
+          var x$34 = new $c_T2(eC$8, eI$10);
         } else {
           var x$34;
-          throw new $c_s_MatchError(x1$32);
+          throw new $c_s_MatchError(x1$33);
         }
-        var eC$8 = $as_Linfo_kwarc_p_Expression(x$34.T2__f__1);
+        var eC$9 = $as_Linfo_kwarc_p_Expression(x$34.T2__f__1);
         var eI$11 = $as_Linfo_kwarc_p_Type(x$34.T2__f__2);
-        var x1$33 = (h ? new $c_T2($m_Linfo_kwarc_p_ExceptionType$(), new $c_s_Some(eI$11)) : new $c_T2(eI$11, $m_s_None$()));
-        var patType = $as_Linfo_kwarc_p_Type(x1$33.T2__f__1);
-        var bodyType = $as_s_Option(x1$33.T2__f__2);
-        var x$35 = new $c_T2(patType, bodyType);
-        var patType$2 = $as_Linfo_kwarc_p_Type(x$35.T2__f__1);
-        var bodyType$2 = $as_s_Option(x$35.T2__f__2);
-        var $x_5 = $n($n(cs).map__F1__sci_List(new $c_sjsr_AnonFunction1(((x0$1$2) => {
-          var x0$1 = $as_Linfo_kwarc_p_MatchCase(x0$1$2);
-          if ((x0$1 !== null)) {
-            var ctx = $n(x0$1).Linfo_kwarc_p_MatchCase__f_context;
-            var p$1 = $n(x0$1).Linfo_kwarc_p_MatchCase__f_pattern;
-            var b = $n(x0$1).Linfo_kwarc_p_MatchCase__f_body;
-            if ((ctx === null)) {
-              var x1$2 = this.checkExpressionPattern__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__T2(gc, p$1, patType$2);
-            } else {
-              var cC = this.checkLocal__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_LocalContext__Z__Z__Linfo_kwarc_p_LocalContext(gc, ctx, false, false);
-              var x1$2 = new $c_T2(cC, this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression($as_Linfo_kwarc_p_GlobalContext($n(gc).append__Linfo_kwarc_p_LocalContext__O(cC)), p$1, patType$2, false));
-            }
-            if ((x1$2 !== null)) {
-              var ctxC = $as_Linfo_kwarc_p_LocalContext($n(x1$2).T2__f__1);
-              var pC$1 = $as_Linfo_kwarc_p_Expression($n(x1$2).T2__f__2);
-              var x$36 = new $c_T2(ctxC, pC$1);
-            } else {
-              var x$36;
-              throw new $c_s_MatchError(x1$2);
-            }
-            var ctxC$2 = $as_Linfo_kwarc_p_LocalContext(x$36.T2__f__1);
-            var pC$2 = $as_Linfo_kwarc_p_Expression(x$36.T2__f__2);
-            var x = $m_s_None$();
-            if ((x === bodyType$2)) {
-              var x1$4$1 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2($as_Linfo_kwarc_p_GlobalContext($n(gc).append__Linfo_kwarc_p_LocalContext__O(ctxC$2)), b);
-            } else if ((bodyType$2 instanceof $c_s_Some)) {
-              var x3$1 = $as_s_Some(bodyType$2);
-              var bt = $as_Linfo_kwarc_p_Type($n(x3$1).s_Some__f_value);
-              var x1$4$1 = new $c_T2(this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression($as_Linfo_kwarc_p_GlobalContext($n(gc).append__Linfo_kwarc_p_LocalContext__O(ctxC$2)), b, bt, false), bt);
-            } else {
-              var x1$4$1;
-              throw new $c_s_MatchError(bodyType$2);
-            }
-            if ((x1$4$1 !== null)) {
-              var bC = $as_Linfo_kwarc_p_Expression($n(x1$4$1).T2__f__1);
-              var bI = $as_Linfo_kwarc_p_Type($n(x1$4$1).T2__f__2);
-              var x$37 = new $c_T2(bC, bI);
-            } else {
-              var x$37;
-              throw new $c_s_MatchError(x1$4$1);
-            }
-            var bC$2 = $as_Linfo_kwarc_p_Expression(x$37.T2__f__1);
-            var bI$2 = $as_Linfo_kwarc_p_Type(x$37.T2__f__2);
-            return new $c_T2(new $c_Linfo_kwarc_p_MatchCase(ctxC$2, pC$2, bC$2), bI$2);
+        if ((!alsoCheck)) {
+          if (h) {
+            var tp$3 = eI$11;
           } else {
-            throw new $c_s_MatchError(x0$1);
+            var csI = $n(cs).map__F1__sci_List(new $c_sjsr_AnonFunction1(((x0$1$2) => {
+              var x0$1 = $as_Linfo_kwarc_p_MatchCase(x0$1$2);
+              if ((x0$1 !== null)) {
+                var ctx = $n(x0$1).Linfo_kwarc_p_MatchCase__f_context;
+                var b = $n(x0$1).Linfo_kwarc_p_MatchCase__f_body;
+                return this.inferCheckedExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type($as_Linfo_kwarc_p_GlobalContext($n(gc).append__Linfo_kwarc_p_LocalContext__O(ctx)), b);
+              } else {
+                throw new $c_s_MatchError(x0$1);
+              }
+            })));
+            var tp$3 = this.typeUnion__Linfo_kwarc_p_GlobalContext__sci_List__Linfo_kwarc_p_SyntaxFragment__Linfo_kwarc_p_Type(gc, csI, $as_Linfo_kwarc_p_SyntaxFragment(expA));
           }
-        }))));
-        var this$44 = $m_s_$less$colon$less$();
-        var x1$34 = $x_5.unzip__F1__T2(this$44.s_$less$colon$less$__f_singleton);
-        if ((x1$34 !== null)) {
-          var csC = $as_sci_List($n(x1$34).T2__f__1);
-          var csI = $as_sci_List($n(x1$34).T2__f__2);
-          var x$38 = new $c_T2(csC, csI);
+          var x1$37 = new $c_T2(exp, tp$3);
         } else {
-          var x$38;
-          throw new $c_s_MatchError(x1$34);
+          var x1$34 = (h ? new $c_T2($m_Linfo_kwarc_p_ExceptionType$(), new $c_s_Some(eI$11)) : new $c_T2(eI$11, $m_s_None$()));
+          var patType = $as_Linfo_kwarc_p_Type(x1$34.T2__f__1);
+          var bodyType = $as_s_Option(x1$34.T2__f__2);
+          var x$35 = new $c_T2(patType, bodyType);
+          var patType$2 = $as_Linfo_kwarc_p_Type(x$35.T2__f__1);
+          var bodyType$2 = $as_s_Option(x$35.T2__f__2);
+          var $x_4 = $n($n(cs).map__F1__sci_List(new $c_sjsr_AnonFunction1(((x0$2$2) => {
+            var x0$2 = $as_Linfo_kwarc_p_MatchCase(x0$2$2);
+            if ((x0$2 !== null)) {
+              var ctx$1 = $n(x0$2).Linfo_kwarc_p_MatchCase__f_context;
+              var p$1 = $n(x0$2).Linfo_kwarc_p_MatchCase__f_pattern;
+              var b$1 = $n(x0$2).Linfo_kwarc_p_MatchCase__f_body;
+              if ((ctx$1 === null)) {
+                var x1$2 = this.checkExpressionPattern__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__T2(gc, p$1, patType$2);
+              } else {
+                var cC = this.checkLocal__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_LocalContext__Z__Z__Linfo_kwarc_p_LocalContext(gc, ctx$1, false, false);
+                var x1$2 = new $c_T2(cC, this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression($as_Linfo_kwarc_p_GlobalContext($n(gc).append__Linfo_kwarc_p_LocalContext__O(cC)), p$1, patType$2, false));
+              }
+              if ((x1$2 !== null)) {
+                var ctxC = $as_Linfo_kwarc_p_LocalContext($n(x1$2).T2__f__1);
+                var pC$1 = $as_Linfo_kwarc_p_Expression($n(x1$2).T2__f__2);
+                var x$36 = new $c_T2(ctxC, pC$1);
+              } else {
+                var x$36;
+                throw new $c_s_MatchError(x1$2);
+              }
+              var ctxC$2 = $as_Linfo_kwarc_p_LocalContext(x$36.T2__f__1);
+              var pC$2 = $as_Linfo_kwarc_p_Expression(x$36.T2__f__2);
+              var x = $m_s_None$();
+              if ((x === bodyType$2)) {
+                var x1$4$1 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2($as_Linfo_kwarc_p_GlobalContext($n(gc).append__Linfo_kwarc_p_LocalContext__O(ctxC$2)), b$1, alsoCheck);
+              } else if ((bodyType$2 instanceof $c_s_Some)) {
+                var x3$1 = $as_s_Some(bodyType$2);
+                var bt = $as_Linfo_kwarc_p_Type($n(x3$1).s_Some__f_value);
+                var x1$4$1 = new $c_T2(this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression($as_Linfo_kwarc_p_GlobalContext($n(gc).append__Linfo_kwarc_p_LocalContext__O(ctxC$2)), b$1, bt, false), bt);
+              } else {
+                var x1$4$1;
+                throw new $c_s_MatchError(bodyType$2);
+              }
+              if ((x1$4$1 !== null)) {
+                var bC = $as_Linfo_kwarc_p_Expression($n(x1$4$1).T2__f__1);
+                var bI = $as_Linfo_kwarc_p_Type($n(x1$4$1).T2__f__2);
+                var x$37 = new $c_T2(bC, bI);
+              } else {
+                var x$37;
+                throw new $c_s_MatchError(x1$4$1);
+              }
+              var bC$2 = $as_Linfo_kwarc_p_Expression(x$37.T2__f__1);
+              var bI$2 = $as_Linfo_kwarc_p_Type(x$37.T2__f__2);
+              return new $c_T2(new $c_Linfo_kwarc_p_MatchCase(ctxC$2, pC$2, bC$2), bI$2);
+            } else {
+              throw new $c_s_MatchError(x0$2);
+            }
+          }))));
+          var this$45 = $m_s_$less$colon$less$();
+          var x1$35 = $x_4.unzip__F1__T2(this$45.s_$less$colon$less$__f_singleton);
+          if ((x1$35 !== null)) {
+            var csC = $as_sci_List($n(x1$35).T2__f__1);
+            var csI$2 = $as_sci_List($n(x1$35).T2__f__2);
+            var x$38 = new $c_T2(csC, csI$2);
+          } else {
+            var x$38;
+            throw new $c_s_MatchError(x1$35);
+          }
+          var csC$2 = $as_sci_List(x$38.T2__f__1);
+          var csI$3 = $as_sci_List(x$38.T2__f__2);
+          var mI = (h ? eI$11 : this.typeUnion__Linfo_kwarc_p_GlobalContext__sci_List__Linfo_kwarc_p_SyntaxFragment__Linfo_kwarc_p_Type(gc, csI$3, $as_Linfo_kwarc_p_SyntaxFragment(expA)));
+          var x$8 = $m_Linfo_kwarc_p_AnyType$();
+          if (((mI !== null) && $n(mI).equals__O__Z(x$8))) {
+            var this$46 = $n(csI$3);
+            this.reportError__T__Linfo_kwarc_p_SyntaxFragment__V(("branches have incompatible types: " + $f_sc_IterableOnceOps__mkString__T__T__T__T(this$46, "", ", ", "")), $as_Linfo_kwarc_p_SyntaxFragment(expA));
+          }
+          var x1$37 = new $c_T2(new $c_Linfo_kwarc_p_Match(eC$9, csC$2, h), mI);
         }
-        var csC$2 = $as_sci_List(x$38.T2__f__1);
-        var csI$2 = $as_sci_List(x$38.T2__f__2);
-        var mI = (h ? eI$11 : this.typeUnion__Linfo_kwarc_p_GlobalContext__sci_List__Linfo_kwarc_p_SyntaxFragment__Linfo_kwarc_p_Type(gc, csI$2, $as_Linfo_kwarc_p_SyntaxFragment(expA)));
-        var x$8 = $m_Linfo_kwarc_p_AnyType$();
-        if (((mI !== null) && $n(mI).equals__O__Z(x$8))) {
-          var this$45 = $n(csI$2);
-          this.reportError__T__Linfo_kwarc_p_SyntaxFragment__V(("branches have incompatible types: " + $f_sc_IterableOnceOps__mkString__T__T__T__T(this$45, "", ", ", "")), $as_Linfo_kwarc_p_SyntaxFragment(expA));
-        }
-        var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_Match(eC$8, csC$2, h), mI);
       } else if ((exp instanceof $c_Linfo_kwarc_p_For)) {
         var x26 = $as_Linfo_kwarc_p_For(exp);
         var vd$1 = $n(x26).Linfo_kwarc_p_For__f_vd;
         var range = $n(x26).Linfo_kwarc_p_For__f_range;
         var bd$4 = $n(x26).Linfo_kwarc_p_For__f_body;
         var vdC = this.checkVarDecl__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_VarDecl__Z__Z__Linfo_kwarc_p_VarDecl(gc, vd$1, false, false);
-        var this$46 = $n($m_Linfo_kwarc_p_CollectionKind$().Linfo_kwarc_p_CollectionKind$__f_UList);
+        var this$47 = $n($m_Linfo_kwarc_p_CollectionKind$().Linfo_kwarc_p_CollectionKind$__f_UList);
         var a$1 = $n(vdC).Linfo_kwarc_p_VarDecl__f_tp;
-        var rangeC = this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, range, new $c_Linfo_kwarc_p_CollectionType(a$1, this$46), false);
-        var x1$35 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2($as_Linfo_kwarc_p_GlobalContext($n(gc).append__Linfo_kwarc_p_VarDecl__O(vdC)), bd$4);
-        if ((x1$35 !== null)) {
-          var bdC$5 = $as_Linfo_kwarc_p_Expression($n(x1$35).T2__f__1);
-          var bdI$3 = $as_Linfo_kwarc_p_Type($n(x1$35).T2__f__2);
+        var rangeC = this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, range, new $c_Linfo_kwarc_p_CollectionType(a$1, this$47), false);
+        var x1$36 = this.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2($as_Linfo_kwarc_p_GlobalContext($n(gc).append__Linfo_kwarc_p_VarDecl__O(vdC)), bd$4, alsoCheck);
+        if ((x1$36 !== null)) {
+          var bdC$5 = $as_Linfo_kwarc_p_Expression($n(x1$36).T2__f__1);
+          var bdI$3 = $as_Linfo_kwarc_p_Type($n(x1$36).T2__f__2);
           var x$39 = new $c_T2(bdC$5, bdI$3);
         } else {
           var x$39;
-          throw new $c_s_MatchError(x1$35);
+          throw new $c_s_MatchError(x1$36);
         }
         var bdC$6 = $as_Linfo_kwarc_p_Expression(x$39.T2__f__1);
         var bdI$4 = $as_Linfo_kwarc_p_Type(x$39.T2__f__2);
-        var $x_6 = new $c_Linfo_kwarc_p_For(vdC, rangeC, bdC$6);
-        var this$47 = $n($m_Linfo_kwarc_p_CollectionKind$().Linfo_kwarc_p_CollectionKind$__f_List);
-        var x1$36 = new $c_T2($x_6, new $c_Linfo_kwarc_p_CollectionType(bdI$4, this$47));
+        var $x_5 = new $c_Linfo_kwarc_p_For(vdC, rangeC, bdC$6);
+        var this$48 = $n($m_Linfo_kwarc_p_CollectionKind$().Linfo_kwarc_p_CollectionKind$__f_List);
+        var x1$37 = new $c_T2($x_5, new $c_Linfo_kwarc_p_CollectionType(bdI$4, this$48));
       } else if ((exp instanceof $c_Linfo_kwarc_p_Return)) {
         var x27 = $as_Linfo_kwarc_p_Return(exp);
-        var e$7 = $n(x27).Linfo_kwarc_p_Return__f_exp;
+        var e$8 = $n(x27).Linfo_kwarc_p_Return__f_exp;
         var thrw = $n(x27).Linfo_kwarc_p_Return__f_thrw;
-        if (thrw) {
-          var rt = $m_Linfo_kwarc_p_ExceptionType$();
+        if (alsoCheck) {
+          if (thrw) {
+            var rt = $m_Linfo_kwarc_p_ExceptionType$();
+          } else {
+            var this$49 = $n($n(gc).getOutput__s_Option());
+            var default$2 = new $c_sjsr_AnonFunction0((() => {
+              this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("return not allowed here", $as_Linfo_kwarc_p_SyntaxFragment(expA));
+            }));
+            var rt = $as_Linfo_kwarc_p_Type((this$49.isEmpty__Z() ? default$2.apply__O() : this$49.get__O()));
+          }
+          var eC$10 = this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, e$8, rt, false);
         } else {
-          var this$48 = $n($n(gc).getOutput__s_Option());
-          var default$2 = new $c_sjsr_AnonFunction0((() => {
-            this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("return not allowed here", $as_Linfo_kwarc_p_SyntaxFragment(expA));
-          }));
-          var rt = $as_Linfo_kwarc_p_Type((this$48.isEmpty__Z() ? default$2.apply__O() : this$48.get__O()));
+          var eC$10 = e$8;
         }
-        var eC$9 = this.checkExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type__Z__Linfo_kwarc_p_Expression(gc, e$7, rt, false);
-        var x1$36 = new $c_T2(new $c_Linfo_kwarc_p_Return(eC$9, thrw), $m_Linfo_kwarc_p_EmptyType$());
+        var x1$37 = new $c_T2(new $c_Linfo_kwarc_p_Return(eC$10, thrw), $m_Linfo_kwarc_p_EmptyType$());
       } else {
-        var x1$36;
+        var x1$37;
         throw new $c_s_MatchError(exp);
       }
-      matchEnd5$5$1: {
+      if ((x1$37 !== null)) {
+        var expC$3 = $as_Linfo_kwarc_p_Expression($n(x1$37).T2__f__1);
+        var expI = $as_Linfo_kwarc_p_Type($n(x1$37).T2__f__2);
+        var x$40 = new $c_T2(expC$3, expI);
+      } else {
         var x$40;
-        if ((x1$36 !== null)) {
-          var expC = $as_Linfo_kwarc_p_Expression($n(x1$36).T2__f__1);
-          var expI = $as_Linfo_kwarc_p_Type($n(x1$36).T2__f__2);
-          if ((expC !== null)) {
-            if ((expI !== null)) {
-              var x$40 = new $c_T2(expC, expI);
-              break matchEnd5$5$1;
-            }
-          }
-        }
-        throw new $c_s_MatchError(x1$36);
+        throw new $c_s_MatchError(x1$37);
       }
-      var expC$2 = $as_Linfo_kwarc_p_Expression(x$40.T2__f__1);
+      var expC$4 = $as_Linfo_kwarc_p_Expression(x$40.T2__f__1);
       var expI$2 = $as_Linfo_kwarc_p_Type(x$40.T2__f__2);
-      $n($as_Linfo_kwarc_p_SyntaxFragment(expC$2)).copyFrom__Linfo_kwarc_p_SyntaxFragment__Linfo_kwarc_p_SyntaxFragment($as_Linfo_kwarc_p_SyntaxFragment(exp));
-      return new $c_T2(expC$2, expI$2);
+      var expCF = (alsoCheck ? $as_Linfo_kwarc_p_Expression($n($as_Linfo_kwarc_p_SyntaxFragment(expC$4)).copyFrom__Linfo_kwarc_p_SyntaxFragment__Linfo_kwarc_p_SyntaxFragment($as_Linfo_kwarc_p_SyntaxFragment(exp))) : expC$4);
+      return new $c_T2(expCF, expI$2);
     }));
     try {
-      var $x_7 = code.apply__O();
+      var $x_6 = code.apply__O();
     } catch (e$1) {
       var e$2$1 = ((e$1 instanceof $c_jl_Throwable) ? e$1 : new $c_sjs_js_JavaScriptException(e$1));
       if (((e$2$1 instanceof $c_Linfo_kwarc_p_Checker$Abort) && ($n($as_Linfo_kwarc_p_Checker$Abort(e$2$1)).Linfo_kwarc_p_Checker$Abort__f_$outer === this))) {
-        var $x_7 = recover;
+        var $x_6 = recover;
       } else if ((e$2$1 instanceof $c_Linfo_kwarc_p_ASTError)) {
         var x8$1 = $as_Linfo_kwarc_p_ASTError(e$2$1);
         var m = $n(x8$1).Linfo_kwarc_p_ASTError__f_msg;
-        matchEnd7$1: {
+        matchEnd7$3: {
           var sf;
           var s = recover.T2__f__1;
           if ((s instanceof $c_Linfo_kwarc_p_SyntaxFragment)) {
             var x5 = $as_Linfo_kwarc_p_SyntaxFragment(s);
             var sf = x5;
-            break matchEnd7$1;
+            break matchEnd7$3;
           }
           throw new $c_Linfo_kwarc_p_IError("unknown result type");
         }
         this.reportError__T__Linfo_kwarc_p_SyntaxFragment__V(m, sf);
-        var $x_7 = recover;
+        var $x_6 = recover;
       } else {
-        var $x_7;
+        var $x_6;
         throw ((e$2$1 instanceof $c_sjs_js_JavaScriptException) ? e$2$1.sjs_js_JavaScriptException__f_exception : $n(e$2$1));
       }
     }
-    return $as_T2($x_7);
-  } catch (e$8) {
-    if ((e$8 instanceof $c_sr_NonLocalReturnControl)) {
-      var ex = $as_sr_NonLocalReturnControl(e$8);
+    return $as_T2($x_6);
+  } catch (e$9) {
+    if ((e$9 instanceof $c_sr_NonLocalReturnControl)) {
+      var ex = $as_sr_NonLocalReturnControl(e$9);
       if (Object.is($n(ex).sr_NonLocalReturnControl__f_key, nonLocalReturnKey4)) {
         return $as_T2($n(ex).sr_NonLocalReturnControl__f_value);
       } else {
         throw $n(ex);
       }
     } else {
-      throw e$8;
+      throw e$9;
     }
   }
 });
@@ -9539,11 +9630,6 @@ $c_Linfo_kwarc_p_SyntaxFragment.prototype.constructor = $c_Linfo_kwarc_p_SyntaxF
 function $h_Linfo_kwarc_p_SyntaxFragment() {
 }
 $h_Linfo_kwarc_p_SyntaxFragment.prototype = $c_Linfo_kwarc_p_SyntaxFragment.prototype;
-$c_Linfo_kwarc_p_SyntaxFragment.prototype.toStringShort__T = (function() {
-  var $x_1 = $m_sc_StringOps$();
-  var x = this.toString__T();
-  return $x_1.take$extension__T__I__T(x, 10);
-});
 $c_Linfo_kwarc_p_SyntaxFragment.prototype.copyFrom__Linfo_kwarc_p_SyntaxFragment__Linfo_kwarc_p_SyntaxFragment = (function(sf) {
   this.Linfo_kwarc_p_SyntaxFragment__f_loc = $n(sf).Linfo_kwarc_p_SyntaxFragment__f_loc;
   return this;
@@ -10963,17 +11049,9 @@ $c_Linfo_kwarc_p_VSCodeBridge.prototype.hover__Linfo_kwarc_p_TextDocument__Linfo
       }
       var gc = $as_Linfo_kwarc_p_GlobalContext($n(x1$2).T2__f__1);
       var sf = $as_Linfo_kwarc_p_SyntaxFragment($n(x1$2).T2__f__2);
-      var x$1 = $n(sf).toStringShort__T();
-      var this$4 = $m_s_Console$();
-      var this$5 = $n(this$4.out__Ljava_io_PrintStream());
-      this$5.java$lang$JSConsoleBasedPrintStream$$printString__T__V((x$1 + "\n"));
       if ($is_Linfo_kwarc_p_Expression(sf)) {
         var x2$2 = $as_Linfo_kwarc_p_Expression(sf);
-        var x1$4 = new $c_Linfo_kwarc_p_Checker($m_Linfo_kwarc_p_ErrorIgnorer$()).inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2(gc, x2$2);
-        if ((x1$4 === null)) {
-          throw new $c_s_MatchError(x1$4);
-        }
-        var tp = $as_Linfo_kwarc_p_Type($n(x1$4).T2__f__2);
+        var tp = new $c_Linfo_kwarc_p_Checker($m_Linfo_kwarc_p_ErrorThrower$()).inferCheckedExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Type(gc, x2$2);
         var hov = $n(tp).toString__T();
       } else if ($is_Linfo_kwarc_p_Type(sf)) {
         var x3 = $as_Linfo_kwarc_p_Type(sf);
@@ -10986,21 +11064,21 @@ $c_Linfo_kwarc_p_VSCodeBridge.prototype.hover__Linfo_kwarc_p_TextDocument__Linfo
       var e$2 = ((e instanceof $c_jl_Throwable) ? e : new $c_sjs_js_JavaScriptException(e));
       if ((e$2 instanceof $c_jl_Error)) {
         var e$4 = $as_jl_Error(e$2);
-        var x$2 = $n(e$4).jl_Throwable__f_s;
-        var this$7 = $m_s_Console$();
-        var this$8 = $n(this$7.out__Ljava_io_PrintStream());
-        this$8.java$lang$JSConsoleBasedPrintStream$$printString__T__V((x$2 + "\n"));
-        var this$9 = $n(e$4);
-        this$9.printStackTrace__Ljava_io_PrintStream__V($m_jl_System$Streams$().jl_System$Streams$__f_err);
+        var x$1 = $n(e$4).jl_Throwable__f_s;
+        var this$4 = $m_s_Console$();
+        var this$5 = $n(this$4.out__Ljava_io_PrintStream());
+        this$5.java$lang$JSConsoleBasedPrintStream$$printString__T__V((x$1 + "\n"));
+        var this$6 = $n(e$4);
+        this$6.printStackTrace__Ljava_io_PrintStream__V($m_jl_System$Streams$().jl_System$Streams$__f_err);
         throw $n(e$4);
       } else if ((e$2 instanceof $c_jl_Exception)) {
         var e$3 = $as_jl_Exception(e$2);
-        var x$3 = $n(e$3).getMessage__T();
-        var this$12 = $m_s_Console$();
-        var this$13 = $n(this$12.out__Ljava_io_PrintStream());
-        this$13.java$lang$JSConsoleBasedPrintStream$$printString__T__V((x$3 + "\n"));
-        var this$14 = $n(e$3);
-        this$14.printStackTrace__Ljava_io_PrintStream__V($m_jl_System$Streams$().jl_System$Streams$__f_err);
+        var x$2 = $n(e$3).getMessage__T();
+        var this$9 = $m_s_Console$();
+        var this$10 = $n(this$9.out__Ljava_io_PrintStream());
+        this$10.java$lang$JSConsoleBasedPrintStream$$printString__T__V((x$2 + "\n"));
+        var this$11 = $n(e$3);
+        this$11.printStackTrace__Ljava_io_PrintStream__V($m_jl_System$Streams$().jl_System$Streams$__f_err);
         throw ((e$3 instanceof $c_sjs_js_JavaScriptException) ? e$3.sjs_js_JavaScriptException__f_exception : $n(e$3));
       } else {
         throw e;
@@ -11064,7 +11142,9 @@ $c_Linfo_kwarc_p_WebMain$.prototype.runIn__Linfo_kwarc_p_Program__T__Linfo_kwarc
   var parser = new $c_Linfo_kwarc_p_Parser(new $c_Linfo_kwarc_p_SourceOrigin("anonymous"), expS, $m_Linfo_kwarc_p_ErrorThrower$());
   var mod = $n(prog).toModule__Linfo_kwarc_p_Module();
   var exp = parser.parseExpression__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Expression($m_Linfo_kwarc_p_PContext$().empty__Linfo_kwarc_p_PContext());
-  var x1 = $n(this.Linfo_kwarc_p_WebMain$__f_checker).inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__T2($m_Linfo_kwarc_p_GlobalContext$().apply__Linfo_kwarc_p_Module__Linfo_kwarc_p_GlobalContext(mod), exp);
+  var this$1 = $n(this.Linfo_kwarc_p_WebMain$__f_checker);
+  var gc = $m_Linfo_kwarc_p_GlobalContext$().apply__Linfo_kwarc_p_Module__Linfo_kwarc_p_GlobalContext(mod);
+  var x1 = this$1.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, exp, true);
   if ((x1 === null)) {
     throw new $c_s_MatchError(x1);
   }
@@ -16074,12 +16154,6 @@ $c_sc_StringOps$.prototype.slice$extension__T__I__I__T = (function(this$, from, 
     return $as_T(this$10.substring(start, end));
   }
 });
-$c_sc_StringOps$.prototype.take$extension__T__I__T = (function(this$, n) {
-  var $x_1 = $m_sc_StringOps$();
-  var this$1 = $n(this$);
-  var y = this$1.length;
-  return $x_1.slice$extension__T__I__I__T(this$, 0, ((n < y) ? n : y));
-});
 $c_sc_StringOps$.prototype.drop$extension__T__I__T = (function(this$, n) {
   var $x_1 = $m_sc_StringOps$();
   var this$1 = $n(this$);
@@ -18820,28 +18894,6 @@ var $d_Linfo_kwarc_p_ErrorCollector = new $TypeData().initClass($c_Linfo_kwarc_p
   Linfo_kwarc_p_ErrorCollector: 1,
   Linfo_kwarc_p_ErrorHandler: 1
 }));
-/** @constructor */
-function $c_Linfo_kwarc_p_ErrorIgnorer$() {
-}
-$c_Linfo_kwarc_p_ErrorIgnorer$.prototype = new $h_Linfo_kwarc_p_ErrorHandler();
-$c_Linfo_kwarc_p_ErrorIgnorer$.prototype.constructor = $c_Linfo_kwarc_p_ErrorIgnorer$;
-/** @constructor */
-function $h_Linfo_kwarc_p_ErrorIgnorer$() {
-}
-$h_Linfo_kwarc_p_ErrorIgnorer$.prototype = $c_Linfo_kwarc_p_ErrorIgnorer$.prototype;
-$c_Linfo_kwarc_p_ErrorIgnorer$.prototype.apply__Linfo_kwarc_p_SError__V = (function(e) {
-});
-var $d_Linfo_kwarc_p_ErrorIgnorer$ = new $TypeData().initClass($c_Linfo_kwarc_p_ErrorIgnorer$, "info.kwarc.p.ErrorIgnorer$", ({
-  Linfo_kwarc_p_ErrorIgnorer$: 1,
-  Linfo_kwarc_p_ErrorHandler: 1
-}));
-var $n_Linfo_kwarc_p_ErrorIgnorer$;
-function $m_Linfo_kwarc_p_ErrorIgnorer$() {
-  if ((!$n_Linfo_kwarc_p_ErrorIgnorer$)) {
-    $n_Linfo_kwarc_p_ErrorIgnorer$ = new $c_Linfo_kwarc_p_ErrorIgnorer$();
-  }
-  return $n_Linfo_kwarc_p_ErrorIgnorer$;
-}
 /** @constructor */
 function $c_Linfo_kwarc_p_ErrorThrower$() {
 }
@@ -35585,21 +35637,24 @@ function $p_Linfo_kwarc_p_GlobalContext__pushFrame__Linfo_kwarc_p_RegionalContex
   return new $c_Linfo_kwarc_p_GlobalContext(x$2, x$1);
 }
 function $p_Linfo_kwarc_p_GlobalContext__currentParent__Linfo_kwarc_p_Path($thiz) {
-  if ((!$thiz.inPhysicalTheory__Z())) {
+  if (($n($thiz.Linfo_kwarc_p_GlobalContext__f_regions).length__I() === 1)) {
+    return $m_Linfo_kwarc_p_Path$().Linfo_kwarc_p_Path$__f_empty;
+  } else if ((!$thiz.inPhysicalTheory__Z())) {
     throw new $c_Linfo_kwarc_p_IError("not in physical theory");
-  }
-  var x1 = $as_Linfo_kwarc_p_Declaration($n($n($n($thiz.currentRegion__Linfo_kwarc_p_RegionalContext()).Linfo_kwarc_p_RegionalContext__f_theory).Linfo_kwarc_p_Theory__f_decls).head__O());
-  if ((x1 instanceof $c_Linfo_kwarc_p_Include)) {
-    var x2 = $as_Linfo_kwarc_p_Include(x1);
-    var p = $n(x2).Linfo_kwarc_p_Include__f_dom;
-    var p3 = $n(x2).Linfo_kwarc_p_Include__f_dfO;
-    var p4 = $n(x2).Linfo_kwarc_p_Include__f_realize;
-    var x = $m_s_None$();
-    if (((x === p3) && (p4 === false))) {
-      return p;
+  } else {
+    var x1 = $as_Linfo_kwarc_p_Declaration($n($n($n($thiz.currentRegion__Linfo_kwarc_p_RegionalContext()).Linfo_kwarc_p_RegionalContext__f_theory).Linfo_kwarc_p_Theory__f_decls).head__O());
+    if ((x1 instanceof $c_Linfo_kwarc_p_Include)) {
+      var x2 = $as_Linfo_kwarc_p_Include(x1);
+      var p = $n(x2).Linfo_kwarc_p_Include__f_dom;
+      var p3 = $n(x2).Linfo_kwarc_p_Include__f_dfO;
+      var p4 = $n(x2).Linfo_kwarc_p_Include__f_realize;
+      var x = $m_s_None$();
+      if (((x === p3) && (p4 === false))) {
+        return p;
+      }
     }
+    throw new $c_Linfo_kwarc_p_IError("not a physical theory");
   }
-  throw new $c_Linfo_kwarc_p_IError("not a physical theory");
 }
 function $p_Linfo_kwarc_p_GlobalContext__make$1__Linfo_kwarc_p_Object__Linfo_kwarc_p_Object__Linfo_kwarc_p_Object($thiz, e, obj$1) {
   return (((e === null) ? (obj$1 === null) : $n(e).equals__O__Z(obj$1)) ? obj$1 : $as_Linfo_kwarc_p_Object($n(e).copyFrom__Linfo_kwarc_p_SyntaxFragment__Linfo_kwarc_p_SyntaxFragment(obj$1)));
@@ -48058,6 +48113,31 @@ $c_sci_List.prototype.prependedAll__sc_IterableOnce__sci_List = (function(prefix
     return result;
   } else {
     return this;
+  }
+});
+$c_sci_List.prototype.take__I__sci_List = (function(n) {
+  if ((this.isEmpty__Z() || (n <= 0))) {
+    return $m_sci_Nil$();
+  } else {
+    var h = new $c_sci_$colon$colon(this.head__O(), $m_sci_Nil$());
+    var t = h;
+    var rest = $as_sci_List(this.tail__O());
+    var i = 1;
+    while (true) {
+      if ($n(rest).isEmpty__Z()) {
+        return this;
+      }
+      if ((i < n)) {
+        i = ((1 + i) | 0);
+        var nx = new $c_sci_$colon$colon($n(rest).head__O(), $m_sci_Nil$());
+        $n(t).sci_$colon$colon__f_next = nx;
+        t = nx;
+        rest = $as_sci_List($n(rest).tail__O());
+      } else {
+        break;
+      }
+    }
+    return h;
   }
 });
 $c_sci_List.prototype.map__F1__sci_List = (function(f) {

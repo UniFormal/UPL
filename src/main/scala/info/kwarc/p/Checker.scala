@@ -71,7 +71,7 @@ class Checker(errorHandler: ErrorHandler) {
           case None => fail("untyped include")
           case Some(df) =>
             // infer domain from definiens
-            val (dfC,dfI) = inferExpression(gc,df)
+            val (dfC,dfI) = inferExpression(gc,df)(true)
             PurityChecker(dfC)(gc,())
             dfI match {
               case ClassType(PhysicalTheory(p)) =>
@@ -268,7 +268,7 @@ class Checker(errorHandler: ErrorHandler) {
   private def checkRegional(gc: GlobalContext, rc: RegionalContext): RegionalContext = recoverWith(rc) {
     if (rc.theory == null && rc.owner.isEmpty) fail("underspecified region")(rc)
     val (thyC,ownC) = if (rc.theory == null) {
-      val (oC,oI) = inferExpressionNorm(gc, rc.owner.get)
+      val (oC,oI) = inferExpressionNorm(gc, rc.owner.get)(true)
       oI match {
         case ClassType(t) => (t, Some(oC))
         case _ => fail("owner must be instance")(rc)
@@ -424,7 +424,7 @@ class Checker(errorHandler: ErrorHandler) {
           case _ => fail("not a type")
         }
       case OwnedType(owner,dom,tp) =>
-        val (ownerC,ownerI) = inferExpressionNorm(gc,owner)
+        val (ownerC,ownerI) = inferExpressionNorm(gc,owner)(true)
         PurityChecker(ownerC)(gc,())
         ownerI match {
           case ClassType(domC) =>
@@ -718,7 +718,7 @@ class Checker(errorHandler: ErrorHandler) {
     val tpN = typeNormalize(gc, tp)
     val eC: Expression = (exp,tpN) match {
       case (i, IntervalType(l,u)) =>
-        val (iC,iI) = inferExpression(gc,i)
+        val (iC,iI) = inferExpression(gc,i)(true)
         iI match {
           case IntType =>
             // inference of values return Int, so we need to see if we can downcast
@@ -758,7 +758,7 @@ class Checker(errorHandler: ErrorHandler) {
         val bdC = checkExpression(gcB,bd,outType)
         Lambda(insC,bdC)
       case (OwnedExpr(oe, de, e), OwnedType(ot, dt, tp)) if oe == ot =>
-        val (oC,oI) = inferExpression(gc, oe)
+        val (oC,oI) = inferExpression(gc, oe)(true)
         oI match {
           case ClassType(dC) =>
             if ((de != null && de != dC) || (dt != null && dt != dC)) reportError("unexpected given theory")
@@ -777,7 +777,7 @@ class Checker(errorHandler: ErrorHandler) {
         val eC = checkExpression(gc.push(scTC), e, tp)
         ExprOver(scTC, eC)
       case (Application(op: BaseOperator,args),_) if !op.tp.known =>
-        val (argsC,argsI) = args.map(a => inferExpression(gc,a)).unzip
+        val (argsC,argsI) = args.map(a => inferExpression(gc,a)(true)).unzip
         val opTp = FunType.simple(argsI,tpN)
         val opC = checkExpression(gc,op,opTp)
         Application(opC,argsC)
@@ -788,11 +788,11 @@ class Checker(errorHandler: ErrorHandler) {
             if (u.originalContext != null || u.sub != null) throw IError("unexpected context in unknown operator type")
             val outI = inferOperator(gc,op,ft.simpleInputs)
             checkSubtype(gc,outI,ft.out)
-            u.set(tpN) // just in case this unknown was referenced elsewhere
+            u.set(ft) // just in case this unknown was referenced elsewhere
           case _ =>
-            checkSubtype(gc,opTp,tpN)
+            checkSubtype(gc,opTp,ft)
         }
-        BaseOperator(op,tpN)
+        BaseOperator(op,ft)
       case (Block(es), _) =>
         var gcL = gc // local environment, includes variables seen in the block so far
         val numExprs = es.length
@@ -808,7 +808,7 @@ class Checker(errorHandler: ErrorHandler) {
             checkExpression(gcL, e, tpN)
           } else {
             // other expressions can have any type
-            val (eC,_) = inferExpression(gcL,e)
+            val (eC,_) = inferExpression(gcL,e)(true)
             // remember variables for later expressions
             val eDs = LocalContext.collectContext(eC)
             if (!eDs.namesUnique)
@@ -818,8 +818,9 @@ class Checker(errorHandler: ErrorHandler) {
           }
         }
         Block(esC)
+      // TODO there are more opportunities to pass on the expected type: If, Match, ListElem, Proj, ... (but only if the expected is known)
       case _ =>
-        val (eC,eI) = inferExpression(gc,exp)
+        val (eC,eI) = inferExpression(gc,exp)(true)
         val mf = new MagicFunctions(gc)
         (tp,eI) match {
           case (StringType, mf.asstring(dom,StringType)) =>
@@ -836,11 +837,16 @@ class Checker(errorHandler: ErrorHandler) {
     eC
   }
 
+  /** infers by checking against an unknown type, useful to share code between the cases for inferExpression and checkExpression */
   private def inferExpressionViaCheck(gc: GlobalContext, exp: Expression): (Expression,Type) = {
     val u = Type.unknown(gc)
     val eC = checkExpression(gc,exp, u)
     (eC, u.skipUnknown)
   }
+
+  /** infers the type of an expression that has already been checked (skips all checks) */
+  def inferCheckedExpression(gc: GlobalContext, exp: Expression) = inferExpression(gc, exp)(false)._2
+  def checkAndInferExpression(gc: GlobalContext, exp: Expression) = inferExpression(gc, exp)(true)
 
   def checkExpressionPure(gc: GlobalContext, e: Expression, t: Type) = {
     val eC = checkExpression(gc, e, t)
@@ -868,7 +874,7 @@ class Checker(errorHandler: ErrorHandler) {
   }
 
   /** like [[inferExpression]] but with the type normalized */
-  def inferExpressionNorm(gc: GlobalContext,e: Expression): (Expression,Type) = {
+  def inferExpressionNorm(gc: GlobalContext,e: Expression)(implicit alsoCheck: Boolean): (Expression,Type) = {
     val (eC,eI) = inferExpression(gc, e)
     (eC, typeNormalize(gc,eI))
   }
@@ -877,7 +883,8 @@ class Checker(errorHandler: ErrorHandler) {
     *
     * This defers to [[checkExpression]] if it knows the expected type.
     */
-  def inferExpression(gc: GlobalContext,expA: Expression): (Expression,Type) = recoverWith[(Expression,Type)]((expA,AnyType)) {
+  def inferExpression(gc: GlobalContext,expA: Expression)
+                     (implicit alsoCheck: Boolean): (Expression,Type) = recoverWith[(Expression,Type)]((expA,AnyType)) {
     implicit val cause = expA
     val mf = new MagicFunctions(gc)
     // exp != expA only if exp is an unresolved reference
@@ -886,9 +893,10 @@ class Checker(errorHandler: ErrorHandler) {
       case e: Expression => e
       case _ => fail("not an expression")
     }
-    disambiguateOwnedObject(gc, exp).foreach {corrected => return inferExpression(gc, corrected)}
+    if (alsoCheck)
+      disambiguateOwnedObject(gc, exp).foreach {corrected => return inferExpression(gc, corrected)}
     // check exp and infer its type
-    val (expC: Expression,expI: Type) = exp match {
+    val (expC,expI): (Expression,Type) = exp match {
       case e: BaseValue => (e,e.tp)
       case op: BaseOperator =>
         if (!op.tp.known) {
@@ -899,7 +907,8 @@ class Checker(errorHandler: ErrorHandler) {
           case _ => fail("operator type not a simple function")
         }
         val out = inferOperator(gc,op.operator,ft.simpleInputs)
-        checkSubtype(gc,out,ft.out)(exp)
+        if (alsoCheck)
+          checkSubtype(gc,out,ft.out)(exp)
         (BaseOperator(op.operator,ft),op.tp)
       case r: OpenRef =>
         val (rC,rd) = sdCached match {
@@ -917,10 +926,11 @@ class Checker(errorHandler: ErrorHandler) {
           case _ => fail("not an expression")
         }
       case OwnedExpr(owner, dom, e) =>
-        val (ownerC, ownerI) = inferExpressionNorm(gc, owner)
+        val (ownerC, ownerI) = if (alsoCheck) inferExpressionNorm(gc, owner) else (owner, ClassType(dom))
         ownerI match {
           case ClassType(domC) =>
-            if (dom != null && dom != domC) fail("unexpected given theory")
+            if (alsoCheck)
+              if (dom != null && dom != domC) fail("unexpected given theory")
             val envO = gc.push(domC,Some(ownerC))
             val (eC, eI) = inferExpression(envO, e)
             (OwnedExpr(ownerC, domC, eC), OwnedType(ownerC, domC, eI))
@@ -929,23 +939,27 @@ class Checker(errorHandler: ErrorHandler) {
       case VarRef(n) =>
         (exp,gc.visibleLocals.lookup(n).tp)
       case Instance(thy) =>
-        val thyR = thy match {
-          case ExtendedTheory(p,ds) => Theory(Include(p,None,true)::ds)
-          case _ => fail("instance must be of atomic theory")
+        val thyC = if (!alsoCheck) thy else {
+          val thyR = thy match {
+            case ExtendedTheory(p,ds) => Theory(Include(p,None,true) :: ds)
+            case _ => fail("instance must be of atomic theory")
+          }
+          // TODO: check that ds do not have side effects outside of itself
+          if (alsoCheck) checkTheory(gc,thyR) else thy
         }
-        // TODO: check that ds do not have side effects outside of itself
-        val thyC = checkTheory(gc,thyR)
         (Instance(thyC),ClassType(thyC))
       case ExprOver(sc,q) =>
-        val scC = checkTheory(gc,sc)
+        val scC = if (alsoCheck) checkTheory(gc,sc) else sc
         val (qC,qI) = inferExpression(gc.push(scC),q)
         (ExprOver(scC,qC),ExprsOver(scC,qI))
       case Eval(e) =>
-        if (gc.regions.isEmpty) fail("eval outside quotation")
+        if (alsoCheck)
+          if (gc.regions.isEmpty) fail("eval outside quotation")
         val (eC,eI) = inferExpressionNorm(gc.pop(),e)
         eI match {
           case ExprsOver(eT,q) =>
-            if (!isSubtheory(eT, gc.theory)) fail("quoted over wrong theory")
+            if (alsoCheck)
+              if (!isSubtheory(eT, gc.theory)) fail("quoted over wrong theory")
             (Eval(eC),q)
           case mf.evaluation(dom,a) =>
             (mf.evaluation.insert(dom,eC, Nil), a)
@@ -954,7 +968,7 @@ class Checker(errorHandler: ErrorHandler) {
       case MatchCase(ctx, p, b) =>
         fail("match case outside of match")
       case Lambda(ins,bd) =>
-        val insC = checkLocal(gc,ins,false,false)
+        val insC = if (alsoCheck) checkLocal(gc,ins,false,false) else ins
         val (bdC,bdI) = inferExpression(gc.append(insC),bd)
         (Lambda(insC,bdC),FunType(insC,bdI))
       case Application(f,as) =>
@@ -991,8 +1005,10 @@ class Checker(errorHandler: ErrorHandler) {
               case mf.application(dom,FunType(i,o)) => (mf.application.insert(dom,fC,as),i,o)
               case _ => fail("not a function")(f)
             }
-            if (as.length != ins.length) fail("wrong number of arguments")
-            val asC = checkSubstitution(gc, ins.substitute(as), ins)
+            val sub = ins.substitute(as)
+            val asC = if (alsoCheck) {
+              checkSubstitution(gc,sub,ins)
+            } else sub
             val outS = Substituter(gc,asC,out)
             (Application(fM,asC.exprs),outS)
         }
@@ -1004,8 +1020,10 @@ class Checker(errorHandler: ErrorHandler) {
         val (tupC,tupI) = inferExpressionNorm(gc,tup)
         tupI match {
           case ProdType(ts) =>
-            if (p <= 0) fail("non-positive index")
-            if (p > ts.length) fail("index out of bounds")
+            if (alsoCheck) {
+              if (p <= 0) fail("non-positive index")
+              if (p > ts.length) fail("index out of bounds")
+            }
             val componentType = ts(p-1).tp // -1 because components start at 1 but declarations at 0
             val precedingCompDecls = ts.take(p-1)
             val precedingProjs = Range(1,p).toList.map(i => Projection(tup, i))
@@ -1022,35 +1040,61 @@ class Checker(errorHandler: ErrorHandler) {
         val kind = if (es.length <= 1) CollectionKind.Option else CollectionKind.List // smallest applicable subquotient of List
         (CollectionValue(esC),CollectionType(eI, kind))
       case ListElem(l, p) =>
-        val u = Type.unknown(gc)
-        val lC = checkExpression(gc, l, CollectionType(u, CollectionKind.UList))
-        val pC = checkExpression(gc, p, IntType)
-        // index bounds not checked
-        (ListElem(lC,pC), u)
+        if (alsoCheck) {
+          val u = Type.unknown(gc)
+          val lC = checkExpression(gc,l,CollectionType(u,CollectionKind.UList))
+          val pC = checkExpression(gc,p,IntType)
+          // index bounds not checked
+          (ListElem(lC,pC),u)
+        } else {
+          val (_,CollectionType(a,_)) = inferExpression(gc,l)
+          (exp,a)
+        }
       case Quantifier(q,vars,bd) =>
-        val varsC = checkLocal(gc, vars, false, false)
-        val bdC = checkExpressionPure(gc.append(varsC), bd, BoolType)
-        (Quantifier(q,varsC,bdC), BoolType)
+        val eC = if (alsoCheck) {
+          val varsC = checkLocal(gc,vars,false,false)
+          val bdC = checkExpressionPure(gc.append(varsC),bd,BoolType)
+          Quantifier(q,varsC,bdC)
+        } else exp
+        (eC, BoolType)
       case Assert(f) =>
-        val fC = checkExpressionPure(gc, f, BoolType)
+        val fC = if (alsoCheck) checkExpressionPure(gc, f, BoolType) else f
         (Assert(fC), UnitType)
       case Block(es) =>
-        inferExpressionViaCheck(gc, exp)
+        if (alsoCheck) {
+          inferExpressionViaCheck(gc, exp)
+        } else {
+          // infer last element in context of previous ones
+          val tp = if (es.isEmpty) UnitType else {
+            var gcL = gc
+            es.init.foreach {e => gcL = gcL.append(LocalContext.collectContext(e))}
+            inferCheckedExpression(gcL, es.last)
+          }
+          (exp,tp)
+        }
       case VarDecl(n, tp, dfO, mut, output) =>
-        val tpC = checkType(gc, tp)
-        val dfOC = dfO map {df => checkExpression(gc,df,tpC)}
-        (VarDecl(n,tpC,dfOC,mut,output),tpC) // evaluates to VarRef(n); that allows introducing names in the middle of expressions
+        if (alsoCheck) {
+          val tpC = checkType(gc,tp)
+          val dfOC = dfO map {df => checkExpression(gc,df,tpC)}
+          (VarDecl(n,tpC,dfOC,mut,output),tpC) // evaluates to VarRef(n); that allows introducing names in the middle of expressions
+        } else (exp,tp)
       case Assign(e,df) =>
-        val (eC,eI) = inferExpression(gc, e)
-        val dfC = checkExpression(gc,df,eI)
-        checkAssignable(gc,e)
-        (Assign(eC,dfC),UnitType)
+        val expC = if (alsoCheck) {
+          val (eC,eI) = inferExpression(gc,e)
+          val dfC = checkExpression(gc,df,eI)
+          checkAssignable(gc,e)
+          Assign(eC,dfC)
+        } else exp
+        (expC,UnitType)
       case While(cond,bd) =>
-        val condC = checkExpression(gc, cond, BoolType)
-        val bdC = checkExpression(gc, bd, AnyType)
-        (While(condC, bdC), UnitType)
+        val expC = if (alsoCheck) {
+          val condC = checkExpression(gc,cond,BoolType)
+          val bdC = checkExpression(gc,bd,AnyType)
+          While(condC,bdC)
+        } else exp
+        (expC,UnitType)
       case IfThenElse(cond,thn, elsO) =>
-        val condC = checkExpression(gc, cond, BoolType)
+        val condC = if (alsoCheck) checkExpression(gc, cond, BoolType) else cond
         val (thnC,thnI) = inferExpressionNorm(gc, thn)
         val (elsOC, eI) = elsO match {
           case Some(els) =>
@@ -1063,39 +1107,49 @@ class Checker(errorHandler: ErrorHandler) {
         (IfThenElse(condC, thnC, elsOC), eI)
       case Match(e,cs,h) =>
         val (eC,eI) = inferExpressionNorm(gc,e)
-        val (patType,bodyType) = if (h) {
-          (ExceptionType,Some(eI))
+        if (!alsoCheck) {
+          val tp = if (h) eI else {
+            val csI = cs.map {case MatchCase(ctx,_,b) => inferCheckedExpression(gc.append(ctx),b)}
+            typeUnion(gc, csI)
+          }
+          (exp,tp)
         } else {
-          (eI,None)
-        }
-        val (csC,csI) = cs.map {case MatchCase(ctx,p,b) =>
-          val (ctxC,pC) = if (ctx == null) {
-            checkExpressionPattern(gc,p,patType)
+          val (patType,bodyType) = if (h) {
+            (ExceptionType,Some(eI))
           } else {
-            val cC = checkLocal(gc, ctx, false, false)
-            (cC, checkExpression(gc.append(cC), p, patType))
+            (eI,None)
           }
-          val (bC,bI) = bodyType match {
-            case None => inferExpression(gc.append(ctxC),b)
-            case Some(bt) => (checkExpression(gc.append(ctxC),b,bt), bt)
-          }
-          (MatchCase(ctxC,pC,bC),bI)
-        }.unzip
-        val mI = if (h) eI else typeUnion(gc,csI)
-        if (mI == AnyType) reportError(s"branches have incompatible types: " + csI.mkString(", "))
-        (Match(eC,csC,h),mI)
+          val (csC,csI) = cs.map {case MatchCase(ctx,p,b) =>
+            val (ctxC,pC) = if (ctx == null) {
+              checkExpressionPattern(gc,p,patType)
+            } else {
+              val cC = checkLocal(gc,ctx,false,false)
+              (cC,checkExpression(gc.append(cC),p,patType))
+            }
+            val (bC,bI) = bodyType match {
+              case None => inferExpression(gc.append(ctxC),b)
+              case Some(bt) => (checkExpression(gc.append(ctxC),b,bt),bt)
+            }
+            (MatchCase(ctxC,pC,bC),bI)
+          }.unzip
+          val mI = if (h) eI else typeUnion(gc,csI)
+          if (mI == AnyType) reportError(s"branches have incompatible types: " + csI.mkString(", "))
+          (Match(eC,csC,h),mI)
+        }
       case For(vd, range, bd) =>
         val vdC = checkVarDecl(gc,vd,false,false)
         val rangeC = checkExpression(gc, range, CollectionKind.UList(vdC.tp))
         val (bdC,bdI) = inferExpression(gc.append(vdC), bd)
         (For(vdC, rangeC, bdC), CollectionKind.List(bdI)) // map may introduce repetitions
       case Return(e,thrw) =>
-        val rt = if (thrw) ExceptionType else gc.getOutput.getOrElse(fail("return not allowed here"))
-        val eC = checkExpression(gc,e,rt)
+        val eC = if (alsoCheck) {
+          val rt = if (thrw) ExceptionType else gc.getOutput.getOrElse(fail("return not allowed here"))
+          checkExpression(gc,e,rt)
+        } else e
         (Return(eC,thrw), EmptyType)
     }
-    expC.copyFrom(exp)
-    (expC,expI)
+    val expCF = if (alsoCheck) expC.copyFrom(exp) else expC
+    (expCF,expI)
   }
 
   /** checks if an expression may be used as a pattern */

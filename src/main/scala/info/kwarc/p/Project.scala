@@ -51,40 +51,39 @@ class Project(var entries: List[ProjectEntry], main: Option[Expression] = None) 
     le.checkedIsDirty = false
   }
 
-  def check() = {
+  def check(stopOnError: Boolean) = {
     val ds = entries.flatMap(_.parsed.decls)
     val voc = Vocabulary(ds)
-    val ec = new ErrorCollector
+    val ec = if (stopOnError) ErrorThrower else new ErrorCollector
     val ch = new Checker(ec)
     val vocC = ch.checkVocabulary(GlobalContext(""), voc, true)(voc)
-    ec.getErrors.groupBy(e => e.loc.origin).foreach {case (o, es) =>
-      val eh = get(o).errors
-      es foreach eh.apply
+    ec match {
+      case ec: ErrorCollector =>
+        ec.getErrors.groupBy(e => e.loc.origin).foreach {case (o,es) =>
+          val eh = get(o).errors
+          es foreach eh.apply
+        }
+      case _ =>
     }
     vocC
   }
 
   def run(interactive: Boolean): Unit = {
-    val voc = check()
+    val voc = check(true)
     if (hasErrors) {
       println(getErrors.mkString("\n"))
       return
     }
     val e = main.getOrElse(UnitValue)
-    val ec = new ErrorCollector
-    val ch = new Checker(ec)
-    val (eC,_) = ch.inferExpression(GlobalContext(voc), e)
-    if (ec.hasErrors) {
-      println(ec)
-    } else {
+    val ch = new Checker(ErrorThrower)
+    try {
+      val (eC,_) = ch.checkAndInferExpression(GlobalContext(voc), e)
       val prog = Program(voc,eC)
-      try {
-        val (ip,r) = Interpreter.run(prog)
-        if (r != UnitValue) println(r)
-        if (interactive) repl(ip)
-      } catch {
-        case e: PError => println(e)
-      }
+      val (ip,r) = Interpreter.run(prog)
+      if (r != UnitValue) println(r)
+      if (interactive) repl(ip)
+    } catch {
+      case e: PError => println(e)
     }
   }
 
@@ -101,7 +100,7 @@ class Project(var entries: List[ProjectEntry], main: Option[Expression] = None) 
       } else {
         val ec = new ErrorCollector
         val ch = new Checker(ec)
-        val (eC,eI) = ch.inferExpression(GlobalContext(ip.voc),e)
+        val (eC,eI) = ch.checkAndInferExpression(GlobalContext(ip.voc),e)
         val ed = ExprDecl("res" + i.toString,eI,Some(eC),false)
         i += 1
         println(ed)

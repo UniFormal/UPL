@@ -488,9 +488,10 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   }
 
   private def currentParent: Path = {
-    if (!inPhysicalTheory)
+    if (regions.length == 1) Path.empty
+    else if (!inPhysicalTheory)
       throw IError("not in physical theory")
-    currentRegion.theory.decls.head match {
+    else currentRegion.theory.decls.head match {
       case Include(p, None, false) => p
       case _ => throw IError("not a physical theory")
     }
@@ -788,9 +789,7 @@ case class Theory(decls: List[Declaration]) extends SyntaxFragment {
     }
     this
   }
-  def domain = decls.collect { case nd: NamedDeclaration =>
-    nd.name
-  }
+  def domain = decls.collect {case nd: NamedDeclaration => nd.name}
   def sub(that: Theory) = this.decls.forall(d => that.decls contains d)
   def union(that: Theory) = Theory(this.decls ::: that.decls)
   override def equals(that: Any) = that match {
@@ -819,12 +818,9 @@ object PhysicalTheory {
 }
 
 object ExtendedTheory {
-  def apply(p: Path, sds: List[SymbolDeclaration]): Theory = Theory(
-    Include(p) :: sds
-  )
+  def apply(p: Path, sds: List[SymbolDeclaration]): Theory = Theory(Include(p) :: sds)
   def unapply(thy: Theory) = thy.decls match {
-    case Include(p, None, _) :: ds
-        if ds.forall(_.isInstanceOf[SymbolDeclaration]) =>
+    case Include(p, None, _) :: ds if ds.forall(_.isInstanceOf[SymbolDeclaration]) =>
       Some((p, ds.map(_.asInstanceOf[SymbolDeclaration])))
     case _ => None
   }
@@ -839,8 +835,7 @@ case class OpenRef(path: Path) extends Expression with Type {
   override def toString = "." + path
   def label = path.toString
   def children = Nil
-  override def substitute(s: Substitution) =
-    this // needed due to double-inheritance
+  override def substitute(s: Substitution) = this // needed due to double-inheritance
   def finite = false
 }
 
@@ -849,8 +844,7 @@ case class ClosedRef(n: String) extends Expression with Type {
   def label = n
   def children = Nil
   override def toString = n
-  override def substitute(s: Substitution) =
-    this // needed due to double-inheritance
+  override def substitute(s: Substitution) = this // needed due to double-inheritance
   def finite = false
 }
 
@@ -862,23 +856,16 @@ case class ClosedRef(n: String) extends Expression with Type {
   * o must be a morphism into the current lc, and o.x can be seen as the morphism application o(t).
   */
 sealed trait OwnedObject extends Object {
-
   /** the translation, must evaluate to an [[Instance]] */
   def owner: Expression
-
   /** the theory of the owner */
   def ownerDom: Theory
-
   /** the original object */
   def owned: Object
   override def toString = s"$owner.$owned"
   def label = "owned"
   def children = List(owner, ownerDom, owned)
-  override def childrenInContext = List(
-    (None, None, owner),
-    (None, None, ownerDom),
-    (Some(ownerDom), None, owned)
-  )
+  override def childrenInContext = List((None, None, owner), (None, None, ownerDom), (Some(ownerDom), None, owned))
 }
 
 /** expressions translated into another regional context
@@ -886,9 +873,7 @@ sealed trait OwnedObject extends Object {
   * If t is ClosedRef(n), this is the usual field access o.n known from OOP. See also [[Expression.field]]
   * By allowing arbitrary terms, we can delay traversing expressions, which might have to duplicate owner.
   */
-case class OwnedExpr(owner: Expression, ownerDom: Theory, owned: Expression)
-    extends Expression
-    with OwnedObject
+case class OwnedExpr(owner: Expression, ownerDom: Theory, owned: Expression) extends Expression with OwnedObject
 
 /** types translated to another environment
   *
@@ -901,9 +886,7 @@ case class OwnedExpr(owner: Expression, ownerDom: Theory, owned: Expression)
 // checker must ensure owner is Pure (compare Scala path types: owner must be variable to separate side effects from type field access.)
 // interpreter invariant: semantics should not depend on types other than class refs, computation of types should never be needed,
 // i.e., removing all types from declarations and type fields from modules/instances should be allowed
-case class OwnedType(owner: Expression, ownerDom: Theory, owned: Type)
-    extends Type
-    with OwnedObject {
+case class OwnedType(owner: Expression, ownerDom: Theory, owned: Type) extends Type with OwnedObject {
   def finite = false
 }
 
