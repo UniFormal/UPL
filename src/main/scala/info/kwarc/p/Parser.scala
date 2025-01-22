@@ -1,25 +1,44 @@
 package info.kwarc.p
 
 /* Concrete syntax
+
+   module M {
+    decls
+   }              modules
+   class M {
+    decls
+   }              classes (same as modules except that they may be instantiated)
+   include M      include of a class into a class
+
+   type a [=A]    type declaration
+   val c[:A][=t]  constant declaration, type will be inferred if omitted, val keyword can be omitted
+
+   void, unit, int, rat, bool, string
+                  base types as usual
+   int[l;u]       integer interval
+   + * - / & | == != <= >= < > -: :-
+                  operators as usual
+
+   any            supertype of all types
+   exc            type of exception
+
+   A -> B
    (A,...) -> B
-   A -> B         function type
+   (x:A,...) -> B dependent function type
    (x:A,...) -> t
    x -> t         function
    f(t,...)       application
    
-   (A,...)        product type
+   (x:A,...)
+   (A,...)        dependent product type
    (t,...)        tuple
    t(n)           projection (parsed as Application and disambiguated by Checker)
    
-   [A]            list type
-   [t,...]        list
+   C[A]           collection type of kind C, e.g., List[A], Set[A], Option[A],  ([A], A? shortcut for List[A], Option[A])
+   [t,...]        collection, e.g., list, set, ...
    l[i]           list access
 
-   A?             option type
-   t?             option value
-   ?              none value
-   
-   M{decls}      instance
+   M{decls}      new instance of M, decls must define all remaining abstract fields
    Instance{exp}
    Instance{type}
    Instance.id    instance access (OwnedXXX)
@@ -32,7 +51,19 @@ package info.kwarc.p
    `exp`:        eval
 
    not implemented yet
-   I@q:          instance-quotation pair 
+   I@q:          instance-quotation pair
+
+                 control flow as usual
+   val x[:A]=t
+   var x[:A]=t   new variable (mutable if 'var')
+   p = e         assignment of e to pattern p
+   while (c) {b}
+   if (c) {t} else {e}
+   for (x in L) {b}
+   return e
+   throw e
+   e match {case p -> e, ...}
+   e catch {case p -> e, ...}
  */
 
 case class PContext(contexts: List[LocalContext], allowStatement: Boolean) {

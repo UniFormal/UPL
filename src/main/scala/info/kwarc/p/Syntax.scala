@@ -1258,15 +1258,13 @@ case class Lambda(ins: LocalContext, body: Expression) extends Expression {
   override def toString = s"($ins) -> $body"
   def label = "lambda"
   def children = ins.children ::: List(body)
-  override def childrenInContext =
-    ins.childrenInContext ::: List((None, Some(ins), body))
+  override def childrenInContext = ins.childrenInContext ::: List((None, Some(ins), body))
 }
 
 /** function application, elimination form for [[FunType]]
   * arguments are given in left-to-right order, i.e., opposite to the one used in [[FunType]]
   */
-case class Application(fun: Expression, args: List[Expression])
-    extends Expression {
+case class Application(fun: Expression, args: List[Expression]) extends Expression {
   override def toString = {
     fun match {
       case BaseOperator(o: InfixOperator, _) =>
