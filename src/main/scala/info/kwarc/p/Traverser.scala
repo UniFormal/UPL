@@ -13,10 +13,10 @@ abstract class Traverser[A] {
 
   def apply(p: Path)(implicit gc: GlobalContext, a: A): Path = matchC(p) {p => p}
 
-  def apply(thy: Theory)(implicit gc: GlobalContext, a: A): Theory = matchC(thy) {thy =>
+  def apply(thy: Theory)(implicit gc: GlobalContext, a: A): Theory = {
     if (thy == null) null else {
       val psT = thy.decls map apply
-      Theory(psT)
+      Theory(psT).copyFrom(thy)
     }
   }
   def apply(ctx: LocalContext)(implicit gc: GlobalContext, a:A): (LocalContext,A) = {
@@ -93,7 +93,7 @@ abstract class Traverser[A] {
     case vd:VarDecl => applyVarDecl(vd)._1
     case Assign(k,v) => Assign(apply(k), apply(v))
     case ExprOver(t,e) => ExprOver(apply(t), apply(e)(gc.push(t),a))
-    case Eval(e) => Eval(apply(e))
+    case Eval(e) => Eval(apply(e)(gc.pop(),a))
     case Block(es) =>
       var gcI = gc
       var aI = a

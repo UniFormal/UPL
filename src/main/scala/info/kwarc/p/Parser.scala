@@ -59,7 +59,7 @@ package info.kwarc.p
    var x[:A]=t   new variable (mutable if 'var')
    p = e         assignment of e to pattern p
    while (c) {b}
-   if (c) {t} else {e}
+   if (c) {t} [else {e}]
    for (x in L) {b}
    return e
    throw e

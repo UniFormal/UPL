@@ -663,7 +663,7 @@ class Checker(errorHandler: ErrorHandler) {
     def n(t: Type) = typeNormalize(gc, t)
     def f(t: Theory) = checkTheory(gc, t)
     matchC(tp) {
-      case ClosedRef(f) => gc.lookupRegional(f) match {
+      case ClosedRef(r) => gc.lookupRegional(r) match {
         case Some(td: TypeDecl) => td.dfO match {
           case Some(df) => n(df)
           case None => tp
@@ -699,7 +699,7 @@ class Checker(errorHandler: ErrorHandler) {
       case ClassType(sc) => ClassType(f(sc))
       case ExprsOver(sc, t) =>
         val thyN = f(sc)
-        ExprsOver(thyN, n(t))
+        ExprsOver(thyN, typeNormalize(gc.push(thyN), t))
       case _:ProofType => tp
       case u: UnknownType => if (u.known) n(u.skipUnknown) else u
     }
@@ -776,6 +776,9 @@ class Checker(errorHandler: ErrorHandler) {
         }
         val eC = checkExpression(gc.push(scTC), e, tp)
         ExprOver(scTC, eC)
+      case (Eval(q), a) =>
+        val qC = checkExpression(gc.pop(), q, ExprsOver(gc.theory, a))
+        Eval(qC)
       case (Application(op: BaseOperator,args),_) if !op.tp.known =>
         val (argsC,argsI) = args.map(a => inferExpression(gc,a)(true)).unzip
         val opTp = FunType.simple(argsI,tpN)
@@ -1235,33 +1238,37 @@ class Checker(errorHandler: ErrorHandler) {
     * - Expr[s]Over
     * - OpenRef
     * - projection
-    * because the parser cannot disambiguate these */
+    * because the parser cannot disambiguate these
+    */
   // the type bound allows taking a Type or an Expression and returning the same
   private def disambiguateOwnedObject[A >: Type with Expression](gc: GlobalContext, o: A): Option[A] = o match {
     case o: OwnedObject =>
-      val ownerInfo = o.owner match {
+      // if owner is module m: the path to m, and m.closed
+      val ownerIsModule = o.owner match {
         case OpenRef(p) => gc.resolvePath(p) flatMap {
           case (pR, m: Module) => Some((pR, m.closed))
           case _ => None
         }
         case ClosedRef(n) => gc.resolveName(o.owner) flatMap {
-          case (_:ClosedRef,Some(m:Module)) => Some((Path(n), m.closed))
-          case (OpenRef(pR), _) => Some((pR,false))
+          case (_:ClosedRef, Some(m:Module)) => Some((Path(n), m.closed))
+          case (OpenRef(pR), Some(m:Module)) => Some((pR,m.closed))
           case _ => None
         }
         case _ => None
       }
-      ownerInfo map {case (p,closed) =>
+      ownerIsModule map {case (p,closed) =>
         if (closed) {
+          // rewrite to quotation
           val sc = PhysicalTheory(p)
           o match {
             case o: OwnedType => ExprsOver(sc,o.owned).copyFrom(o).asInstanceOf[A] // guaranteed to work, but needed by Scala compiler
             case o: OwnedExpr => ExprOver(sc,o.owned).copyFrom(o).asInstanceOf[A]
           }
         } else {
+          // only legal if M.n is meant to be an OpenRef
           o.owned match {
             case ClosedRef(n) => OpenRef(p/n)
-            case _ => fail("open module cannot own expressions")(o)
+            case _ => fail("open module cannot own expressions other than identifiers")(o)
           }
         }
       }

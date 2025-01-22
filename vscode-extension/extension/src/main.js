@@ -1694,22 +1694,22 @@ function $p_Linfo_kwarc_p_Checker__disambiguateOwnedObject__Linfo_kwarc_p_Global
       var p = $n(x2$2).Linfo_kwarc_p_OpenRef__f_path;
       var this$1 = $n($n(gc).resolvePath__Linfo_kwarc_p_Path__s_Option(p));
       if (this$1.isEmpty__Z()) {
-        var ownerInfo = $m_s_None$();
+        var ownerIsModule = $m_s_None$();
       } else {
         var arg1 = this$1.get__O();
         var x0$1 = $as_T2(arg1);
         matchEnd4: {
-          var ownerInfo;
+          var ownerIsModule;
           if ((x0$1 !== null)) {
             var pR = $as_Linfo_kwarc_p_Path($n(x0$1).T2__f__1);
             var m = $as_Linfo_kwarc_p_NamedDeclaration($n(x0$1).T2__f__2);
             if ((m instanceof $c_Linfo_kwarc_p_Module)) {
               var x2$1 = $as_Linfo_kwarc_p_Module(m);
-              var ownerInfo = new $c_s_Some(new $c_T2(pR, $n(x2$1).Linfo_kwarc_p_Module__f_closed));
+              var ownerIsModule = new $c_s_Some(new $c_T2(pR, $n(x2$1).Linfo_kwarc_p_Module__f_closed));
               break matchEnd4;
             }
           }
-          var ownerInfo = $m_s_None$();
+          var ownerIsModule = $m_s_None$();
         }
       }
     } else if ((x1$2 instanceof $c_Linfo_kwarc_p_ClosedRef)) {
@@ -1717,12 +1717,12 @@ function $p_Linfo_kwarc_p_Checker__disambiguateOwnedObject__Linfo_kwarc_p_Global
       var n = $n(x3).Linfo_kwarc_p_ClosedRef__f_n;
       var this$2 = $n($n(gc).resolveName__Linfo_kwarc_p_Object__s_Option($as_Linfo_kwarc_p_Object($n(x2).owner__Linfo_kwarc_p_Expression())));
       if (this$2.isEmpty__Z()) {
-        var ownerInfo = $m_s_None$();
+        var ownerIsModule = $m_s_None$();
       } else {
         var arg1$1 = this$2.get__O();
         var x0$2 = $as_T2(arg1$1);
-        matchEnd11: {
-          var ownerInfo;
+        matchEnd13: {
+          var ownerIsModule;
           if ((x0$2 !== null)) {
             var p3 = $as_s_Option($n(x0$2).T2__f__2);
             if ((($n(x0$2).T2__f__1 instanceof $c_Linfo_kwarc_p_ClosedRef) && (p3 instanceof $c_s_Some))) {
@@ -1730,30 +1730,38 @@ function $p_Linfo_kwarc_p_Checker__disambiguateOwnedObject__Linfo_kwarc_p_Global
               var m$1 = $as_Linfo_kwarc_p_NamedDeclaration($n(x4).s_Some__f_value);
               if ((m$1 instanceof $c_Linfo_kwarc_p_Module)) {
                 var x6 = $as_Linfo_kwarc_p_Module(m$1);
-                var ownerInfo = new $c_s_Some(new $c_T2($m_Linfo_kwarc_p_Path$().apply__T__Linfo_kwarc_p_Path(n), $n(x6).Linfo_kwarc_p_Module__f_closed));
-                break matchEnd11;
+                var ownerIsModule = new $c_s_Some(new $c_T2($m_Linfo_kwarc_p_Path$().apply__T__Linfo_kwarc_p_Path(n), $n(x6).Linfo_kwarc_p_Module__f_closed));
+                break matchEnd13;
               }
             }
           }
           if ((x0$2 !== null)) {
             var p7 = $as_Linfo_kwarc_p_Object($n(x0$2).T2__f__1);
+            var p8 = $as_s_Option($n(x0$2).T2__f__2);
             if ((p7 instanceof $c_Linfo_kwarc_p_OpenRef)) {
               var x9 = $as_Linfo_kwarc_p_OpenRef(p7);
               var pR$1 = $n(x9).Linfo_kwarc_p_OpenRef__f_path;
-              var ownerInfo = new $c_s_Some(new $c_T2(pR$1, false));
-              break matchEnd11;
+              if ((p8 instanceof $c_s_Some)) {
+                var x10 = $as_s_Some(p8);
+                var m$2 = $as_Linfo_kwarc_p_NamedDeclaration($n(x10).s_Some__f_value);
+                if ((m$2 instanceof $c_Linfo_kwarc_p_Module)) {
+                  var x11 = $as_Linfo_kwarc_p_Module(m$2);
+                  var ownerIsModule = new $c_s_Some(new $c_T2(pR$1, $n(x11).Linfo_kwarc_p_Module__f_closed));
+                  break matchEnd13;
+                }
+              }
             }
           }
-          var ownerInfo = $m_s_None$();
+          var ownerIsModule = $m_s_None$();
         }
       }
     } else {
-      var ownerInfo = $m_s_None$();
+      var ownerIsModule = $m_s_None$();
     }
-    if (ownerInfo.isEmpty__Z()) {
+    if (ownerIsModule.isEmpty__Z()) {
       return $m_s_None$();
     } else {
-      var arg1$2 = ownerInfo.get__O();
+      var arg1$2 = ownerIsModule.get__O();
       var x0$3 = $as_T2(arg1$2);
       if ((x0$3 !== null)) {
         var p$1 = $as_Linfo_kwarc_p_Path($n(x0$3).T2__f__1);
@@ -1779,7 +1787,7 @@ function $p_Linfo_kwarc_p_Checker__disambiguateOwnedObject__Linfo_kwarc_p_Global
             var $x_1 = new $c_Linfo_kwarc_p_OpenRef($n(p$1).$div__T__Linfo_kwarc_p_Path(n$1));
           } else {
             var $x_1;
-            $thiz.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("open module cannot own expressions", $as_Linfo_kwarc_p_SyntaxFragment(x2));
+            $thiz.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("open module cannot own expressions other than identifiers", $as_Linfo_kwarc_p_SyntaxFragment(x2));
           }
         }
       } else {
@@ -3402,8 +3410,8 @@ $c_Linfo_kwarc_p_Checker.prototype.typeNormalize__Linfo_kwarc_p_GlobalContext__L
   var x0$1 = $as_Linfo_kwarc_p_Type(a);
   if ((x0$1 instanceof $c_Linfo_kwarc_p_ClosedRef)) {
     var x2 = $as_Linfo_kwarc_p_ClosedRef(x0$1);
-    var f = $n(x2).Linfo_kwarc_p_ClosedRef__f_n;
-    var x1$2 = $n(gc).lookupRegional__T__s_Option(f);
+    var r = $n(x2).Linfo_kwarc_p_ClosedRef__f_n;
+    var x1$2 = $n(gc).lookupRegional__T__s_Option(r);
     matchEnd5: {
       var $x_1;
       if ((x1$2 instanceof $c_s_Some)) {
@@ -3427,6 +3435,7 @@ $c_Linfo_kwarc_p_Checker.prototype.typeNormalize__Linfo_kwarc_p_GlobalContext__L
           }
         }
       }
+      $n(gc).lookupRegional__T__s_Option(r);
       this.info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("illegal type", $as_Linfo_kwarc_p_SyntaxFragment(tp));
     }
   } else if ((x0$1 instanceof $c_Linfo_kwarc_p_OpenRef)) {
@@ -3557,7 +3566,7 @@ $c_Linfo_kwarc_p_Checker.prototype.typeNormalize__Linfo_kwarc_p_GlobalContext__L
       var sc$2 = $n(x12).Linfo_kwarc_p_ExprsOver__f_scope;
       var t$2 = $n(x12).Linfo_kwarc_p_ExprsOver__f_tp;
       var thyN = this.checkTheory__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Theory__Linfo_kwarc_p_SyntaxFragment__Linfo_kwarc_p_Theory(gc, sc$2, $as_Linfo_kwarc_p_SyntaxFragment(tp));
-      var $x_1 = new $c_Linfo_kwarc_p_ExprsOver(thyN, this.typeNormalize__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type(gc, t$2));
+      var $x_1 = new $c_Linfo_kwarc_p_ExprsOver(thyN, this.typeNormalize__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type($n(gc).push__Linfo_kwarc_p_Theory__s_Option__Linfo_kwarc_p_GlobalContext(thyN, ($n(gc), $m_s_None$())), t$2));
     } else if ((x0$1 instanceof $c_Linfo_kwarc_p_ProofType)) {
       var $x_1 = tp;
     } else {
@@ -3565,8 +3574,8 @@ $c_Linfo_kwarc_p_Checker.prototype.typeNormalize__Linfo_kwarc_p_GlobalContext__L
         throw new $c_s_MatchError(x0$1);
       }
       var x14 = $as_Linfo_kwarc_p_UnknownType(x0$1);
-      var this$7 = $n(x14);
-      if ($n(this$7.Linfo_kwarc_p_UnknownType__f_container).known__Z()) {
+      var this$8 = $n(x14);
+      if ($n(this$8.Linfo_kwarc_p_UnknownType__f_container).known__Z()) {
         var t$1 = $n(x14).skipUnknown__Linfo_kwarc_p_Type();
         var $x_1 = this.typeNormalize__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type(gc, t$1);
       } else {
@@ -35306,7 +35315,7 @@ $c_Linfo_kwarc_p_ExprsOver.prototype.substitute__Linfo_kwarc_p_Substitution__Lin
   return $f_Linfo_kwarc_p_Type__substitute__Linfo_kwarc_p_Substitution__Linfo_kwarc_p_Type(this, sub);
 });
 $c_Linfo_kwarc_p_ExprsOver.prototype.toString__T = (function() {
-  return ((("<" + this.Linfo_kwarc_p_ExprsOver__f_scope) + ">") + this.Linfo_kwarc_p_ExprsOver__f_tp);
+  return (((this.Linfo_kwarc_p_ExprsOver__f_scope + "{") + this.Linfo_kwarc_p_ExprsOver__f_tp) + "}");
 });
 $c_Linfo_kwarc_p_ExprsOver.prototype.children__sci_List = (function() {
   var array = [this.Linfo_kwarc_p_ExprsOver__f_scope, $as_Linfo_kwarc_p_SyntaxFragment(this.Linfo_kwarc_p_ExprsOver__f_tp)];

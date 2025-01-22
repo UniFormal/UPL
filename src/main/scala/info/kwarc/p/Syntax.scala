@@ -528,9 +528,9 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   def resolveName(obj: Object): Option[(Object, Option[NamedDeclaration])] = {
     def make(e: Object) = if (e == obj) obj else e.copyFrom(obj)
     val n = obj match {
-      case VarRef(n)    => n
+      case VarRef(n) => n
       case ClosedRef(n) => n
-      case _            => return Some((obj, None))
+      case _ => return Some((obj, None))
     }
     // try finding local variable n in context
     visibleLocals.lookupO(n).foreach { _ =>
@@ -553,7 +553,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     // look in the current module for a primitive or previously merged declaration
     mod.lookupO(name) match {
       case Some(nd: NamedDeclaration) if !nd.global => return Some(nd)
-      case _                                        =>
+      case _ =>
     }
     // look in included modules
     val ds = mod.supers.flatMap {p => voc.lookupPath(p / name).toList}.filter(d => !d.global && !d.subsumed)
@@ -862,7 +862,7 @@ sealed trait OwnedObject extends Object {
   def ownerDom: Theory
   /** the original object */
   def owned: Object
-  override def toString = s"$owner.$owned"
+  override def toString = s"$owner{$owned}"
   def label = "owned"
   def children = List(owner, ownerDom, owned)
   override def childrenInContext = List((None, None, owner), (None, None, ownerDom), (Some(ownerDom), None, owned))
@@ -968,7 +968,7 @@ object AnyStructure {
   * can be seen as the variant of OwnedType without owner
   */
 case class ExprsOver(scope: Theory, tp: Type) extends Type {
-  override def toString = s"<$scope>$tp"
+  override def toString = s"$scope{$tp}"
   def finite = false
   def label = "quote"
   def children = List(scope, tp)
