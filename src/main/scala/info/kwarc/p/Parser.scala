@@ -16,7 +16,8 @@ package info.kwarc.p
    void, unit, int, rat, bool, string
                   base types as usual
    int[l;u]       integer interval
-   + * - / & | == != <= >= < > -: :-
+
+   + * - / & | == != <= >= < > -: :- in
                   operators as usual
 
    any            supertype of all types
