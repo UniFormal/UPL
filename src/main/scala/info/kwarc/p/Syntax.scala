@@ -111,7 +111,7 @@ sealed trait HasChildren[A <: MaybeNamed] extends SyntaxFragment {
   def decls: List[A]
   def domain = decls collect { case d: Named => d.name }
   def length = decls.length
-  def empty = length == 0
+  def empty = decls.isEmpty
   def lookupO(name: String) = decls.find(_.nameO.contains(name))
   def lookup(name: String) = lookupO(name).get
   def declares(name: String) = lookupO(name).isDefined
@@ -278,8 +278,7 @@ abstract class Context[A] extends SyntaxFragment with HasChildren[VarDecl] {
   * These are found first by lookup.
   * The constructors must not be applied to declartions in natural order - use make instead.
   */
-case class LocalContext(variables: List[VarDecl])
-    extends Context[LocalContext] {
+case class LocalContext(variables: List[VarDecl]) extends Context[LocalContext] {
   override def toString = variables.reverse.mkString(", ")
   def label = "binding"
   def children = variables.reverse
@@ -403,6 +402,10 @@ case class BiContext(lr: List[(VarDecl, VarDecl)]) {
   def right = LocalContext(lr.map(_._2))
   def renameLeftToRight = Substitution(lr.map({case (a, b) => VarDecl.sub(a.name, b.toRef)}))
   def renameRightToLeft = Substitution(lr.map({case (a, b) => VarDecl.sub(b.name, a.toRef)}))
+}
+
+object BiContext {
+  def apply(l: LocalContext, r: LocalContext): BiContext = BiContext(l.decls zip r.decls)
 }
 
 /** declaration-level context: relative to a vocabulary, holds a regional+local context
@@ -830,21 +833,24 @@ object ExtendedTheory {
 
 // Some classes dealing with symbol references and scoping are shared between types and expressions
 
-/** reference to a symbol from an open theory */
-case class OpenRef(path: Path) extends Expression with Type {
+/** reference to a name */
+sealed trait Ref extends Expression with Type {
+  override def substitute(s: Substitution) = this // needed due to double-inheritance
+}
+
+/** global reference: to a symbol from an open theory */
+case class OpenRef(path: Path) extends Ref {
   override def toString = "." + path
   def label = path.toString
   def children = Nil
-  override def substitute(s: Substitution) = this // needed due to double-inheritance
   def finite = false
 }
 
-/** reference to a symbol from an included theory */
-case class ClosedRef(n: String) extends Expression with Type {
+/** regional reference: to a symbol from an included theory */
+case class ClosedRef(n: String) extends Ref {
   def label = n
   def children = Nil
   override def toString = n
-  override def substitute(s: Substitution) = this // needed due to double-inheritance
   def finite = false
 }
 
@@ -1224,7 +1230,7 @@ case class Instance(theory: Theory)
 
 /** a quoted expressions; introduction form of [[ExprsOver]] */
 case class ExprOver(scope: Theory, expr: Expression) extends Expression {
-  override def toString = s"$scope{$expr}>"
+  override def toString = s"$scope{$expr}"
   def label = "quote"
   def children = List(scope, expr)
 }
@@ -1414,7 +1420,7 @@ object VarDecl {
   def sub(n: String, df: Expression) = VarDecl(n, null, Some(df))
 }
 
-/** reference to local variable */
+/** local reference: to a variable */
 case class VarRef(name: String) extends Expression {
   override def toString = name
   def label = name
@@ -1458,7 +1464,7 @@ case class IfThenElse(cond: Expression, thn: Expression, els: Option[Expression]
 /** unifies pattern-matching and exception handling */
 case class Match(expr: Expression, cases: List[MatchCase], handler: Boolean) extends Expression {
   def label = if (handler) "handle" else "match"
-  override def toString = expr.toString + " " + label + " {\n" + cases.mkString("\n") + "}"
+  override def toString = expr.toString + " " + label + " {\n" + cases.mkString("\n") + "\n}"
   def children = expr :: cases
 }
 
@@ -1555,6 +1561,8 @@ sealed trait Equality extends Operator {
 
   /** the operator to reduce after applying this operator on a list of pairs */
   def reduce: Operator
+  /** this == Equal */
+  def positive: Boolean
 }
 
 case object Plus extends InfixOperator("+", 0, true) with Arithmetic {
@@ -1612,9 +1620,11 @@ case object Greater extends InfixOperator(">", -10, false) with Comparison
 case object GreaterEq extends InfixOperator(">=", -10, false) with Comparison
 
 case object Equal extends InfixOperator("==", -10, false) with Equality {
+  val positive = true
   val reduce = And
 }
 case object Inequal extends InfixOperator("!=", -10, false) with Equality {
+  val positive = false
   val reduce = Or
 }
 
@@ -1698,28 +1708,27 @@ object Operator {
             val b = ((e == Equal) == (l.value == r.value))
             BoolValue(b)
           case (e: Equality, Tuple(ls), Tuple(rs)) =>
-            if (ls.length != rs.length) BoolValue(e != Equal)
+            if (ls.length != rs.length) BoolValue(!e.positive)
             else {
-              val lrs = (ls zip rs).map({ case (l, r) =>
-                simplify(e, List(l, r))
-              })
+              val lrs = (ls zip rs).map {case (l, r) => simplify(e, List(l, r))}
               simplify(e.reduce, lrs)
             }
           case (e: Equality, CollectionValue(ls), CollectionValue(rs)) =>
             // TODO: depends on the collection kind
-            if (ls.length != rs.length) BoolValue(e != Equal)
+            if (ls.length != rs.length) BoolValue(!e.positive)
             else {
-              val lrs = (ls zip rs).map({ case (l, r) =>
-                simplify(e, List(l, r))
-              })
+              val lrs = (ls zip rs).map {case (l, r) => simplify(e, List(l, r))}
               simplify(e.reduce, lrs)
             }
+          case (e: Equality, ExprOver(_,exp1), ExprOver(_,exp2)) =>
+            // theories are irrelevant for well-typed expressions
+            BoolValue((exp1 == exp2) == e.positive)
           case (In, e, CollectionValue(es)) =>
             val b = es.contains(e)
             BoolValue(b)
           case (Cons, e, CollectionValue(es)) => CollectionValue(e :: es)
           case (Snoc, CollectionValue(es), e) => CollectionValue(es ::: List(e))
-          case _                              => throw IError("no case for operator evaluation: " + o.symbol)
+          case _ => throw IError("no case for operator evaluation: " + o.symbol)
         }
     }
   }

@@ -125,6 +125,7 @@ class Interpreter(vocInit: Module) {
 
   private val env = new GlobalEnvironment(vocInit)
   def voc = env.voc
+  private val globalContext = GlobalContext(voc)
   private def stack = env.regions
   private def frame = stack.head
 
@@ -156,7 +157,7 @@ class Interpreter(vocInit: Module) {
         env.voc.lookupPath(p) match {
           case Some(sd: ExprDecl) => sd.dfO match {
             case None => fail("no definiens") //TODO allow this as an abstract declaration in a module; all elimination forms below must remain uninterpreted
-            case Some(v) => interpretExpression(v)
+            case Some(v) => interpretExpression(v) //TODO this re-evaluates the definiens
           }
           case _ => fail("not an expression")
         }
@@ -171,7 +172,7 @@ class Interpreter(vocInit: Module) {
         vlI
       case Assign(t,v) =>
         val vI = interpretExpression(v)
-        assign(t,vI)(true)
+        assign(t,vI)(true, globalContext)
         UnitValue
       case ExprOver(v,q) =>
         val gc = GlobalContext("").push(v)
@@ -287,6 +288,7 @@ class Interpreter(vocInit: Module) {
         val eI = interpretExpression(e)
         throw ReturnFound(eI,thrw)
       case Match(e,cases,handle) =>
+        // cases must be run if (i) this is a match, or (ii) this is a catch and e threw an exception
         val (eI,runCases) = try {
           (interpretExpression(e),!handle)
         } catch {
@@ -294,11 +296,13 @@ class Interpreter(vocInit: Module) {
             (exc,true)
         }
         def doCases(mcs: List[MatchCase]): Expression = mcs match {
-          case Nil => fail("match error")
+          case Nil =>
+            if (handle) throw ReturnFound(eI,true) // bubble up exception
+            else fail("match error: " + eI)
           case mc :: rest =>
             val mcI = frame.inNewBlock {
               mc.context.decls foreach {vd => frame.allocate(vd.name,null)}
-              val matched = assign(mc.pattern,eI)(false)
+              val matched = assign(mc.pattern,eI)(false, globalContext)
               if (matched) {
                 mc.context.decls.foreach {vd =>
                   if (frame.local.get(vd.name) == null)
@@ -438,24 +442,35 @@ class Interpreter(vocInit: Module) {
   }
 
   /** called if assign fails */
-  private def assignFail(msg: String)(implicit failOnMismatch: Boolean, cause: Expression) = {
-    if (failOnMismatch) abort(msg)
+  private def assignFail(msg: String)(implicit mustMatch: Boolean, cause: Expression) = {
+    if (mustMatch) abort(msg)
     else false
   }
-  private def assign(target: Expression, value: Expression)(implicit failOnMismatch: Boolean): Boolean = {
+  private def assign(target: Expression, value: Expression)(implicit mustMatch: Boolean, gc: GlobalContext): Boolean = {
     implicit val cause = target
+    val inQuote = gc.regions.length > 1
     (target,value) match {
       case (VarRef(""), _) =>
         true // ignore value
-      case (VarRef(n),_) =>
-        frame.local.set(n,value)
-        true
-      case (vd: VarDecl, v) if !vd.defined =>
+      case (VarRef(n),v) =>
+        if (inQuote) {
+          VarRef(n) == v
+        } else if (mustMatch || frame.local.get(n) == null) {
+          // assignment to n, or n is pattern-variable
+          frame.local.set(n,value)
+          true
+        } else {
+          // variable reference in (possibly non-linear) pattern
+          frame.local.get(n) == v
+        }
+      case (vd: VarDecl, v) if !inQuote =>
         frame.allocate(vd.name, v)
         true
-      case (ClosedRef(n),_) => frame.region match {
+      case (r: Ref, s) if inQuote =>
+        r == s
+      case (ClosedRef(n),_) if !inQuote => frame.region match {
         case Some(inst) =>
-          if (failOnMismatch) {
+          if (mustMatch) {
             // force equality by changing current value
             inst.set(n, value)
             true
@@ -468,12 +483,13 @@ class Interpreter(vocInit: Module) {
       }
       case (Tuple(es),Tuple(vs)) => (es zip vs).forall {case (e,v) => assign(e,v)}
       case (CollectionValue(es), CollectionValue(vs)) =>
+        // TODO depends on type
         if (es.length != vs.length) {
           assignFail("collections have inequal length")
         } else {
           (es zip vs).forall {case (e,v) => assign(e,v)}
         }
-      case (Application(OpenRef(r), es), Application(OpenRef(s), vs)) if r == s =>
+      case (Application(r: Ref, es), Application(s: Ref, vs)) if r == s =>
         (es zip vs) forall {case (e,v) => assign(e,v)}
       case (Application(BaseOperator(op,_),args), r) =>
         val argsE = Operator.invert(op,r).getOrElse {
@@ -481,14 +497,33 @@ class Interpreter(vocInit: Module) {
         }
         if (argsE.length != args.length) fail("wrong number of arguments")(target)
         (args zip argsE).forall {case (a,e) => assign(a,e)}
+      case (Lambda(ei,eb), Lambda(vi,vb)) if inQuote =>
+        // contexts must match up to alpha if types are equal
+        val ren = BiContext(ei,vi).renameLeftToRight
+        assign(eb substitute ren, vb)(mustMatch, gc.append(vi))
+      case (Quantifier(eq,ei,eb), Quantifier(vq,vi,vb)) if inQuote =>
+        // TODO: allow alpha renaming
+        if (eq != vq || ei != vi)
+          assignFail("inequal terms")
+        else {
+          val ren = BiContext(ei,vi).renameLeftToRight
+          assign(eb substitute ren,vb)(mustMatch,gc.append(vi))
+        }
       case (eo:ExprOver, vo: ExprOver) =>
-        val (es, eR) = EvalTraverser.replaceEvals(eo)
+        assign(eo.expr, vo.expr)(mustMatch, gc.push(vo.scope))
+      case (Eval(t), Eval(v)) =>
+        assign(t,v)(mustMatch, gc.pop())
+      case (Eval(t), v) if inQuote =>
+        val bound = gc.currentRegion.local
+        val vAbs = if (bound.empty) v else Lambda(bound, v)
+        assign(t, ExprOver(gc.theory, vAbs))(mustMatch, gc.pop())
+        /*val (es, eR) = EvalTraverser.replaceEvals(eo)
         val (vs, vR) = EvalTraverser.replaceEvals(vo)
         if (eR != vR) {
           assignFail("shape of expressions does not match")
         } else {
           (es.decls zip vs.decls) forall {case (e,v) => assign(e.dfO.get,v.dfO.get)}
-        }
+        }*/
       case (t,v) =>
         if (t == v) true
         else assignFail("pattern unsupported: " + t)
@@ -504,7 +539,7 @@ class Interpreter(vocInit: Module) {
   /** interpret the bodies of Eval, leave AST unchanged otherwise */
   object EvalInterpreter extends StatelessTraverser {
     override def apply(exp: Expression)(implicit gc: GlobalContext, a: Unit) = matchC(exp) {
-      case Eval(e) if gc.inPhysicalTheory =>
+      case Eval(e) if gc.regions.length == 2 => // always called with 2 regions: default + the scope of the quoted expression
         val eI = interpretExpression(e)
         eI match {
           case ExprOver(_,q) => q

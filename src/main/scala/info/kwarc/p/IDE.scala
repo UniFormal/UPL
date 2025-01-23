@@ -78,7 +78,7 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
       val rg = range(doc, e.loc)
       new Diagnostic(rg, e.getMessage)
     }
-    diagn.set(doc.uri, js.Array(diags:_*));
+    diagn.set(doc.uri, js.Array(diags:_*))
   }
   def symbols(doc: TextDocument): js.Array[VSCode#DocumentSymbol] = {
     val voc = proj.get(makeOrigin(doc)).getVocabulary
