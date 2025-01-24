@@ -447,7 +447,11 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   def currentIsTransparent = regions.head.transparent
   def theory = currentRegion.theory
   def local = currentRegion.local
-  def visibleLocals = LocalContext(regions.takeWhile(_.transparent).flatMap(_.region.local.decls))
+  def visibleLocals = {
+    val i = regions.indexWhere(!_.transparent)
+    val vis = if (i == -1) regions else regions.take(i+1) // take all transparent regions and the next one
+    LocalContext(vis.flatMap(_.region.local.decls))
+  }
   def freshName = {
     var i = 0
     while (local.decls.exists(vd => vd.name.startsWith("_" + i))) i += 1
@@ -461,7 +465,18 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     val f = RegionalContextFrame(r, trans, phys)
     copy(regions = f :: regions)
   }
-  def pop() = copy(regions = regions.tail)
+  /** removes last region, keeping its local variables in quoted form */
+  def pop() = {
+    // The code below yields the rule Q, x:U |- `e`: A  if  T, x:Q{U} |- e: Q{A}
+    // It's tempting but too strong because it would make pattern-matching available on x:N{U} even though x:U extends the open world of Q.
+    /*val thy = currentRegion.theory
+    val quotedLocals = currentRegion.local.map {vd =>
+      vd.copy(tp = ExprsOver(thy, vd.tp), dfO = vd.dfO map {d => ExprOver(thy, d)})
+    }
+    val popped = copy(regions = regions.tail)
+    popped.append(quotedLocals)*/
+    copy(regions = regions.tail)
+  }
 
   /** true if the local environment is given by the current parent(s) (as opposed to other ones that we have pushed) */
   def inPhysicalTheory = regions.forall(_.physical)
@@ -536,7 +551,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
       case _ => return Some((obj, None))
     }
     // try finding local variable n in context
-    visibleLocals.lookupO(n).foreach { _ =>
+    lookupLocal(n).foreach {_ =>
       return Some((make(VarRef(n)), None))
     }
     // try finding n declared regionally in current or included module
@@ -548,6 +563,18 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
       return Some((make(OpenRef(p)), Some(d)))
     }
     // give up
+    None
+  }
+
+  def lookupLocal(name: String): Option[VarDecl] = {
+    var regs = regions
+    while (regs.nonEmpty) {
+      val r = regs.head
+      val vdO = r.region.local.lookupO(name)
+      if (vdO.isDefined) return vdO
+      if (r.transparent) regs = regs.tail
+      else regs = Nil
+    }
     None
   }
 
@@ -581,6 +608,12 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     }
   }
 
+  def lookupGlobal(p: Path) = voc.lookupPath(p)
+
+  def lookupRef(r: Ref) = r match {
+    case OpenRef(p) => lookupGlobal(p)
+    case ClosedRef(n) => lookupRegional(n)
+  }
 }
 object GlobalContext {
   def apply(n: String): GlobalContext = GlobalContext(Module(n, false, Nil))
@@ -896,6 +929,16 @@ case class OwnedType(owner: Expression, ownerDom: Theory, owned: Type) extends T
   def finite = false
 }
 
+/** common parent for quotation */
+sealed trait ObjectOver extends Object {
+  def scope: Theory
+  def obj: Object
+  override def toString = s"$scope{$obj}"
+  def label = "quote"
+  def children = List(scope, obj)
+  override def childrenInContext = List((None, None, scope), (Some(scope), None, obj))
+}
+
 // ***************** Types **************************************
 
 /** an omitted type that is to be filled in during type inference */
@@ -973,11 +1016,9 @@ object AnyStructure {
   *
   * can be seen as the variant of OwnedType without owner
   */
-case class ExprsOver(scope: Theory, tp: Type) extends Type {
-  override def toString = s"$scope{$tp}"
+case class ExprsOver(scope: Theory, tp: Type) extends Type with ObjectOver {
+  def obj = tp
   def finite = false
-  def label = "quote"
-  def children = List(scope, tp)
 }
 
 /** atomic built-in base types */
@@ -1055,17 +1096,11 @@ case class IntervalType(lower: Option[Expression], upper: Option[Expression])
 // TODO merge all number types into NumberType(kind: NumberKind), add shortcut for Nat
 // remove redundant operator types; use first matching type when infering operator types
 
-case class NumberKind(
-    lower: Option[Expression],
-    upper: Option[Expression],
-    fractions: Boolean
-) {
+case class NumberKind(lower: Option[Expression], upper: Option[Expression], fractions: Boolean) {
   def sub(that: NumberKind): Option[Boolean] = {
     if (this.fractions && !that.fractions) return Some(false)
-    val l =
-      NumberType.lessEq(that.lower, this.lower, false).getOrElse(return None)
-    val r =
-      NumberType.lessEq(this.upper, that.upper, true).getOrElse(return None)
+    val l = NumberType.lessEq(that.lower, this.lower, false).getOrElse(return None)
+    val r = NumberType.lessEq(this.upper, that.upper, true).getOrElse(return None)
     Some(l && r)
   }
 }
@@ -1080,20 +1115,20 @@ object NumberType {
     }
   }
   def unapply(y: Type) = y match {
-    case IntType                    => Some(NumberKind(None, None, false))
-    case RatType                    => Some(NumberKind(None, None, true))
+    case IntType => Some(NumberKind(None, None, false))
+    case RatType => Some(NumberKind(None, None, true))
     case IntervalType(lower, upper) => Some(NumberKind(lower, upper, false))
-    case _                          => None
+    case _ => None
   }
 
   /** compares integer values, using None for sign*infinity */
   def lessEq(e: Option[Expression], f: Option[Expression], sign: Boolean) = {
     (e, f) match {
-      case (None, None)                           => Some(true)
-      case (None, Some(_))                        => Some(!sign)
-      case (Some(_), None)                        => Some(sign)
+      case (None, None)  => Some(true)
+      case (None, Some(_)) => Some(!sign)
+      case (Some(_), None) => Some(sign)
       case (Some(IntValue(m)), Some(IntValue(n))) => Some(m <= n)
-      case _                                      => None
+      case _  => None
     }
   }
 }
@@ -1229,10 +1264,8 @@ case class Instance(theory: Theory)
 }
 
 /** a quoted expressions; introduction form of [[ExprsOver]] */
-case class ExprOver(scope: Theory, expr: Expression) extends Expression {
-  override def toString = s"$scope{$expr}"
-  def label = "quote"
-  def children = List(scope, expr)
+case class ExprOver(scope: Theory, expr: Expression) extends Expression with ObjectOver {
+  def obj = expr
 }
 
 /** backquote/evaluation inside a [[ExprsOver]] */
@@ -1240,6 +1273,14 @@ case class Eval(syntax: Expression) extends Expression {
   override def toString = s"`$syntax`"
   def label = "eval"
   def children = List(syntax)
+}
+
+object Eval {
+  // like Eval, but avoids introduing redex
+  def reduced(exp: Expression) = exp match {
+    case ExprOver(_, e) => e
+    case e => Eval(e)
+  }
 }
 
 /*

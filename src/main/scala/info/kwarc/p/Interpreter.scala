@@ -61,17 +61,17 @@ class GlobalEnvironment(var voc: Module) {
     finally {regions = regions.tail}
   }
 
-  def lookupLocal(n: String): Expression = {
+  def lookupLocalO(n: String): Option[Expression] = {
     var rs = regions
     while (rs.nonEmpty) {
       rs.head.local.getO(n) match {
-        case Some(v) => return v.value
+        case Some(v) => return Some(v.value)
         case None =>
           if (rs.head.transparent) rs = rs.tail
           else rs = Nil
       }
     }
-    throw IError("unknown variable")
+    None
   }
 
   def lookupRegional(n: String): Expression = {
@@ -162,7 +162,11 @@ class Interpreter(vocInit: Module) {
           case _ => fail("not an expression")
         }
       case ClosedRef(n) => env.lookupRegional(n)
-      case VarRef(n) => env.lookupLocal(n) // frame values are always interpreted
+      case VarRef(n) =>
+        env.lookupLocalO(n) match {
+          case Some(d) => d // frame values are always interpreted
+          case None => fail("undefined variable") // maybe allow later, e.g., when computing with quotations
+        }
       case VarDecl(n,_,vl,_,_) =>
         val vlI = vl match {
           case None => fail("uninitialized variable")
@@ -514,9 +518,7 @@ class Interpreter(vocInit: Module) {
       case (Eval(t), Eval(v)) =>
         assign(t,v)(mustMatch, gc.pop())
       case (Eval(t), v) if inQuote =>
-        val bound = gc.currentRegion.local
-        val vAbs = if (bound.empty) v else Lambda(bound, v)
-        assign(t, ExprOver(gc.theory, vAbs))(mustMatch, gc.pop())
+        assign(t, ExprOver(gc.theory, v))(mustMatch, gc.pop())
         /*val (es, eR) = EvalTraverser.replaceEvals(eo)
         val (vs, vR) = EvalTraverser.replaceEvals(vo)
         if (eR != vR) {

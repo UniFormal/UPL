@@ -23,10 +23,10 @@ function activate(context) {
 	}));
 	// auto-completion
 	push(vscode.languages.registerCompletionItemProvider('upl', {
-		provideCompletionItems(document, position, canceltoken) {
-			return [new vscode.CompletionItem("complete")];
+		provideCompletionItems(doc, pos, canceltoken) {
+			return UPL.complete(doc, pos);
 		}
-	}, '.', '\"'));
+	}, '.'));
 	// outline
 	push(vscode.languages.registerDocumentSymbolProvider('upl', {
 		provideDocumentSymbols(doc, canceltoken) {
@@ -48,7 +48,7 @@ function activate(context) {
 		provideSignatureHelp(doc, pos, canceltoken, context) {
 			return UPL.signatureHelp(doc,pos);
 		}
-	}, ['.' , '(']))
+	}, ['(']))
 }
 
 function deactivate() {}

@@ -67,15 +67,23 @@ package info.kwarc.p
    e catch {case p -> e, ...}
  */
 
-case class PContext(contexts: List[LocalContext], allowStatement: Boolean) {
+/**
+  * the context passed during parsing
+  * @param contexts bound variables in stack of regions
+  * @param allowStatement if false, restrict expression-parsing to declarative expressions (as opposed to statements like while, return)
+  * @param allowWeakPostops if false, force bracketing of infix operators in expressions
+  *                    this is mutable to allow toggling it back for subexpressions
+  */
+case class PContext(contexts: List[LocalContext], allowStatement: Boolean, var allowWeakPostops: Boolean) {
   def append(vd: VarDecl): PContext = append(LocalContext(vd))
   def append(ctx: LocalContext): PContext = copy(contexts = contexts.head.append(ctx)::contexts.tail)
-  def pop() = copy(contexts = contexts.tail)
+  def pop() = copy(contexts = contexts.tail).append(contexts.head) // TODO: type not correct (but irrelevant anyway)
   def push() = copy(contexts = LocalContext.empty::contexts)
   def setAllowStatement(b: Boolean) = copy(allowStatement = b)
+  def noWeakPostops = copy(allowWeakPostops = false)
 }
 object PContext {
-  def empty = PContext(List(LocalContext.empty), false)
+  def empty = PContext(List(LocalContext.empty), false, true)
 }
 
 object Parser {
@@ -432,6 +440,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
   // needed because addRef does not work with return-statements
   private def parseExpressionInner(implicit ctxs: PContext): Expression = {
+    val allowWeakPostops = ctxs.allowWeakPostops
+    ctxs.allowWeakPostops = true // only active for one level
     val allowS = ctxs.allowStatement
     val doAllowS = ctxs.setAllowStatement(true)
     val doNotAllowS = ctxs.setAllowStatement(false)
@@ -570,7 +580,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         case _:BaseValue | _: Block | _: Assign | _: VarDecl | _:While | _:For | _: Return => false
         case _ => true
       }
-      val strongPostops = List(".","(","[","{")
+      val strongPostops = List(".","(","[","{","°")
       while (tryPostOps && startsWithAny(strongPostops:_*)) {
         setRef(exp,expBeginAt) // only the outermost expression gets its source reference automatically
         if (startsWithS("(")) {
@@ -583,13 +593,15 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         } else if (startsWith(".")) {
           val btp = index
           skip(".")
-          if (!atEnd && next.isWhitespace) {
+          if (!atEnd && next == ' ') {
             // . only works if followed by identifier; this allows using ". " in a quantifier without ambiguity
             index = btp
             tryPostOps = false
           } else {
             val nB = index
-            val owned = setRef(ClosedRef(parseName),nB)
+            val n = parseName
+            if (n.isEmpty) fail("identifier expected")
+            val owned = setRef(ClosedRef(n),nB)
             exp = OwnedExpr(exp,null,owned)
           }
         } else if (startsWithS("{")) {
@@ -627,9 +639,14 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
               OwnedExpr(exp,null,e)
           }
           skip("}")
+        } else if (startsWithS("°")) {
+          // Andrews' dot
+          val a = parseExpression
+          exp = Application(exp,List(a))
         }
       } // end while
       trim
+      if (!allowWeakPostops) return exp
       val weakPostops = List("=","->","match", "catch")
       if (startsWithAny(weakPostops:_*) && !startsWith("==")) {
         exp = disambiguateInfixOperators(seen.reverse,exp)
@@ -792,6 +809,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         skip(")")
         ys.decls match {
           case Nil => UnitType
+          case List(vd) if vd.anonymous => vd.tp
           case _ => ProdType(ys)
         }
       } else if (startsWithS("|-")) {
@@ -809,8 +827,9 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           ClosedRef(n)
         } else {
           index = backtrackPoint
-          val exp = parseExpression
+          val exp = parseExpression(ctxs.noWeakPostops)
           // The above parses e.tp and e{tp} into OwnedExpr.
+          // Setting noWeakPostops avoids parsing -> and other, which we want to handle ourselves.
           // We can only turn some of those into OwnedType: e{tp} only if tp is a reference.
           // Similarly, it parses M{ds} into Instance, which becomes ClassType
           val tp = exp match {

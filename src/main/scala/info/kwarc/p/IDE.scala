@@ -10,7 +10,7 @@ trait VSCode extends js.Object {
   @js.native
   class Position(val line: Int, val character: Int) extends js.Object
   @js.native
-  class Location(uri: Uri, rangeOrPosition: Position) extends js.Object
+  class Location(uri: Uri, rangeOrPosition: VSCode#Position) extends js.Object
   @js.native
   class Range(val start: VSCode#Position, val end: VSCode#Position) extends js.Object
   @js.native
@@ -25,14 +25,26 @@ trait VSCode extends js.Object {
     var children: js.Array[VSCode#DocumentSymbol] = js.native
   }
   @js.native
-  class SignatureHelp() extends js.Object
+  class SignatureHelp() extends js.Object {
+    var signatures: js.Array[SignatureInformation] = js.native
+  }
+  @js.native
+  class SignatureInformation(label: String, documentation: String) extends js.Object
+  @js.native
+  class CompletionItem(label: String) extends js.Object
 
   def window: Window = js.native
+  def workspace: Workspace = js.native
 }
 
 @js.native
 trait Window extends js.Object {
   def activeTextEditor: TextEditor = js.native
+}
+
+@js.native
+trait Workspace extends js.Object {
+  def textDocuments: js.Array[TextDocument] = js.native
 }
 
 @js.native
@@ -109,10 +121,54 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
   }
 
   def definitionLocation(doc: TextDocument, pos: Position): VSCode#Location = {
-    null
+    val (gc,sf) = fragmentAt(doc,pos).getOrElse {return null}
+    val ndO = sf match {
+      case r:Ref => gc.lookupRef(r)
+      case _ => return null
+    }
+    ndO.flatMap(nd => Option(nd.loc)) match {
+      case Some(l) =>
+        val lDoc = vs.workspace.textDocuments.find(d => makeOrigin(d) == l.origin).getOrElse {return null}
+        new Location(lDoc.uri, lDoc.positionAt(l.from))
+      case None => null
+    }
   }
   def signatureHelp(doc: TextDocument, pos: Position): VSCode#SignatureHelp = {
-    null
+    val (gc,sf) = fragmentAt(doc,pos).getOrElse {return null}
+    val funDecl = sf match {
+      case Application(r: Ref,_) => gc.lookupRef(r).getOrElse {return null}
+      case _ => return null
+    }
+    funDecl match {
+      case ed: ExprDecl =>
+        val sh = new SignatureHelp()
+        sh.signatures = js.Array(new SignatureInformation(ed.name, ed.tp.toString))
+        sh
+      case _ => null
+    }
+  }
+  def complete(doc: TextDocument, pos: Position): js.Array[VSCode#CompletionItem] = {
+    val (gc,sf) = fragmentAt(doc,pos).getOrElse {return null}
+    val locals = gc.visibleLocals.domain
+    val thy = sf match {
+      case oo: OwnedObject => oo.ownerDom
+      case oo: ObjectOver => oo.scope
+      case _ => gc.currentRegion.theory
+    }
+    val regionals = thy.decls.flatMap {
+      case sd: NamedDeclaration => List(sd.name)
+      case i: Include => if (thy.isFlat) Nil else gc.lookupGlobal(i.dom) match {
+        case Some(m: Module) => m.domain
+        case _ => Nil
+      }
+    }
+    val cs = (locals:::regionals).distinct.map(n => new CompletionItem(n))
+    js.Array(cs:_*)
+  }
+
+  def fragmentAt(d: TextDocument, p: Position) = {
+    val o = d.offsetAt(p)
+    proj.fragmentAt(info.kwarc.p.Location(makeOrigin(d),o,o))
   }
 
   def hover(doc: TextDocument, pos: Position): VSCode#Hover = reportExceptions {
@@ -128,6 +184,11 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
     val (gc,sf) = proj.fragmentAt(loc).getOrElse(return null)
     //return new Hover("line: " + pos.line + "; character: " + pos.character + "\n" + sf.toStringShort)
     val hov = sf match {
+      case r: Ref => gc.lookupRef(r).getOrElse(return null) match {
+        case ed: ExprDecl => ed.tp.toString
+        case td: TypeDecl => "type"
+        case m: Module => "module"
+      }
       case e: Expression =>
         val tp = new Checker(ErrorThrower).inferCheckedExpression(gc,e)
         tp.toString

@@ -671,7 +671,7 @@ class Checker(errorHandler: ErrorHandler) {
         case _ => fail("illegal type")(tp) // impossible if tp is checked
       }
       case OpenRef(p) =>
-        gc.voc.lookupPath(p) match {
+        gc.lookupGlobal(p) match {
           case Some(td: TypeDecl) => td.dfO match {
             case None => tp
             case Some(df) => n(df)
@@ -940,7 +940,8 @@ class Checker(errorHandler: ErrorHandler) {
           case _ => fail("owner must be an instance")
         }
       case VarRef(n) =>
-        (exp,gc.visibleLocals.lookup(n).tp)
+        val vd = gc.lookupLocal(n).getOrElse {fail("undeclared variables")}
+        (exp,vd.tp)
       case Instance(thy) =>
         val thyC = if (!alsoCheck) thy else {
           val thyR = thy match {
@@ -993,6 +994,10 @@ class Checker(errorHandler: ErrorHandler) {
                     return inferExpression(gc, Projection(f,i.toInt).copyFrom(exp))
                   case _ => fail("not a function")
                 }
+              case ExprsOver(thy, _) =>
+                // coerce quoted function into function
+                val eC = ExprOver(thy, Application(Eval.reduced(fC), as map Eval.reduced))
+                return inferExpression(gc, eC)
               case u: UnknownType if !u.known && u.sub.isIdentity =>
                 var uis = LocalContext.empty
                 var gcI = u.originalContext
@@ -1170,7 +1175,7 @@ class Checker(errorHandler: ErrorHandler) {
   private object PurityChecker extends StatelessTraverser {
     override def apply(e: Expression)(implicit gc: GlobalContext,a:Unit) = {
       e match {
-        case OpenRef(p) => gc.voc.lookupPath(p) match {
+        case OpenRef(p) => gc.lookupGlobal(p) match {
           case Some(ed: ExprDecl) => if (ed.mutable) fail("state-dependent")
           case _ =>
         }
@@ -1208,7 +1213,7 @@ class Checker(errorHandler: ErrorHandler) {
       case CollectionValue(es) => es foreach check // TODO depends on kind
       case eo: ExprOver => EvalTraverser(eo) {e => check(e); e}
       case Application(OpenRef(r),es) =>
-        gc.voc.lookupPath(r) match {
+        gc.lookupGlobal(r) match {
           case Some(ed: ExprDecl) if ed.dfO.isEmpty =>
           case _ => fail("function application not assignable")
         }

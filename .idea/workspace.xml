@@ -53,7 +53,7 @@
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="panda.excluded.classes" value="" />
     <property name="panda.monitored.classes" value="" />
-    <property name="project.structure.last.edited" value="Modules" />
+    <property name="project.structure.last.edited" value="Libraries" />
     <property name="project.structure.proportion" value="0.15" />
     <property name="project.structure.side.proportion" value="0.39425287" />
     <property name="settings.editor.selected.configurable" value="preferences.sourceCode.Scala" />
@@ -94,7 +94,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Checker.scala</url>
-          <line>1289</line>
+          <line>1294</line>
           <option name="timeStamp" value="48" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
@@ -109,27 +109,27 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Syntax.scala</url>
-          <line>1730</line>
+          <line>1771</line>
           <option name="timeStamp" value="84" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Checker.scala</url>
-          <line>1285</line>
+          <line>1290</line>
           <option name="timeStamp" value="94" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Syntax.scala</url>
-          <line>498</line>
+          <line>513</line>
           <option name="timeStamp" value="107" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Parser.scala</url>
-          <line>187</line>
+          <line>195</line>
           <option name="timeStamp" value="118" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Syntax.scala</url>
-          <line>495</line>
+          <line>510</line>
           <option name="timeStamp" value="138" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
@@ -139,7 +139,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Checker.scala</url>
-          <line>968</line>
+          <line>969</line>
           <option name="timeStamp" value="148" />
         </line-breakpoint>
         <breakpoint enabled="true" type="java-exception">
