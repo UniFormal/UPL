@@ -1,9 +1,9 @@
 module FiniteStructures {
-  class FiniteCarrier {
+  theory FiniteCarrier {
     size: int
     type univ = int[0;size]
   }
-  class Graph {
+  theory Graph {
     include FiniteCarrier
     type node = univ
     edgeTo: univ -> Set[univ]

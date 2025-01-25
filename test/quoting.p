@@ -3,7 +3,7 @@ module Q {
 
   // a theory to quote; think of this a context-free grammar or as a set of inductive data types
   // Here we use the natural numbers.
-  class N {
+  theory N {
     type n
     z: n
     s: n -> n
@@ -44,7 +44,7 @@ module Q {
   // Note that the definition of pred cannot be moved into N: Within N, the type n is still open and induction on it is not allowed.
   // Indeed, we can add more terms to N to obtain the language of the integers:
 
-  class Z {
+  theory Z {
     include N
     p: n -> n
   }
@@ -69,7 +69,7 @@ module Q {
 
   // This also works for languages with higher-order functions:
 
-  class FOL {
+  theory FOL {
     type term
     type prop
     eq:  (term,term) -> prop

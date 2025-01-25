@@ -5,10 +5,10 @@ package info.kwarc.p
    module M {
     decls
    }              modules
-   class M {
+   theory M {
     decls
-   }              classes (same as modules except that they may be instantiated)
-   include M      include of a class into a class
+   }              theories (same as modules except that they may be instantiated)
+   include M      include of a theory into a theory
 
    type a [=A]    type declaration
    val c[:A][=t]  constant declaration, type will be inferred if omitted, val keyword can be omitted
@@ -305,16 +305,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     Path(ns)
   }
 
-  object Keywords {
-    val openModule = "module"
-    val closedModule = "class"
-    val include = "include"
-    val totalInclude = "realize"
-    val mutableExprDecl = "mutable"
-    val typeDecl = "type"
-  }
   import Keywords._
-
   def parseDeclaration: Declaration = addRef {
     if (startsWithAny(closedModule,openModule)) parseModule
     else if (startsWithAny(include,totalInclude)) parseInclude
@@ -860,4 +851,13 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     }
     tp
   }
+}
+
+object Keywords {
+  val openModule = "module"
+  val closedModule = "theory"
+  val include = "include"
+  val totalInclude = "realize"
+  val mutableExprDecl = "mutable"
+  val typeDecl = "type"
 }

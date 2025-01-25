@@ -666,7 +666,7 @@ case class Program(voc: Vocabulary, main: Expression) extends SyntaxFragment {
   */
 case class Module(name: String, closed: Boolean, decls: List[Declaration]) extends NamedDeclaration with HasChildren[Declaration] {
   override def toString = {
-    val k = if (closed) "class" else "module"
+    val k = if (closed) Keywords.closedModule else Keywords.openModule
     s"$k $name {\n${decls.mkString("\n").indent(2)}}"
   }
   def children = decls
@@ -780,22 +780,16 @@ sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
 /** declares a type symbol
   * @param tp the upper type bound, [AnyType] if unrestricted, null if to be inferred during checking
   */
-case class TypeDecl(name: String, tp: Type, dfO: Option[Type])
-    extends SymbolDeclaration {
-  def kind = "type"
+case class TypeDecl(name: String, tp: Type, dfO: Option[Type]) extends SymbolDeclaration {
+  def kind = Keywords.typeDecl
   def tpSep = "<"
 }
 
 /** declares a typed symbol
   * @param tp the type, null if to be inferred during checking
   */
-case class ExprDecl(
-    name: String,
-    tp: Type,
-    dfO: Option[Expression],
-    mutable: Boolean
-) extends SymbolDeclaration {
-  def kind = "val"
+case class ExprDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean) extends SymbolDeclaration {
+  def kind = if (mutable) Keywords.mutableExprDecl else "const"
   def tpSep = ":"
 }
 

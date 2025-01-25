@@ -1,5 +1,5 @@
 module Numbers {
-  class Nat {
+  theory Nat {
     type num
     z: num
     s: num -> num
@@ -12,7 +12,7 @@ module Numbers {
     times_s: |- forall x,n. times(x,s(n))== plus(times(x,n), x)
     square = x -> times(x,x)
   }
-  class Int {
+  theory Int {
     include Nat
     p: num -> num
     ps: |- forall x. p(s(x)) == x
@@ -28,7 +28,7 @@ module Numbers {
 
     times_p: |- forall x,n. times(x,s(n)) == minus(times(x,n), x)
   }
-  class Rat {
+  theory Rat {
     include Int
     frac: (num,num) -> num
     inv = x -> frac(o,x)
@@ -48,7 +48,7 @@ module Numbers {
     frac_frac_left:   |- forall e,d,x. frac(x,frac(e,d))  == frac(times(x,d),e)
     frac_frac_right:  |- forall e,d,x. frac(frac(e,d),x)  == frac(e,times(d,x))
   }
-  class Complex {
+  theory Complex {
     include Rat
 
     comp: (num,num) -> num
