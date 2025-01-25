@@ -79,6 +79,7 @@ module Q {
     ex:  (term -> prop) -> prop
   }
   
+  // ° is dot notation for low-binding application
   example = (t:FOL.term) -> FOL{fa ° x -> eq(x, `t`)}
 
   // However, pattern-matching on quotations with bound variables requires inductive functions that can recurse into open terms, which is not supported yet.
