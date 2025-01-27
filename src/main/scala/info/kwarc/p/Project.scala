@@ -68,11 +68,11 @@ class Project(var entries: List[ProjectEntry], main: Option[Expression] = None) 
     vocC
   }
 
-  def run(interactive: Boolean): Unit = {
+  def run(): Option[Interpreter] = {
     val voc = check(true)
     if (hasErrors) {
       println(getErrors.mkString("\n"))
-      return
+      return None
     }
     val e = main.getOrElse(UnitValue)
     val ch = new Checker(ErrorThrower)
@@ -81,9 +81,11 @@ class Project(var entries: List[ProjectEntry], main: Option[Expression] = None) 
       val prog = Program(voc,eC)
       val (ip,r) = Interpreter.run(prog)
       if (r != UnitValue) println(r)
-      if (interactive) repl(ip)
+      Some(ip)
     } catch {
-      case e: PError => println(e)
+      case e: PError =>
+        println(e)
+        None
     }
   }
 
@@ -116,6 +118,10 @@ class Project(var entries: List[ProjectEntry], main: Option[Expression] = None) 
         }
       }
     }
+  }
+  def runMaybeRepl(dropToRepl: Boolean) = {
+    val ipO = run()
+    if (dropToRepl) ipO foreach {ip => repl(ip)}
   }
 }
 

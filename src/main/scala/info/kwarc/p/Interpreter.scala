@@ -156,7 +156,7 @@ class Interpreter(vocInit: Module) {
       case OpenRef(p) =>
         env.voc.lookupPath(p) match {
           case Some(sd: ExprDecl) => sd.dfO match {
-            case None => fail("no definiens") //TODO allow this as an abstract declaration in a module; all elimination forms below must remain uninterpreted
+            case None => exp // allow this as an abstract declaration in a module; all elimination forms below must remain uninterpreted
             case Some(v) => interpretExpression(v) //TODO this re-evaluates the definiens
           }
           case _ => fail("not an expression")
@@ -333,10 +333,10 @@ class Interpreter(vocInit: Module) {
         val asI = as map interpretExpression
         fI match {
           case o: BaseOperator =>
-            try {Operator.simplify(o.operator, asI)}
-            catch {case ASTError(m) =>
-              fail(m)
-            }
+            Operator.simplify(o.operator, asI)
+            //catch {case ASTError(m) =>
+            //  fail(m)
+            //}
           case lam: Lambda =>
             // interpretation of lam has recorded the frame at abstraction time because
             // names in lam.body are relative to that
@@ -350,6 +350,7 @@ class Interpreter(vocInit: Module) {
               case ReturnFound(e, false) if namedFunction => e
             }
             r
+          case r: OpenRef => Application(r, asI)
           case _ => fail("not a function")(f)
         }
       case Tuple(es) =>

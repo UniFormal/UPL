@@ -744,14 +744,16 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           } else {
             val (e1,o1,l1) = shifted.head
             // before e1 o1 | e2 o2 tl last
-            if (o1.precedence >= o2.precedence) {
+            // special case of right-associative operators of the same precedence
+            val associateRight = o1.precedence == o2.precedence && o1.rightAssociative && o2.rightAssociative
+            if (o1.precedence >= o2.precedence && !associateRight) {
               // reduce on the left: ---> before (e1 o1 e2) o2 | tl last
               val bo1 = BaseOperator(o1,Type.unknown())
               bo1.loc = l1
               val e1o1e2 = Application(bo1,List(e1,e2))
               shifted = (e1o1e2,o2,l2) :: shifted.tail
               rest = tl
-            } else if (o1.precedence < o2.precedence) {
+            } else if (o1.precedence < o2.precedence || associateRight) {
               // shift: ---> before e1 o1 e2 o2 | tl last
               shift
             }

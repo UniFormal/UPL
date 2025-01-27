@@ -10,7 +10,7 @@ object Main {
     val mn = if (left.nonEmpty) Some(next) else None
     val proj = Project.fromFile(path, mn)
     //println(proj)
-    proj.run(interactive)
+    proj.runMaybeRepl(interactive)
   }
 
   val doc =

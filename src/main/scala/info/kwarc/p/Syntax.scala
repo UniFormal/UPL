@@ -559,7 +559,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
       return Some((make(ClosedRef(n)), Some(d)))
     }
     // try finding n declared globally in current module or parent modules
-    resolvePath(Path(n)) foreach { case (p, d) =>
+    resolvePath(Path(n)) foreach {case (p,d) =>
       return Some((make(OpenRef(p)), Some(d)))
     }
     // give up
@@ -1559,7 +1559,8 @@ sealed abstract class Operator(val symbol: String) {
 }
 
 /** operators with binary infix notation (flexary flag not supported yet) */
-sealed abstract class InfixOperator(s: String, val precedence: Int, val flexary: Boolean) extends Operator(s) {
+sealed abstract class InfixOperator(s: String, val precedence: Int, val flexary: Boolean, val rightAssociative: Boolean = false)
+  extends Operator(s) {
   def apply(l: Expression, r: Expression) = makeExpr(List(l, r))
   def invertible = false
 }
@@ -1612,7 +1613,7 @@ case object Divide extends InfixOperator("/", 10, false) {
 case object Minimum extends InfixOperator("min", 10, true) with Arithmetic
 case object Maximum extends InfixOperator("max", 10, true) with Arithmetic
 
-case object Power extends InfixOperator("^", 20, false) {
+case object Power extends InfixOperator("^", 20, false, true) {
   val types = List(I <-- (I, I), R <-- (R, R), R <-- (I, R), R <-- (R, I))
 }
 
@@ -1622,7 +1623,7 @@ case object In extends InfixOperator("in", -10, false) {
     List(BoolType <-- (u, CollectionKind.Set(u)))
 }
 
-case object Cons extends InfixOperator("-:", -10, false) {
+case object Cons extends InfixOperator("-:", -10, false, true) {
   val types = Nil
   override def polyTypes(u: UnknownType) = List(L(u) <-- (u, L(u)))
   override def invertible = true
@@ -1698,8 +1699,8 @@ object Operator {
       case pf: PrefixOperator =>
         ((pf, as.head)) match {
           case (UMinus, (IntOrRatValue(x, y))) => IntOrRatValue(-x, y)
-          case (Not, BoolValue(b))             => BoolValue(!b)
-          case _                               => throw IError("missing case for " + pf)
+          case (Not, BoolValue(b)) => BoolValue(!b)
+          case _ => throw IError("missing case for " + pf)
         }
       case inf: InfixOperator =>
         (inf, as(0), as(1)) match {
@@ -1720,9 +1721,7 @@ object Operator {
             val d = u * y - v * x
             val s = if (d > 0) 1 else if (d < 0) -1 else 0
             (s, c) match {
-              case (-1, Less | LessEq) | (1, Greater | GreaterEq) |
-                  (0, LessEq | GreaterEq) =>
-                BoolValue(true)
+              case (-1, Less | LessEq) | (1, Greater | GreaterEq) | (0, LessEq | GreaterEq) => BoolValue(true)
               case _ => BoolValue(false)
             }
           case (c: Comparison, BoolValue(l), BoolValue(r)) =>

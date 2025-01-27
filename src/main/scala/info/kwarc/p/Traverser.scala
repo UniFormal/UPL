@@ -241,6 +241,10 @@ object Simplify extends StatelessTraverser {
   override def apply(exp: Expression)(implicit gc: GlobalContext, a:Unit): Expression = {
     val expR = applyDefault(exp) // first, recursively simplify subexpressions
     matchC(expR) {
+      case r: Ref => gc.lookupRef(r) match {
+        case Some(ed: ExprDecl) if !ed.mutable && ed.dfO.isDefined => apply(ed.dfO.get)
+        case _ => expR
+      }
       case Application(BaseOperator(o,_), args) => Operator.simplify(o, args)
       case Projection(Tuple(es),i) => es(i)
       case ListElem(CollectionValue(es),IntValue(i)) => es(i.toInt)
@@ -256,7 +260,7 @@ private class FreeVariables(val initGC: GlobalContext, alsoRegionals: Boolean) e
     case VarRef(n) if inOriginalRegion && gc.resolveName(exp).isEmpty =>
       names ::= n
       exp
-    case ClosedRef(n) if inOriginalRegion && gc.resolveName(exp).isEmpty  =>
+    case ClosedRef(n) if inOriginalRegion && gc.resolveName(exp).isEmpty =>
       if (alsoRegionals) {names ::= n; VarRef(n)} else exp
     case _ => applyDefault(exp)
   }

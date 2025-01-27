@@ -198,6 +198,13 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
     new Hover(hov)
   }
 
+  def run(ia: Boolean) = {
+    val ipO = proj.run()
+    if (ia) ipO foreach {ip =>
+      proj.repl(ip)
+    }
+  }
+
   @inline
   private def reportExceptions[A](code: => A) =
     try {code}

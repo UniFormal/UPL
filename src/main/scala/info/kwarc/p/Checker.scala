@@ -257,9 +257,7 @@ class Checker(errorHandler: ErrorHandler) {
             td.copy(tp = tpC,dfO = dfOC)
           case sd: ExprDecl =>
             val tpC = checkType(gc,sd.tp)
-            val dfC = sd.dfO map {d =>
-              checkExpression(gc,d,tpC, returnToHere = true)
-            }
+            val dfC = sd.dfO map {d => checkExpression(gc,d,tpC, returnToHere = true)}
             sd.copy(tp = tpC,dfO = dfC)
         }
     }
@@ -437,7 +435,7 @@ class Checker(errorHandler: ErrorHandler) {
       case _: BaseType | ExceptionType => tp
       case IntervalType(l,u) =>
         val lC = l map {e => checkExpressionPure(gc,e,IntType)}
-        val uC = l map {e => checkExpressionPure(gc,e,IntType)}
+        val uC = u map {e => checkExpressionPure(gc,e,IntType)}
         IntervalType(lC,uC)
       case CollectionType(a,k) => CollectionType(r(a),k)
       case ProdType(as) => ProdType(checkLocal(gc,as,false,false))
@@ -718,12 +716,12 @@ class Checker(errorHandler: ErrorHandler) {
     val tpN = typeNormalize(gc, tp)
     val eC: Expression = (exp,tpN) match {
       case (i, IntervalType(l,u)) =>
-        val (iC,iI) = inferExpression(gc,i)(true)
+        val (iC,iI) = inferExpressionNorm(gc,i)(true)
         iI match {
           case IntType =>
             // inference of values return Int, so we need to see if we can downcast
-            val lCond = l map {b => LessEq(b,i)} getOrElse BoolValue(true)
-            val uCond = u map {b => LessEq(i,b)} getOrElse BoolValue(true)
+            val lCond = l map {b => LessEq(b,iC)} getOrElse BoolValue(true)
+            val uCond = u map {b => LessEq(iC,b)} getOrElse BoolValue(true)
             simplifyExpression(gc, And(lCond,uCond)) match {
               case BoolValue(true) =>
               case BoolValue(false) => reportError("out of interval")
@@ -859,6 +857,7 @@ class Checker(errorHandler: ErrorHandler) {
 
   /** like check, but also infers a context with the free variables */
   def checkExpressionPattern(gc: GlobalContext, e: Expression, tp: Type) = {
+    // TODO: this interprets any name bound in the context as a constant pattern, rather than shadowing it
     val fvs = FreeVariables.infer(gc,e)
     var fctxI = LocalContext.empty
     var gcI = gc
@@ -919,9 +918,8 @@ class Checker(errorHandler: ErrorHandler) {
           case _ => checkOpenRef(gc,r)
         }
         rd match {
-          case ed: ExprDecl =>
-            (rC, ed.tp)
-          case _ => fail(s"$r is not an expression")
+          case ed: ExprDecl => (rC,ed.tp)
+          case _ => fail(s"$rC is not an expression")
         }
       case ClosedRef(n) =>
         sdCached match {
@@ -1013,6 +1011,7 @@ class Checker(errorHandler: ErrorHandler) {
               case mf.application(dom,FunType(i,o)) => (mf.application.insert(dom,fC,as),i,o)
               case _ => fail("not a function")(f)
             }
+            if (ins.length != as.length) fail("wrong number of arguments")
             val sub = ins.substitute(as)
             val asC = if (alsoCheck) {
               checkSubstitution(gc,sub,ins)
@@ -1163,12 +1162,17 @@ class Checker(errorHandler: ErrorHandler) {
   /** checks if an expression may be used as a pattern */
   private object PatternChecker extends StatelessTraverser {
     override def apply(e: Expression)(implicit gc: GlobalContext,a:Unit): Expression = e match {
-      case _:BaseValue | _: Tuple | _: CollectionValue => applyDefault(e)
-      case _: VarRef => return e
-      case _: ExprOver => return e
+      case _: Tuple | _: CollectionValue | Application(_:OpenRef,_) => applyDefault(e)
+      case _: BaseValue | _: VarRef => e
+      case vd: VarDecl if vd.dfO.isEmpty => e
+      case r: OpenRef => gc.lookupRef(r) match {
+        case Some(ed: ExprDecl) if !ed.mutable && ed.dfO.isEmpty => e
+        case _ => fail("defined function in pattern")(e)
+      }
+      case _: ExprOver => e
       case Application(bo: BaseOperator, args) =>
-        if (bo.operator.invertible) {args map apply; e} else fail("non-invertible operator in pattern")
-      case _ => fail("non-constructor in pattern")
+        if (bo.operator.invertible) {args map apply; e} else fail("non-invertible operator in pattern")(e)
+      case _ => fail("non-constructor in pattern")(e)
     }
   }
 
