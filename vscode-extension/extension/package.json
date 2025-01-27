@@ -23,6 +23,11 @@
         "commands": [{
             "command": "upl.build",
             "title": "Build"
+        }],
+        "notebooks": [{
+            "type": "upl-notebook",
+            "displayName": "UPL Notebook",
+            "selector": [{"filenamePattern": "*.p.notebook"}]
         }]
     }
 }

@@ -89,34 +89,42 @@ class Project(var entries: List[ProjectEntry], main: Option[Expression] = None) 
     }
   }
 
+  def replLine(ip: Interpreter, id: Int, input: String): String = {
+    val so = SourceOrigin("shell")
+    val ec = new ErrorCollector
+    val e = Parser.expression(so,input,ec)
+    if (ec.hasErrors) {
+      ec.getErrors.mkString("\n")
+    } else {
+      var result = ""
+      val ec = new ErrorCollector
+      val ch = new Checker(ec)
+      val (eC,eI) = ch.checkAndInferExpression(GlobalContext(ip.voc),e)
+      val ed = ExprDecl("res" + id.toString,eI,Some(eC),false)
+      result = ed.toString
+      if (ec.hasErrors) {
+        result += ec
+      } else {
+        try {
+          val edI = ip.interpretDeclaration(ed)
+          result += edI
+        } catch {
+          case e: PError =>
+            result += e.toString
+        }
+      }
+      result
+    }
+  }
+
   def repl(ip: Interpreter): Unit = {
     var i = 0
-    val so = SourceOrigin("shell")
     while (true) {
       val s = scala.io.StdIn.readLine()
       if (s == "exit") return
-      val ec = new ErrorCollector
-      val e = Parser.expression(so,s,ec)
-      if (ec.hasErrors) {
-        println(ec.getErrors.mkString("\n"))
-      } else {
-        val ec = new ErrorCollector
-        val ch = new Checker(ec)
-        val (eC,eI) = ch.checkAndInferExpression(GlobalContext(ip.voc),e)
-        val ed = ExprDecl("res" + i.toString,eI,Some(eC),false)
-        i += 1
-        println(ed)
-        if (ec.hasErrors) {
-          println(ec)
-        } else {
-          try {
-            val edI = ip.interpretDeclaration(ed)
-            println(edI)
-          } catch {case e: PError =>
-            println(e)
-          }
-        }
-      }
+      i += 1
+      val result = replLine(ip, i, s)
+      println(result)
     }
   }
   def runMaybeRepl(dropToRepl: Boolean) = {

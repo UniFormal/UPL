@@ -6379,6 +6379,29 @@ $c_Linfo_kwarc_p_Interpreter.prototype.fail__T__Linfo_kwarc_p_SyntaxFragment__E 
 $c_Linfo_kwarc_p_Interpreter.prototype.abort__T__Linfo_kwarc_p_Expression__E = (function(msg, sf) {
   throw new $c_Linfo_kwarc_p_Interpreter$RuntimeError(this, sf, ((msg + ": ") + sf));
 });
+$c_Linfo_kwarc_p_Interpreter.prototype.interpretDeclaration__Linfo_kwarc_p_Declaration__Linfo_kwarc_p_ExprDecl = (function(d) {
+  if ((d instanceof $c_Linfo_kwarc_p_ExprDecl)) {
+    var x2 = $as_Linfo_kwarc_p_ExprDecl(d);
+    var this$1 = $n($n(x2).Linfo_kwarc_p_ExprDecl__f_dfO);
+    if ((!this$1.isEmpty__Z())) {
+      var df = $as_Linfo_kwarc_p_Expression($n($n(x2).Linfo_kwarc_p_ExprDecl__f_dfO).get__O());
+      var dfI = this.interpretExpression__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Expression(df);
+      var x$1 = new $c_s_Some(dfI);
+      var this$2 = $n(x2);
+      var x$2 = this$2.Linfo_kwarc_p_ExprDecl__f_name;
+      var this$3 = $n(x2);
+      var x$3 = this$3.Linfo_kwarc_p_ExprDecl__f_tp;
+      var this$4 = $n(x2);
+      var x$4 = this$4.Linfo_kwarc_p_ExprDecl__f_mutable;
+      $n(x2);
+      var edI = new $c_Linfo_kwarc_p_ExprDecl(x$2, x$3, x$1, x$4);
+      edI.Linfo_kwarc_p_Declaration__f_global = true;
+      $n(this.Linfo_kwarc_p_Interpreter__f_env).Linfo_kwarc_p_GlobalEnvironment__f_voc = $n($n(this.Linfo_kwarc_p_Interpreter__f_env).Linfo_kwarc_p_GlobalEnvironment__f_voc).append__Linfo_kwarc_p_Declaration__Linfo_kwarc_p_Module(edI);
+      return edI;
+    }
+  }
+  this.fail__T__Linfo_kwarc_p_SyntaxFragment__E("uninterpretable", d);
+});
 $c_Linfo_kwarc_p_Interpreter.prototype.interpretExpressionInFrame__Linfo_kwarc_p_RegionalEnvironment__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Expression = (function(f, exp) {
   var this$1 = $n(this.Linfo_kwarc_p_Interpreter__f_env);
   var this$2 = $n(this$1.Linfo_kwarc_p_GlobalEnvironment__f_regions);
@@ -7142,6 +7165,15 @@ $c_Linfo_kwarc_p_Interpreter.prototype.applyFunction__T__s_Option__Linfo_kwarc_p
   var fr = new $c_Linfo_kwarc_p_RegionalEnvironment(name, owner, new $c_Linfo_kwarc_p_LocalEnvironment($n($n(this$5.Linfo_kwarc_p_RegionalEnvironment__f_local).Linfo_kwarc_p_LocalEnvironment__f_fields).$colon$colon$colon__sci_List__sci_List(fes)), false);
   return this.interpretExpressionInFrame__Linfo_kwarc_p_RegionalEnvironment__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Expression(fr, $n(lam).Linfo_kwarc_p_Lambda__f_body);
 });
+function $as_Linfo_kwarc_p_Interpreter(obj) {
+  return (((obj instanceof $c_Linfo_kwarc_p_Interpreter) || (obj === null)) ? obj : $throwClassCastException(obj, "info.kwarc.p.Interpreter"));
+}
+function $isArrayOf_Linfo_kwarc_p_Interpreter(obj, depth) {
+  return (!(!(((obj && obj.$classData) && (obj.$classData.arrayDepth === depth)) && obj.$classData.arrayBase.ancestors.Linfo_kwarc_p_Interpreter)));
+}
+function $asArrayOf_Linfo_kwarc_p_Interpreter(obj, depth) {
+  return (($isArrayOf_Linfo_kwarc_p_Interpreter(obj, depth) || (obj === null)) ? obj : $throwArrayCastException(obj, "Linfo.kwarc.p.Interpreter;", depth));
+}
 var $d_Linfo_kwarc_p_Interpreter = new $TypeData().initClass($c_Linfo_kwarc_p_Interpreter, "info.kwarc.p.Interpreter", ({
   Linfo_kwarc_p_Interpreter: 1
 }));
@@ -9426,6 +9458,10 @@ $c_Linfo_kwarc_p_Parser$.prototype.text__Linfo_kwarc_p_SourceOrigin__T__Linfo_kw
   var p = new $c_Linfo_kwarc_p_Parser(so, s, eh);
   return new $c_Linfo_kwarc_p_Vocabulary(p.parseDeclarations__sci_List());
 });
+$c_Linfo_kwarc_p_Parser$.prototype.expression__Linfo_kwarc_p_SourceOrigin__T__Linfo_kwarc_p_ErrorHandler__Linfo_kwarc_p_Expression = (function(origin, s, eh) {
+  var p = new $c_Linfo_kwarc_p_Parser(origin, s, eh);
+  return p.parseExpression__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Expression($m_Linfo_kwarc_p_PContext$().empty__Linfo_kwarc_p_PContext());
+});
 var $d_Linfo_kwarc_p_Parser$ = new $TypeData().initClass($c_Linfo_kwarc_p_Parser$, "info.kwarc.p.Parser$", ({
   Linfo_kwarc_p_Parser$: 1
 }));
@@ -9647,6 +9683,48 @@ $c_Linfo_kwarc_p_Project.prototype.check__Linfo_kwarc_p_SourceOrigin__V = (funct
   var vocC = ch.checkVocabulary__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Vocabulary__Z__Linfo_kwarc_p_SyntaxFragment__Linfo_kwarc_p_Vocabulary(gc, $n(le).Linfo_kwarc_p_ProjectEntry__f_parsed, true, $n(le).Linfo_kwarc_p_ProjectEntry__f_parsed);
   $n(le).Linfo_kwarc_p_ProjectEntry__f_checked = vocC;
   $n(le).Linfo_kwarc_p_ProjectEntry__f_checkedIsDirty = false;
+});
+$c_Linfo_kwarc_p_Project.prototype.replLine__Linfo_kwarc_p_Interpreter__I__T__T = (function(ip, id, input) {
+  var so = new $c_Linfo_kwarc_p_SourceOrigin("shell");
+  var ec = new $c_Linfo_kwarc_p_ErrorCollector();
+  var e = $m_Linfo_kwarc_p_Parser$().expression__Linfo_kwarc_p_SourceOrigin__T__Linfo_kwarc_p_ErrorHandler__Linfo_kwarc_p_Expression(so, input, ec);
+  var this$1 = $n(ec.Linfo_kwarc_p_ErrorCollector__f_errors);
+  if ((!this$1.isEmpty__Z())) {
+    var this$2 = $n($n(ec.Linfo_kwarc_p_ErrorCollector__f_errors).reverse__sci_List());
+    return $f_sc_IterableOnceOps__mkString__T__T__T__T(this$2, "", "\n", "");
+  } else {
+    var result = "";
+    var ec$2 = new $c_Linfo_kwarc_p_ErrorCollector();
+    var ch = new $c_Linfo_kwarc_p_Checker(ec$2);
+    var $x_1 = $m_Linfo_kwarc_p_GlobalContext$();
+    var this$3 = $n(ip);
+    var gc = $x_1.apply__Linfo_kwarc_p_Module__Linfo_kwarc_p_GlobalContext($n(this$3.Linfo_kwarc_p_Interpreter__f_env).Linfo_kwarc_p_GlobalEnvironment__f_voc);
+    var x1 = ch.inferExpression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression__Z__T2(gc, e, true);
+    if ((x1 === null)) {
+      throw new $c_s_MatchError(x1);
+    }
+    var eC = $as_Linfo_kwarc_p_Expression($n(x1).T2__f__1);
+    var eI = $as_Linfo_kwarc_p_Type($n(x1).T2__f__2);
+    var ed = new $c_Linfo_kwarc_p_ExprDecl((("res" + "") + id), eI, new $c_s_Some(eC), false);
+    result = $f_Linfo_kwarc_p_SymbolDeclaration__toString__T(ed);
+    var this$5 = $n(ec$2.Linfo_kwarc_p_ErrorCollector__f_errors);
+    if ((!this$5.isEmpty__Z())) {
+      result = (("" + result) + ec$2);
+    } else {
+      try {
+        var edI = $n(ip).interpretDeclaration__Linfo_kwarc_p_Declaration__Linfo_kwarc_p_ExprDecl(ed);
+        result = (("" + result) + edI);
+      } catch (e$2) {
+        if ((e$2 instanceof $c_Linfo_kwarc_p_PError)) {
+          var e$3 = $as_Linfo_kwarc_p_PError(e$2);
+          result = (("" + result) + $n(e$3).toString__T());
+        } else {
+          throw e$2;
+        }
+      }
+    }
+    return result;
+  }
 });
 var $d_Linfo_kwarc_p_Project = new $TypeData().initClass($c_Linfo_kwarc_p_Project, "info.kwarc.p.Project", ({
   Linfo_kwarc_p_Project: 1
@@ -11469,6 +11547,18 @@ $c_Linfo_kwarc_p_VSCodeBridge.prototype.hover__Linfo_kwarc_p_TextDocument__Linfo
       throw e$1;
     }
   }
+});
+$c_Linfo_kwarc_p_VSCodeBridge.prototype.createInterpreter__Linfo_kwarc_p_Interpreter = (function() {
+  return new $c_Linfo_kwarc_p_Interpreter($n($n(this.Linfo_kwarc_p_VSCodeBridge__f_proj).makeGlobalContext__Linfo_kwarc_p_GlobalContext()).Linfo_kwarc_p_GlobalContext__f_voc);
+});
+$c_Linfo_kwarc_p_VSCodeBridge.prototype.interpretExpression = (function(arg, arg$2, arg$3) {
+  var prep0 = $as_Linfo_kwarc_p_Interpreter(arg);
+  var prep1 = $uI(arg$2);
+  var prep2 = $as_T(arg$3);
+  return $n(this.Linfo_kwarc_p_VSCodeBridge__f_proj).replLine__Linfo_kwarc_p_Interpreter__I__T__T(prep0, prep1, prep2);
+});
+$c_Linfo_kwarc_p_VSCodeBridge.prototype.createInterpreter = (function() {
+  return this.createInterpreter__Linfo_kwarc_p_Interpreter();
 });
 $c_Linfo_kwarc_p_VSCodeBridge.prototype.hover = (function(arg, arg$2) {
   return this.hover__Linfo_kwarc_p_TextDocument__Linfo_kwarc_p_VSCode$Position__Linfo_kwarc_p_VSCode$Hover(arg, arg$2);
@@ -24995,6 +25085,15 @@ var $d_Linfo_kwarc_p_PContext = new $TypeData().initClass($c_Linfo_kwarc_p_PCont
   Ljava_io_Serializable: 1
 }));
 class $c_Linfo_kwarc_p_PError extends $c_jl_Exception {
+}
+function $as_Linfo_kwarc_p_PError(obj) {
+  return (((obj instanceof $c_Linfo_kwarc_p_PError) || (obj === null)) ? obj : $throwClassCastException(obj, "info.kwarc.p.PError"));
+}
+function $isArrayOf_Linfo_kwarc_p_PError(obj, depth) {
+  return (!(!(((obj && obj.$classData) && (obj.$classData.arrayDepth === depth)) && obj.$classData.arrayBase.ancestors.Linfo_kwarc_p_PError)));
+}
+function $asArrayOf_Linfo_kwarc_p_PError(obj, depth) {
+  return (($isArrayOf_Linfo_kwarc_p_PError(obj, depth) || (obj === null)) ? obj : $throwArrayCastException(obj, "Linfo.kwarc.p.PError;", depth));
 }
 /** @constructor */
 function $c_Linfo_kwarc_p_ProductIterator(aI, bI) {

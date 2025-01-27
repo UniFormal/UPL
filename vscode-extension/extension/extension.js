@@ -8,7 +8,7 @@ function activate(context) {
 	// subscribed disposables are automatically cleaned up when the extension is deactivated
 	function push(disposable) {context.subscriptions.push(disposable);}
 
-	const uplDiagnostics = vscode.languages.createDiagnosticCollection('upl')
+	const uplDiagnostics = vscode.languages.createDiagnosticCollection('upl');
 	push(uplDiagnostics);
 
     // this should be const, but making it global helps with debugging
@@ -32,7 +32,7 @@ function activate(context) {
 		provideDocumentSymbols(doc, canceltoken) {
 			return UPL.symbols(doc);
 		}
-	}))
+	}));
 	// interaction with symbol under cursor
 	push(vscode.languages.registerHoverProvider('upl', {
 		provideHover(doc, pos, canceltoken) {
@@ -49,6 +49,31 @@ function activate(context) {
 			return UPL.signatureHelp(doc,pos);
 		}
 	}, ['(']))
+	var encoder = new TextEncoder();
+	var decoder = new TextDecoder();
+    push(vscode.workspace.registerNotebookSerializer('upl-notebook', {
+		deserializeNotebook: function(content, canceltoken) {
+			var s = decoder.decode(content);
+			return new vscode.NotebookData([new vscode.NotebookCellData(2, s, "upl")]);
+		},
+		serializeNotebook: function(data, canceltoken) {
+			return encoder.encode(data.cells[0].value);
+        }
+	}))
+	function notebookExecuteHandler(cells, notebook, controller) {
+	   var ip = UPL.createInterpreter();
+	   for (cell in cells) {
+		var execution = controller.createNotebookCellExecution(cell);
+		execution.start(Date.now());
+		var result = UPL.interpretExpression(ip, cell.index, cell.document.getText());
+		var item = vscode.NotebookCellOutputItem.text(result);
+		execution.replaceOutput([new vscode.NotebookCellOutput([item])]);
+		execution.end(true, Date.now());
+	   }
+	};
+	var controller = vscode.notebooks.createNotebookController(
+		"upl-controller", "upl-notebook", "UPL Notebook", notebookExecuteHandler);
+	context.subscriptions.push(controller);
 }
 
 function deactivate() {}
