@@ -22,11 +22,11 @@ module Q {
   two = N{s(`one`)}
   succ = (x:N{n}) -> N{s(`x`)}
   pred = x -> x match {
-    N.z -> N.z
-    N{s(`p`)} -> p
+    N.z -> []
+    N{s(`p`)} -> [p]
   }
 
-  test1 = (succ(zero) == one) & (pred(two) == one)
+  test1 = (succ(zero) == one) & (pred(two) == [one])
 
   // For the most important case, where the quoted term/type is just a name, .id can be used instead of {id}:
   alsoZero: N.n = N.z

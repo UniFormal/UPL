@@ -1559,10 +1559,19 @@ sealed abstract class Operator(val symbol: String) {
 }
 
 /** operators with binary infix notation (flexary flag not supported yet) */
-sealed abstract class InfixOperator(s: String, val precedence: Int, val flexary: Boolean, val rightAssociative: Boolean = false)
+sealed abstract class InfixOperator(s: String, val precedence: Int, val assoc: Associativity = NotAssociative)
   extends Operator(s) {
   def apply(l: Expression, r: Expression) = makeExpr(List(l, r))
   def invertible = false
+  def rightAssociative = assoc == RightAssociative
+  def associative = assoc match {
+    case Semigroup | Monoid(_) => true
+    case _ => false
+  }
+  def neutral = assoc match {
+    case Monoid(n) => Some(n)
+    case _ => None
+  }
 }
 
 /** operators with prefix notation */
@@ -1601,48 +1610,49 @@ sealed trait Equality extends Operator {
   def positive: Boolean
 }
 
-case object Plus extends InfixOperator("+", 0, true) with Arithmetic {
+case object Plus extends InfixOperator("+", 0, Semigroup) with Arithmetic {
   override val types = (S <-- (S, S)) :: Times.types
   override def polyTypes(u: UnknownType) = List(L(u) <-- (L(u), L(u)))
+  override def associative = true
 }
-case object Minus extends InfixOperator("-", 0, false) with Arithmetic
-case object Times extends InfixOperator("*", 10, true) with Arithmetic
-case object Divide extends InfixOperator("/", 10, false) {
+case object Minus extends InfixOperator("-", 0) with Arithmetic
+case object Times extends InfixOperator("*", 10, Monoid(IntValue(1))) with Arithmetic
+case object Divide extends InfixOperator("/", 10) {
   val types = List(R <-- (I, I), R <-- (R, R), R <-- (I, R), R <-- (R, I))
 }
-case object Minimum extends InfixOperator("min", 10, true) with Arithmetic
-case object Maximum extends InfixOperator("max", 10, true) with Arithmetic
+case object Minimum extends InfixOperator("min", 10, Semigroup) with Arithmetic
+case object Maximum extends InfixOperator("max", 10, Semigroup) with Arithmetic
 
-case object Power extends InfixOperator("^", 20, false, true) {
+case object Power extends InfixOperator("^", 20, RightAssociative) {
   val types = List(I <-- (I, I), R <-- (R, R), R <-- (I, R), R <-- (R, I))
 }
 
-case object In extends InfixOperator("in", -10, false) {
+case object In extends InfixOperator("in", -10) {
   val types = Nil
   override def polyTypes(u: UnknownType) =
     List(BoolType <-- (u, CollectionKind.Set(u)))
 }
 
-case object Cons extends InfixOperator("-:", -10, false, true) {
+case object Cons extends InfixOperator("-:", -10, RightAssociative) {
   val types = Nil
   override def polyTypes(u: UnknownType) = List(L(u) <-- (u, L(u)))
   override def invertible = true
 }
 
-case object Snoc extends InfixOperator(":-", -10, false) {
+case object Snoc extends InfixOperator(":-", -10) {
   val types = Nil
   override def polyTypes(u: UnknownType) = List(L(u) <-- (L(u), u))
   override def invertible = true
 }
 
-case object And extends InfixOperator("&", -20, true) with Connective {
+case object And extends InfixOperator("&", -20, Monoid(BoolValue(true))) with Connective {
   def apply(args: List[Expression]): Expression = args match {
     case Nil      => BoolValue(true)
     case e :: Nil => e
     case hd :: tl => apply(hd, apply(tl))
   }
 }
-case object Or extends InfixOperator("|", -20, true) with Connective {
+case object Or extends InfixOperator("|", -20, Monoid(BoolValue(false))) with Connective {
   def apply(args: List[Expression]): Expression = args match {
     case Nil      => BoolValue(false)
     case e :: Nil => e
@@ -1650,16 +1660,16 @@ case object Or extends InfixOperator("|", -20, true) with Connective {
   }
 }
 
-case object Less extends InfixOperator("<", -10, false) with Comparison
-case object LessEq extends InfixOperator("<=", -10, false) with Comparison
-case object Greater extends InfixOperator(">", -10, false) with Comparison
-case object GreaterEq extends InfixOperator(">=", -10, false) with Comparison
+case object Less extends InfixOperator("<", -10) with Comparison
+case object LessEq extends InfixOperator("<=", -10) with Comparison
+case object Greater extends InfixOperator(">", -10) with Comparison
+case object GreaterEq extends InfixOperator(">=", -10) with Comparison
 
-case object Equal extends InfixOperator("==", -10, false) with Equality {
+case object Equal extends InfixOperator("==", -10) with Equality {
   val positive = true
   val reduce = And
 }
-case object Inequal extends InfixOperator("!=", -10, false) with Equality {
+case object Inequal extends InfixOperator("!=", -10) with Equality {
   val positive = false
   val reduce = Or
 }
@@ -1671,39 +1681,44 @@ case object Not extends PrefixOperator("!") {
   val types = List(B <-- B)
 }
 
+abstract class Associativity
+case object NotAssociative extends Associativity
+case object Semigroup extends Associativity
+case class Monoid(neut: Expression) extends Associativity
+case object RightAssociative extends Associativity
+
 object Operator {
   val infixes = List(
-    Plus,
-    Minus,
-    Times,
-    Divide,
-    Power,
-    Minimum,
-    Maximum,
-    And,
-    Or,
-    Less,
-    LessEq,
-    Greater,
-    GreaterEq,
-    In,
-    Cons,
-    Snoc,
-    Equal,
-    Inequal
+    Plus, Minus, Times, Divide, Power,
+    Minimum, Maximum,
+    And, Or,
+    Less, LessEq, Greater, GreaterEq,
+    In, Cons, Snoc,
+    Equal, Inequal
   )
   val prefixes = List(UMinus, Not)
 
   def simplify(o: Operator, as: List[Expression]): Expression = {
+    val numArgs = as.length
+    def failNumArgs = throw IError(o + " applied to " + numArgs + " arguments")
     o match {
       case pf: PrefixOperator =>
+        if (numArgs != 1) failNumArgs
         ((pf, as.head)) match {
           case (UMinus, (IntOrRatValue(x, y))) => IntOrRatValue(-x, y)
           case (Not, BoolValue(b)) => BoolValue(!b)
           case _ => throw IError("missing case for " + pf)
         }
       case inf: InfixOperator =>
-        (inf, as(0), as(1)) match {
+        if (numArgs != 2) {
+          if (inf.associative) {
+            if (numArgs == 0) inf.neutral getOrElse failNumArgs
+            else if (numArgs == 1) as(0)
+            else simplify(o, List(as.head, simplify(o,as.tail)))
+          } else {
+            failNumArgs
+          }
+        } else (inf, as(0), as(1)) match {
           case (Plus, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
             IntOrRatValue(u * y + v * x, v * y)
           case (Minus, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
