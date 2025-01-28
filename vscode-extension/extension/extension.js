@@ -17,7 +17,6 @@ function activate(context) {
   vscode.workspace.onDidOpenTextDocument(function (d) { UPL.update(d) });
   vscode.workspace.onDidChangeTextDocument(function (e) { UPL.update(e.document) });
 
-
   // implementing the commands defined in package.json
   push(vscode.commands.registerCommand('upl.build', () => {
     vscode.window.showInformationMessage('UPL is active');
@@ -50,29 +49,33 @@ function activate(context) {
       return UPL.signatureHelp(doc, pos);
     }
   }, ['(']))
+
+  outputchannel = vscode.workspace.createOutputChannel("debug", 'upl');
   var encoder = new TextEncoder();
   var decoder = new TextDecoder();
   push(vscode.workspace.registerNotebookSerializer('upl-notebook', {
     deserializeNotebook: function (content, canceltoken) {
-      var s = decoder.decode(content);
+      var contents = decoder.decode(content);
       let raw;
       try {
-        raw = JSON.parse(s).cells;
+        raw = (JSON.parse(contents)).cells;
       } catch {
         raw = [];
       }
-      const cells = raw.map(
-        item => new vscode.NotebookCellData(vscode.NotebookCellKind.code, item.source.join('\n'), item.cell_type)
-      );
+      const cells = [];
+      for (const item in raw) {
+        cells.push(new vscode.NotebookCellData(item.cell_type === 'code' ? vscode.NotebookCellKind.Code : vscode.NotebookCellKind.Markup, item.source.join('\n'),
+          item.cell_type === 'code' ? 'upl' : 'markdown')
+        )
+      }
       return new vscode.NotebookData(cells);
     },
     serializeNotebook: function (data, canceltoken) {
       let contents = [];
       for (const cell of data.cells) {
         contents.push({
-          cell_type: "code",
-          source: cell.value.split(/\r?\n/g)
-
+          cell_type: cell.kind === vscode.NotebookCellKind.Code ? 'code' : 'markdown',
+          source: cell.value.split(/\r?\n/g),
         });
       }
       return encoder.encode(JSON.stringify(contents))
@@ -81,14 +84,15 @@ function activate(context) {
   }))
   function notebookExecuteHandler(cells, notebook, controller) {
     var ip = UPL.createInterpreter();
-    cells.forEach(function(cell) {
-      var execution = controller.createNotebookCellExecution(cell);
+    cells.forEach(element => function (element) {
+      var execution = controller.createNotebookCellExecution(element);
       execution.start(Date.now());
-      var result = UPL.interpretExpression(ip, cell.index, cell.document.getText());
+      const text = element.document.getText();
+      var result = UPL.interpretExpression(ip, element.index, text);
       var item = vscode.NotebookCellOutputItem.text(result);
       execution.replaceOutput([new vscode.NotebookCellOutput([item])]);
       execution.end(true, Date.now());
-    })
+    });
   };
   var controller = vscode.notebooks.createNotebookController(
     "upl-controller", "upl-notebook", "UPL Notebook", notebookExecuteHandler);
