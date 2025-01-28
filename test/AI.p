@@ -1,35 +1,33 @@
-This file is a literate UPL source file.
+module AI {
+  type state = int
 
-For processing in LaTeX, define \newenvironment{upl} and uplinline|...| to your liking.
-
-\begin{smodule}[id=AI}
-  For now, we use integers as the state everywhere. \uplinline|type state = int|
-
-  \begin{upl}
+  theory EnumerableType {
+     type U
+     enum: [U]
+     complete: |- forall x:U. x in enum
+  }
+  
   theory TransitionSystem {
-    type action
-    enumAllActions: [action]
-    transitions: (state,action) -> [state]
+    action: EnumerableType
+    transitions: (state,action.U) -> [state]
     applicable = (s,a) -> exists x. x in transitions(s,a)
     reachable:_
-    reachable = (f:state, path: [action], t:state) -> path match {
+    reachable = (f:state, path: [action.U], t:state) -> path match {
       [] -> f == t
       a -: as -> exists x. x in transitions(f,a) & reachable(x,as,t)
     }
   }
   theory Deterministic {
     include TransitionSystem
-    transition: (state,action) -> state?
+    transition: (state,action.U) -> state?
     transitions = (s,a) -> transition(s,a)
   }
-  \end{upl}
 
-  \begin{upl}
   theory SearchProblem {
     include TransitionSystem
     initials: [state]
     goals:    state -> bool
-    solution: [action] -> bool = as -> exists i,g. i in initials & reachable(i,as,g) & goals(g)
+    solution: [action.U] -> bool = as -> exists i,g. i in initials & reachable(i,as,g) & goals(g)
   }
   theory FullyObservable {
     include SearchProblem
@@ -38,15 +36,13 @@ For processing in LaTeX, define \newenvironment{upl} and uplinline|...| to your 
   }
   theory Cost {
     include TransitionSystem
-    cost: action -> rat
+    cost: action.U -> rat
   }
   theory DefaultCost {
     include Cost
     cost = a -> 1
   }
-  \end{upl}
 
-  \begin{upl}
   theory Node {
     label: state
     parent: Node?
@@ -60,9 +56,7 @@ For processing in LaTeX, define \newenvironment{upl} and uplinline|...| to your 
       insert: Fringe -> (Node,state) -> Fringe
       takeNext: Fringe -> (Fringe,Node)
   }
-  \end{upl}
 
-  \begin{upl}
   DFS = SearchStrategy {
     type Fringe = [Node]
     init = ss -> ss match {
@@ -75,22 +69,18 @@ For processing in LaTeX, define \newenvironment{upl} and uplinline|...| to your 
       h -: t -> (t,h)
     }
   }
-  \end{upl}
 
-  \begin{upl}
   treeSearch: (SearchProblem, SearchStrategy) -> Node? = (prob,strat) -> {
     var fringe: strat.Fringe = strat.init(prob.initials)
     while (!strat.empty(fringe)) {
         (fringe, val node) = strat.takeNext(fringe)
         if (prob.goals(node.label)) return [node]
         else
-          for (a in prob.enumAllActions)
+          for (a in prob.action.enum)
             for (s in prob.transitions(node.label, a))
               fringe = strat.insert(fringe)(node, s)
     }
     []
   }
   test = true
-  \end{upl}
-
-\end{smodule}
+}
