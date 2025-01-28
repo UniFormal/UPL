@@ -17,6 +17,7 @@ function activate(context) {
   vscode.workspace.onDidOpenTextDocument(function (d) { UPL.update(d) });
   vscode.workspace.onDidChangeTextDocument(function (e) { UPL.update(e.document) });
 
+
   // implementing the commands defined in package.json
   push(vscode.commands.registerCommand('upl.build', () => {
     vscode.window.showInformationMessage('UPL is active');
@@ -80,14 +81,14 @@ function activate(context) {
   }))
   function notebookExecuteHandler(cells, notebook, controller) {
     var ip = UPL.createInterpreter();
-    for (cell in cells) {
+    cells.forEach(function(cell) {
       var execution = controller.createNotebookCellExecution(cell);
       execution.start(Date.now());
       var result = UPL.interpretExpression(ip, cell.index, cell.document.getText());
       var item = vscode.NotebookCellOutputItem.text(result);
       execution.replaceOutput([new vscode.NotebookCellOutput([item])]);
       execution.end(true, Date.now());
-    }
+    })
   };
   var controller = vscode.notebooks.createNotebookController(
     "upl-controller", "upl-notebook", "UPL Notebook", notebookExecuteHandler);
