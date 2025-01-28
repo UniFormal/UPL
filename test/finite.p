@@ -6,7 +6,7 @@ module FiniteStructures {
   theory Graph {
     include FiniteCarrier
     type node = univ
-    edgeTo: univ -> Set[univ]
+    edgeTo: univ -> set[univ]
   }
   reflexive = (g: Graph) -> forall x: g.node. x in g.edgeTo(x)
   loop = Graph {size = 1, edgeTo = x -> [x]}

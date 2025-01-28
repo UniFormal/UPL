@@ -789,6 +789,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       else if (startsWithS("bool")) BoolType
       else if (startsWithS("empty")) EmptyType
       else if (startsWithS("exn")) ExceptionType
+      else if (startsWithS("any")) AnyType
       else if (startsWithAny("[" :: CollectionKind.allKeywords :_*)) {
         val kind = if (startsWith("[")) CollectionKind.List
         else CollectionKind.allKinds.find(k => startsWithS(k._1)).get._2

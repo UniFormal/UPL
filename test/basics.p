@@ -23,11 +23,11 @@ module M {
   t1: int = t(1)
 
   // Collections are written using []: C[T] for the type, [x1,...,xn] for elements, and l[p] for positional access.
-  // The collection kind "C" can be Set, List, Bag, Option. If omitted, it defaults to 'List'.
-  ls: List[int] = [1,2,3,4]
+  // The collection kind "C" can be set, list, bag, option. If omitted, it defaults to 'List'.
+  ls: list[int] = [1,2,3,4]
   ls0 = ls[0] // Index bounds are not checked and may cause run-time errors.
   // Collections for a subtype hierarchy, i.e., lists are special cases of sets.
-  st: Set[int] = ls
+  st: set[int] = ls
   // -: and :- are cons and snoc.
   ls2 = 1 -: 2 -: [3] :- 4
 

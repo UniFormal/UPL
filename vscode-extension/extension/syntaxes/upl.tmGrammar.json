@@ -27,7 +27,7 @@
       "name": "keyword.control.upl"
     },
     {
-      "match": "true|false|int|rat|bool|string|Set|List|Bag|Option",
+      "match": "(true|false|int|rat|bool|string|set|list|bag|option|any|exn)\\W",
       "name": "constant.language.upl"
     },
     {

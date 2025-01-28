@@ -173,6 +173,7 @@
         <watch expression="((Module)gc.voc).decls" custom="info.kwarc.p.Module" />
         <watch expression="this" />
         <watch expression="((Module)mod).decls" custom="info.kwarc.p.Module" />
+        <watch expression="((Module)gc.voc).decls" custom="info.kwarc.p.Module" />
       </configuration>
     </watches-manager>
   </component>

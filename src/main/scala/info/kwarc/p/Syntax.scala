@@ -1216,11 +1216,11 @@ object CollectionKind {
   val UList = CollectionKind(true, false, false)
   val Option = CollectionKind(true, true, true)
   val allKinds = scala.List(
-    "List" -> this.List,
-    "UList" -> this.UList,
-    "Bag" -> this.Bag,
-    "Set" -> this.Set,
-    "Option" -> this.Option
+    "list" -> this.List,
+    "ulist" -> this.UList,
+    "bag" -> this.Bag,
+    "set" -> this.Set,
+    "option" -> this.Option
   )
   val allKeywords = allKinds.map(_._1)
 }
