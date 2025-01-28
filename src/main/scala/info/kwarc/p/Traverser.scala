@@ -171,14 +171,33 @@ object EvalTraverser {
 }
 
 class OwnerSubstitutor(shallow: Boolean) extends StatelessTraverser {
-  private def owners(implicit gc: GlobalContext) = gc.regions.collect {
-    case r if r.region.owner.isDefined => (r.region.theory,r.region.owner.get)
+  private def owner(implicit gc: GlobalContext) = {
+    val dos = gc.regions.collect {
+      case r if r.region.owner.isDefined => (r.region.theory,r.region.owner.get)
+    }
+    if (dos.isEmpty) None else {
+      val last = dos.last
+      var dom = last._1
+      var sofar = last._2
+      dos.init.foreach {case (d,o) =>
+        sofar = OwnedExpr(sofar,dom,o)
+        dom = d
+      }
+      Some((sofar,dom))
+    }
   }
+
   private def makeType(tp: Type)(implicit gc: GlobalContext) = {
-    owners.foldLeft(tp) {case (sofar,(d,o)) => OwnedType(o,d,sofar)}
+    owner match {
+      case None => tp
+      case Some((o,d)) => OwnedType(o,d,tp)
+    }
   }
   private def makeExpr(e: Expression)(implicit gc: GlobalContext) = {
-    owners.foldLeft(e) {case (sofar,(d,o)) => OwnedExpr(o,d,sofar)}
+    owner match {
+      case None => e
+      case Some((o,d)) => OwnedExpr(o,d,e)
+    }
   }
   override def apply(tp: Type)(implicit gc: GlobalContext, a: Unit) = if (shallow) makeType(tp) else matchC(tp) {
     case c: ClosedRef => makeType(c)

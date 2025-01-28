@@ -108,15 +108,16 @@ module UPL {
   }
   
   theory Process {
+    type G = Typing{Globe}
     parseTheory: string -> Syntax{Theory}
     parseDecl: string -> Syntax{Decl}
     parseExpr: string -> Syntax{Expr}
     parseType: string -> Syntax{Type}
 
-    checkTheory: (Globe,Syntax{Theory}) -> Syntax{Theory}
-    checkDecl: (Globe,Syntax{Decl}) -> Syntax{Decl}
-    checkExpr: (Globe,Syntax{Expr}) -> Syntax{Expr}
-    checkType: (Globe,Syntax{Type}) -> Syntax{Type}
+    checkTheory: (G,Syntax{Theory}) -> Syntax{Theory}
+    checkDecl: (G,Syntax{Decl}) -> Syntax{Decl}
+    checkExpr: (G,Syntax{Expr}) -> Syntax{Expr}
+    checkType: (G,Syntax{Type}) -> Syntax{Type}
   }
 
   // an API for a hypothetical built-in and unsafe reflection operator

@@ -3483,9 +3483,9 @@ $c_Linfo_kwarc_p_Checker.prototype.typeNormalize__Linfo_kwarc_p_GlobalContext__L
     var own = $n(x4).Linfo_kwarc_p_OwnedType__f_owner;
     var dom = $n(x4).Linfo_kwarc_p_OwnedType__f_ownerDom;
     var t = $n(x4).Linfo_kwarc_p_OwnedType__f_owned;
-    var tS = this.typeNormalize__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type($n(gc).push__Linfo_kwarc_p_Theory__s_Option__Linfo_kwarc_p_GlobalContext(dom, new $c_s_Some(own)), t);
-    var tpS = $m_Linfo_kwarc_p_OwnerSubstitutor$().apply__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Theory__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type(own, dom, tS);
-    var $x_1 = ((!((tpS === null) ? (tp === null) : $n(tpS).equals__O__Z(tp))) ? this.typeNormalize__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type(gc, tpS) : tpS);
+    var tN = this.typeNormalize__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type($n(gc).push__Linfo_kwarc_p_Theory__s_Option__Linfo_kwarc_p_GlobalContext(dom, new $c_s_Some(own)), t);
+    var tpN = $m_Linfo_kwarc_p_OwnerSubstitutor$().apply__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Theory__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type(own, dom, tN);
+    var $x_1 = ((!((tpN === null) ? (tp === null) : $n(tpN).equals__O__Z(tp))) ? this.typeNormalize__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Type__Linfo_kwarc_p_Type(gc, tpN) : tpN);
   } else {
     if ((x0$1 instanceof $c_Linfo_kwarc_p_BaseType)) {
       var $x_2 = true;
@@ -22446,58 +22446,69 @@ var $d_Linfo_kwarc_p_Interpreter$TypeInterpreter$ = new $TypeData().initClass($c
   Linfo_kwarc_p_StatelessTraverser: 1,
   Linfo_kwarc_p_Traverser: 1
 }));
-function $p_Linfo_kwarc_p_OwnerSubstitutor__owners__Linfo_kwarc_p_GlobalContext__sci_List($thiz, gc) {
-  return $n($n(gc).Linfo_kwarc_p_GlobalContext__f_regions).collect__s_PartialFunction__sci_List(new $c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$owners$1($thiz));
+function $p_Linfo_kwarc_p_OwnerSubstitutor__owner__Linfo_kwarc_p_GlobalContext__s_Option($thiz, gc) {
+  var dos = $n($n(gc).Linfo_kwarc_p_GlobalContext__f_regions).collect__s_PartialFunction__sci_List(new $c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$1($thiz));
+  if ($n(dos).isEmpty__Z()) {
+    return $m_s_None$();
+  } else {
+    var last = $as_T2($n(dos).last__O());
+    var elem = $as_Linfo_kwarc_p_Theory($n(last).T2__f__1);
+    var elem$1 = null;
+    elem$1 = elem;
+    var elem$2 = $as_Linfo_kwarc_p_Expression($n(last).T2__f__2);
+    var elem$3 = null;
+    elem$3 = elem$2;
+    var this$3 = $n($as_sci_List($n(dos).init__O()));
+    var these = this$3;
+    while ((!$n(these).isEmpty__Z())) {
+      var arg1 = $n(these).head__O();
+      var x0$1 = $as_T2(arg1);
+      if ((x0$1 !== null)) {
+        var d = $as_Linfo_kwarc_p_Theory($n(x0$1).T2__f__1);
+        var o = $as_Linfo_kwarc_p_Expression($n(x0$1).T2__f__2);
+        elem$3 = new $c_Linfo_kwarc_p_OwnedExpr($as_Linfo_kwarc_p_Expression(elem$3), $as_Linfo_kwarc_p_Theory(elem$1), o);
+        elem$1 = d;
+      } else {
+        throw new $c_s_MatchError(x0$1);
+      }
+      these = $as_sci_List($n(these).tail__O());
+    }
+    return new $c_s_Some(new $c_T2($as_Linfo_kwarc_p_Expression(elem$3), $as_Linfo_kwarc_p_Theory(elem$1)));
+  }
 }
 function $p_Linfo_kwarc_p_OwnerSubstitutor__makeType__Linfo_kwarc_p_Type__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Type($thiz, tp, gc) {
-  var this$1 = $n($p_Linfo_kwarc_p_OwnerSubstitutor__owners__Linfo_kwarc_p_GlobalContext__sci_List($thiz, gc));
-  var acc = tp;
-  var these = this$1;
-  while ((!$n(these).isEmpty__Z())) {
-    var arg1 = acc;
-    var arg2 = $n(these).head__O();
-    var x0$1 = $as_Linfo_kwarc_p_Type(arg1);
-    var x1$1 = $as_T2(arg2);
-    var x1 = new $c_T2(x0$1, x1$1);
-    matchEnd4: {
-      var sofar = $as_Linfo_kwarc_p_Type(x1.T2__f__1);
-      var p2 = $as_T2(x1.T2__f__2);
-      if ((p2 !== null)) {
-        var d = $as_Linfo_kwarc_p_Theory($n(p2).T2__f__1);
-        var o = $as_Linfo_kwarc_p_Expression($n(p2).T2__f__2);
-        acc = new $c_Linfo_kwarc_p_OwnedType(o, d, sofar);
-        break matchEnd4;
-      }
-      throw new $c_s_MatchError(x1);
-    }
-    these = $as_sc_LinearSeq($n(these).tail__O());
+  var x1 = $p_Linfo_kwarc_p_OwnerSubstitutor__owner__Linfo_kwarc_p_GlobalContext__s_Option($thiz, gc);
+  var x = $m_s_None$();
+  if ((x === x1)) {
+    return tp;
   }
-  return $as_Linfo_kwarc_p_Type(acc);
+  if ((x1 instanceof $c_s_Some)) {
+    var x3 = $as_s_Some(x1);
+    var p4 = $as_T2($n(x3).s_Some__f_value);
+    if ((p4 !== null)) {
+      var o = $as_Linfo_kwarc_p_Expression($n(p4).T2__f__1);
+      var d = $as_Linfo_kwarc_p_Theory($n(p4).T2__f__2);
+      return new $c_Linfo_kwarc_p_OwnedType(o, d, tp);
+    }
+  }
+  throw new $c_s_MatchError(x1);
 }
 function $p_Linfo_kwarc_p_OwnerSubstitutor__makeExpr__Linfo_kwarc_p_Expression__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_Expression($thiz, e, gc) {
-  var this$1 = $n($p_Linfo_kwarc_p_OwnerSubstitutor__owners__Linfo_kwarc_p_GlobalContext__sci_List($thiz, gc));
-  var acc = e;
-  var these = this$1;
-  while ((!$n(these).isEmpty__Z())) {
-    var arg1 = acc;
-    var arg2 = $n(these).head__O();
-    var x0$1 = $as_Linfo_kwarc_p_Expression(arg1);
-    var x1$1 = $as_T2(arg2);
-    var x1 = new $c_T2(x0$1, x1$1);
-    matchEnd4: {
-      var sofar = $as_Linfo_kwarc_p_Expression(x1.T2__f__1);
-      var p2 = $as_T2(x1.T2__f__2);
-      if ((p2 !== null)) {
-        var d = $as_Linfo_kwarc_p_Theory($n(p2).T2__f__1);
-        var o = $as_Linfo_kwarc_p_Expression($n(p2).T2__f__2);
-        acc = new $c_Linfo_kwarc_p_OwnedExpr(o, d, sofar);
-        break matchEnd4;
-      }
-      throw new $c_s_MatchError(x1);
-    }
-    these = $as_sc_LinearSeq($n(these).tail__O());
+  var x1 = $p_Linfo_kwarc_p_OwnerSubstitutor__owner__Linfo_kwarc_p_GlobalContext__s_Option($thiz, gc);
+  var x = $m_s_None$();
+  if ((x === x1)) {
+    return e;
   }
-  return $as_Linfo_kwarc_p_Expression(acc);
+  if ((x1 instanceof $c_s_Some)) {
+    var x3 = $as_s_Some(x1);
+    var p4 = $as_T2($n(x3).s_Some__f_value);
+    if ((p4 !== null)) {
+      var o = $as_Linfo_kwarc_p_Expression($n(p4).T2__f__1);
+      var d = $as_Linfo_kwarc_p_Theory($n(p4).T2__f__2);
+      return new $c_Linfo_kwarc_p_OwnedExpr(o, d, e);
+    }
+  }
+  throw new $c_s_MatchError(x1);
 }
 /** @constructor */
 function $c_Linfo_kwarc_p_OwnerSubstitutor(shallow) {
@@ -27630,15 +27641,15 @@ function $m_Linfo_kwarc_p_NotAssociative$() {
   return $n_Linfo_kwarc_p_NotAssociative$;
 }
 /** @constructor */
-function $c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$owners$1(outer) {
+function $c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$1(outer) {
 }
-$c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$owners$1.prototype = new $h_sr_AbstractPartialFunction();
-$c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$owners$1.prototype.constructor = $c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$owners$1;
+$c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$1.prototype = new $h_sr_AbstractPartialFunction();
+$c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$1.prototype.constructor = $c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$1;
 /** @constructor */
-function $h_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$owners$1() {
+function $h_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$1() {
 }
-$h_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$owners$1.prototype = $c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$owners$1.prototype;
-$c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$owners$1.prototype.applyOrElse__Linfo_kwarc_p_RegionalContextFrame__F1__O = (function(x1, default$1) {
+$h_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$1.prototype = $c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$1.prototype;
+$c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$1.prototype.applyOrElse__Linfo_kwarc_p_RegionalContextFrame__F1__O = (function(x1, default$1) {
   var this$1 = $n($n($n(x1).Linfo_kwarc_p_RegionalContextFrame__f_region).Linfo_kwarc_p_RegionalContext__f_owner);
   if ((!this$1.isEmpty__Z())) {
     return new $c_T2($n($n(x1).Linfo_kwarc_p_RegionalContextFrame__f_region).Linfo_kwarc_p_RegionalContext__f_theory, $n($n($n(x1).Linfo_kwarc_p_RegionalContextFrame__f_region).Linfo_kwarc_p_RegionalContext__f_owner).get__O());
@@ -27646,18 +27657,18 @@ $c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$owners$1.prototype.applyOrElse__Linfo
     return $n(default$1).apply__O__O(x1);
   }
 });
-$c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$owners$1.prototype.isDefinedAt__Linfo_kwarc_p_RegionalContextFrame__Z = (function(x1) {
+$c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$1.prototype.isDefinedAt__Linfo_kwarc_p_RegionalContextFrame__Z = (function(x1) {
   var this$1 = $n($n($n(x1).Linfo_kwarc_p_RegionalContextFrame__f_region).Linfo_kwarc_p_RegionalContext__f_owner);
   return (!this$1.isEmpty__Z());
 });
-$c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$owners$1.prototype.isDefinedAt__O__Z = (function(x) {
+$c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$1.prototype.isDefinedAt__O__Z = (function(x) {
   return this.isDefinedAt__Linfo_kwarc_p_RegionalContextFrame__Z($as_Linfo_kwarc_p_RegionalContextFrame(x));
 });
-$c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$owners$1.prototype.applyOrElse__O__F1__O = (function(x, default$1) {
+$c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$1.prototype.applyOrElse__O__F1__O = (function(x, default$1) {
   return this.applyOrElse__Linfo_kwarc_p_RegionalContextFrame__F1__O($as_Linfo_kwarc_p_RegionalContextFrame(x), default$1);
 });
-var $d_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$owners$1 = new $TypeData().initClass($c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$owners$1, "info.kwarc.p.OwnerSubstitutor$$anonfun$owners$1", ({
-  Linfo_kwarc_p_OwnerSubstitutor$$anonfun$owners$1: 1,
+var $d_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$1 = new $TypeData().initClass($c_Linfo_kwarc_p_OwnerSubstitutor$$anonfun$1, "info.kwarc.p.OwnerSubstitutor$$anonfun$1", ({
+  Linfo_kwarc_p_OwnerSubstitutor$$anonfun$1: 1,
   sr_AbstractPartialFunction: 1,
   F1: 1,
   s_PartialFunction: 1,

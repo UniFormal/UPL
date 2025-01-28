@@ -677,9 +677,9 @@ class Checker(errorHandler: ErrorHandler) {
           case _ => fail("illegal type")(tp) // impossible if tp is checked
         }
       case OwnedType(own, dom, t) =>
-        val tS = typeNormalize(gc.push(dom,Some(own)), t)
-        val tpS = OwnerSubstitutor(own, dom, tS)
-        if (tpS != tp) typeNormalize(gc, tpS) else tpS
+        val tN = typeNormalize(gc.push(dom,Some(own)), t)
+        val tpN = OwnerSubstitutor(own, dom, tN)
+        if (tpN != tp) typeNormalize(gc, tpN) else tpN
       case _: BaseType | ExceptionType => tp
       case IntervalType(l,u) =>
         val lS = l map {e => simplifyExpression(gc, e)}

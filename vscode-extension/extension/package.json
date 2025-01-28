@@ -10,7 +10,7 @@
     "contributes": {
         "languages": [{
             "id": "upl",
-            "extensions": [".p",".upl"],
+            "extensions": [".p",".upl",".p.tex"],
             "configuration": "./upl-config.json"
         }],
         "grammars": [
