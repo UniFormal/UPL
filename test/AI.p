@@ -1,14 +1,14 @@
 module AI {
   type state = int
 
-  theory EnumerableType {
+  theory EnumeratedType {
      type U
      enum: [U]
      complete: |- forall x:U. x in enum
   }
   
   theory TransitionSystem {
-    action: EnumerableType
+    action: EnumeratedType
     transitions: (state,action.U) -> [state]
     applicable = (s,a) -> exists x. x in transitions(s,a)
     reachable:_
@@ -57,17 +57,26 @@ module AI {
       takeNext: Fringe -> (Fringe,Node)
   }
 
-  DFS = SearchStrategy {
+  theory BFSDFS {
+    include SearchStrategy
     type Fringe = [Node]
     init = ss -> ss match {
       [] -> []
       h-:t -> makeNode(h,[]) -: init(t)
     }
     empty = l -> l == []
-    insert = l -> (p,s) -> makeNode(s, [p]) -: l
     takeNext = l -> l match {
       h -: t -> (t,h)
     }
+  }
+
+  
+  DFS = BFSDFS {
+    insert = l -> (p,s) -> makeNode(s, [p]) -: l
+  }
+
+  BFS = BFSDFS {
+    insert = l -> (p,s) -> l :- makeNode(s, [p])
   }
 
   treeSearch: (SearchProblem, SearchStrategy) -> Node? = (prob,strat) -> {
