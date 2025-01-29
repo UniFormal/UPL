@@ -50,36 +50,29 @@ function activate(context) {
     }
   }, ['(']))
 
-  outputchannel = vscode.workspace.createOutputChannel("debug", 'upl');
   var encoder = new TextEncoder();
   var decoder = new TextDecoder();
   push(vscode.workspace.registerNotebookSerializer('upl-notebook', {
     deserializeNotebook: function (content, canceltoken) {
       var contents = decoder.decode(content);
-      let raw;
-      try {
-        raw = (JSON.parse(contents)).cells;
-      } catch {
-        raw = [];
-      }
+      var js = JSON.parse(contents);
       const cells = [];
-      for (const item in raw) {
-        cells.push(new vscode.NotebookCellData(item.cell_type === 'code' ? vscode.NotebookCellKind.Code : vscode.NotebookCellKind.Markup, item.source.join('\n'),
-          item.cell_type === 'code' ? 'upl' : 'markdown')
-        )
-      }
+      js.forEach(function(cell) {
+		var tp = cell.cell_type === 'code' ? vscode.NotebookCellKind.Code : vscode.NotebookCellKind.Markup;
+		var lang = cell.cell_type === 'code' ? 'upl' : 'markdown';
+        cells.push(new vscode.NotebookCellData(tp, cell.source.join('\n'), lang));
+      })
       return new vscode.NotebookData(cells);
     },
     serializeNotebook: function (data, canceltoken) {
       let contents = [];
-      for (const cell of data.cells) {
+      data.cells.forEach(function(cell) {
         contents.push({
           cell_type: cell.kind === vscode.NotebookCellKind.Code ? 'code' : 'markdown',
-          source: cell.value.split(/\r?\n/g),
+          source: cell.value.split(/\r?\n/g)
         });
-      }
-      return encoder.encode(JSON.stringify(contents))
-
+      });
+      return encoder.encode(JSON.stringify(contents));
     }
   }))
   function notebookExecuteHandler(cells, notebook, controller) {
