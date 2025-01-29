@@ -23,60 +23,82 @@ module AI {
     transitions = (s,a) -> transition(s,a)
   }
 
-  theory SearchProblem {
-    include TransitionSystem
-    initials: [state]
-    goals:    state -> bool
-    solution: [action.U] -> bool = as -> exists i,g. i in initials & reachable(i,as,g) & goals(g)
-  }
-  theory FullyObservable {
-    include SearchProblem
-    initial: state
-    initials = [initial]
-  }
   theory Cost {
     include TransitionSystem
     cost: action.U -> rat
   }
+
   theory DefaultCost {
     include Cost
     cost = a -> 1
   }
 
+  theory SearchProblem {
+    include TransitionSystem
+    include Cost
+    initials: [state]
+    goals:    state -> bool
+    solution: [action.U] -> bool = as -> exists i,g. i in initials & reachable(i,as,g) & goals(g)
+  }
+
+  theory FullyObservable {
+    include SearchProblem
+    initial: state
+    initials = [initial]
+  }
+  
   theory Node {
     label: state
     parent: Node?
+    cost: rat
   }
-  makeNode = (l,p) -> Node {label = l, parent = p}
+
+  makeNode = (l,p,c) -> Node {label = l, parent = p, cost = c}
 
   theory SearchStrategy {
-      type Fringe
-      init: [state] -> Fringe
-      empty: Fringe -> bool
-      insert: Fringe -> (Node,state) -> Fringe
-      takeNext: Fringe -> (Fringe,Node)
-  }
-
-  theory BFSDFS {
-    include SearchStrategy
     type Fringe = [Node]
+    empty: Fringe -> bool = l -> l == []
+    init: [state] -> Fringe
     init = ss -> ss match {
       [] -> []
-      h-:t -> makeNode(h,[]) -: init(t)
+      h-:t -> makeNode(h,[],0) -: init(t)
     }
-    empty = l -> l == []
+    insert: (Fringe,Node) -> Fringe
+    takeNext: Fringe -> (Fringe,Node)
+  }
+
+  theory TakeFromFrontStrategy {
+    include SearchStrategy
     takeNext = l -> l match {
       h -: t -> (t,h)
     }
   }
 
-  
-  DFS = BFSDFS {
-    insert = l -> (p,s) -> makeNode(s, [p]) -: l
+  DFS = TakeFromFrontStrategy {
+    insert = (l,n) -> l :- n
   }
 
-  BFS = BFSDFS {
-    insert = l -> (p,s) -> l :- makeNode(s, [p])
+  BFS = TakeFromFrontStrategy {
+    insert = (l,n) -> n -: l
+  }
+
+  theory TakeByMinimumStrategy {
+    include SearchStrategy
+    insert = (l,n) -> n -: l
+    criterion: Node -> rat
+    takeNext = l -> takeNext(l)
+  }
+  
+  UCS = TakeByMinimumStrategy {
+    criterion = n -> n.cost
+  }
+
+  AStar = (h: state -> rat) -> TakeByMinimumStrategy {
+    criterion = n -> n.cost + h(n.label)
+  }
+
+  Greedy = (h: state -> rat) -> TakeByMinimumStrategy {
+    criterion = n -> h(n.label)
   }
 
   treeSearch: (SearchProblem, SearchStrategy) -> Node? = (prob,strat) -> {
@@ -86,8 +108,10 @@ module AI {
         if (prob.goals(node.label)) return [node]
         else
           for (a in prob.action.enum)
-            for (s in prob.transitions(node.label, a))
-              fringe = strat.insert(fringe)(node, s)
+            for (s in prob.transitions(node.label, a)) {
+              val n = makeNode(s, [node], node.cost+prob.cost(a)) 
+              fringe = strat.insert(fringe,n)
+            }
     }
     []
   }
