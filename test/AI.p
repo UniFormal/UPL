@@ -115,5 +115,5 @@ module AI {
     }
     []
   }
-  test = true
+  test = Node{1,[],1} == makeNode(1,[],1)
 }
