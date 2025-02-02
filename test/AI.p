@@ -2,30 +2,30 @@ module AI {
   type state = int
 
   theory EnumeratedType {
-     type U
-     enum: [U]
-     complete: |- forall x:U. x in enum
+     type univ
+     enum: [univ]
+     complete: |- forall x:univ. x in enum
   }
   
   theory TransitionSystem {
     action: EnumeratedType
-    transitions: (state,action.U) -> [state]
+    transitions: (state,action) -> [state]
     applicable = (s,a) -> exists x. x in transitions(s,a)
     reachable:_
-    reachable = (f:state, path: [action.U], t:state) -> path match {
+    reachable = (f:state, path: [action], t:state) -> path match {
       [] -> f == t
       a -: as -> exists x. x in transitions(f,a) & reachable(x,as,t)
     }
   }
   theory Deterministic {
     include TransitionSystem
-    transition: (state,action.U) -> state?
+    transition: (state,action) -> state?
     transitions = (s,a) -> transition(s,a)
   }
 
   theory Cost {
     include TransitionSystem
-    cost: action.U -> rat
+    cost: action -> rat
   }
 
   theory DefaultCost {
@@ -38,7 +38,7 @@ module AI {
     include Cost
     initials: [state]
     goals:    state -> bool
-    solution: [action.U] -> bool = as -> exists i,g. i in initials & reachable(i,as,g) & goals(g)
+    solution: [action] -> bool = as -> exists i,g. i in initials & reachable(i,as,g) & goals(g)
   }
 
   theory FullyObservable {

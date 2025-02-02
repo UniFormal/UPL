@@ -48,7 +48,6 @@ sealed abstract class SyntaxFragment {
 
   /** path to a source position */
   def pathTo(at: Location): Option[List[SyntaxFragment.PathSegment]] = {
-    //println("in: " + this.toStringShort + " at " + (if (loc != null) loc.toString else "null"))
     if (loc == null || (loc != null && loc.contains(at))) {
       childrenInContext.foreach {case (r, l, s) =>
         val pO = s.pathTo(at)
@@ -67,15 +66,14 @@ sealed abstract class SyntaxFragment {
     */
   def descendantAt(gc: GlobalContext, at: Location): Option[(GlobalContext, SyntaxFragment)] = {
     val p = pathTo(at).getOrElse {return None}
-    // println("path found: " + p.map(s => s._1.toStringShort + " " + s._2 + " " + s._3).mkString("\n"))
     p.lastOption.map {d =>
       var gcI = gc
-      p.foreach {case (_,tO,lO) =>
-        tO.foreach {
-          case PhysicalTheory(Path(List(n))) => gcI = gcI.enter(n) // TODO: could technically be non-physical in this case, e.g., when quoting a local theory
-          case t => gcI = gcI.push(t)
-        }
-        lO.foreach {l => gcI = gcI.append(l)}
+      p.foreach {
+        case (m:Module,_,_) =>
+          gcI = gcI.enter(m)
+        case (_,tO,lO) =>
+          tO.foreach {t => gcI = gcI.push(t)}
+          lO.foreach {l => gcI = gcI.append(l)}
       }
       (gcI, d._1)
     }
@@ -93,7 +91,7 @@ object SyntaxFragment {
   /** child of a SyntaxFragment, with the context introduced by the parent */
   type Child = (Option[Theory], Option[LocalContext], SyntaxFragment)
 
-  /** a fragment with the context introduced for a particular child */
+  /** a SyntaxFragment with the context introduced for a particular child */
   type PathSegment = (SyntaxFragment, Option[Theory], Option[LocalContext])
 }
 
@@ -429,16 +427,20 @@ object RegionalContext {
   def apply(p: Path): RegionalContext = RegionalContext(PhysicalTheory(p))
 }
 
-case class RegionalContextFrame(region: RegionalContext, transparent: Boolean, physical: Boolean)
+case class RegionalContextFrame(region: RegionalContext, transparent: Boolean, physical: Option[Boolean])
 
 /** program-level context: provides the vocabulary and the stack of regional+local contexts
   *
   * @param voc the vocabulary
   * @param regions a stack of regional contexts
   *
-  * Traverses algorithms must move between regional contexts.
-  * Therefore, they are maintained as a stack. Only the top element is accessible at any given time.
-  * However, each element carries an additional Boolean; if true, it is transparent, and the element beneath is accessible too.
+  * Traverser algorithms must move between regional contexts such as
+  * Therefore, they are maintained as a stack
+  * - phyiscal: named regions encountered when defining a module/theory
+  * - anonymous: theories used to create new instances and class types
+  * - referenced: owned and quoted objects (owner is stored in regional context)
+  * The top element is the current region and provides the semantics of regional identifiers.
+  * Physical and anonymous regions are transparent: they allow accessing the identifiers of the next region.
   */
 case class GlobalContext private (voc: Module, regions: List[RegionalContextFrame]) extends Context[GlobalContext] {
   def label = "global"
@@ -457,11 +459,15 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     while (local.decls.exists(vd => vd.name.startsWith("_" + i))) i += 1
     "_" + i
   }
-  def enter(n: String) = pushFrame(RegionalContext(currentParent / n), true, true)
-  def push(t: Theory, owner: Option[Expression] = None): GlobalContext = push(RegionalContext(t, owner))
-  def push(e: RegionalContext): GlobalContext = pushFrame(e, false, false)
-  def pushEmpty() = pushFrame(RegionalContext.empty, true, false)
-  private def pushFrame(r: RegionalContext, trans: Boolean, phys: Boolean) = {
+  /** push a physical region */
+  def enter(m: Module) = pushFrame(RegionalContext(currentParent / m.name), true, Some(m.closed))
+  /** push an anonymous region */
+  def enter(t: Theory): GlobalContext = pushFrame(RegionalContext(t), true, None)
+  /** push an empty anonymous region */
+  def enterEmpty() = pushFrame(RegionalContext.empty, true, None)
+  /** push a referenced region */
+  def push(t: Theory, owner: Option[Expression] = None): GlobalContext = pushFrame(RegionalContext(t, owner), false, None)
+  private def pushFrame(r: RegionalContext, trans: Boolean, phys: Option[Boolean]) = {
     val f = RegionalContextFrame(r, trans, phys)
     copy(regions = f :: regions)
   }
@@ -479,7 +485,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   }
 
   /** true if the local environment is given by the current parent(s) (as opposed to other ones that we have pushed) */
-  def inPhysicalTheory = regions.forall(_.physical)
+  def inPhysicalTheory = regions.forall(_.physical.isDefined)
   def copyLocal(lc: LocalContext) = {
     val regC = currentRegion.copyLocal(lc)
     copy(regions = regions.head.copy(region = regC) :: regions.tail)
@@ -555,8 +561,35 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
       return Some((make(VarRef(n)), None))
     }
     // try finding n declared regionally in current or included module
-    lookupRegional(n).foreach { d =>
-      return Some((make(ClosedRef(n)), Some(d)))
+    var gcO: Option[GlobalContext] = Some(this)
+    while (gcO.isDefined) {
+      val gc = gcO.get
+      gc.lookupRegional(n).foreach {d =>
+        var dRet = d
+        val level = regions.length - gc.regions.length + 1
+        val ret = if (level > 1) {
+          val owner = This(level)
+          val dom = gc.currentRegion.theory
+          dRet = OwnerSubstitutor(owner, dom, dRet) match {
+            case nd: NamedDeclaration => nd
+            case _ => throw IError("impossible case")
+          }
+          d match {
+            case _:ExprDecl => OwnedExpr(owner, dom, ClosedRef(n))
+            case _:TypeDecl => OwnedType(owner, dom, ClosedRef(n))
+            case _ => throw IError("unownable declaration") // TODO support owned modules
+          }
+        } else {
+          make(ClosedRef(n))
+        }
+        return Some((ret,Some(dRet)))
+      }
+      // look in transparent enclosing regions
+      if (gc.regions.length > 1 && gc.currentIsTransparent) {
+        gcO = Some(gc.pop())
+      } else {
+        gcO = None
+      }
     }
     // try finding n declared globally in current module or parent modules
     resolvePath(Path(n)) foreach {case (p,d) =>
@@ -588,11 +621,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     // look in included modules
     val ds = mod.supers.flatMap {p => voc.lookupPath(p / name).toList}.filter(d => !d.global && !d.subsumed)
     if (ds.isEmpty) {
-      if (regions.length > 1 && currentIsTransparent) {
-        // look in transparent enclosing regions
-        pop().lookupRegional(name)
-      } else
-        None
+      None
     } else {
       // find the most defined one
       var res = ds.head
@@ -620,7 +649,7 @@ object GlobalContext {
   def apply(v: Vocabulary): GlobalContext = GlobalContext(
     Module.anonymous(v.decls)
   )
-  def apply(m: Module): GlobalContext = GlobalContext(m, List(RegionalContextFrame(RegionalContext(Path.empty), true, true))
+  def apply(m: Module): GlobalContext = GlobalContext(m, List(RegionalContextFrame(RegionalContext(Path.empty), true, Some(false)))
   )
 }
 
@@ -736,6 +765,7 @@ object Module {
 sealed trait AtomicDeclaration extends Declaration {
   def tp: Type
   val dfO: Option[Object]
+  def defined = dfO.isDefined
   def children = tp :: dfO.toList
 }
 
@@ -1235,6 +1265,15 @@ case class ProofType(formula: Expression) extends Type {
 // ***************** Expressions **************************************
 
 // **************************** introduction/elimination forms for built-in types
+
+/** the current instance
+  * @param level 1 for 'this' (written as '.'), 2 for surrounding instance (written as '..') and so on
+  */
+case class This(level: Int) extends Expression {
+  override def toString = if (level <= 0) "illegal" else Range(0,level).map(_ => '.').mkString("")
+  def children = Nil
+  def label = "this" + toString
+}
 
 /** instance of a theory, introduction form for [[ClassType]] */
 // TODO: dependent modules, i.e., theory is an OwnedTerm(o,ClosedRef(m))

@@ -1,10 +1,10 @@
 module Algebra {
   theory Carrier {
-    type U
+    type univ
   }
   theory Magma {
     include Carrier
-    op: (U,U) -> U
+    op: (univ,univ) -> univ
   }
   theory Semigroup {
     include Magma
@@ -12,15 +12,14 @@ module Algebra {
   }
   theory Monoidal {
     include Magma
-    e: U
+    e: univ
   }
-  intAdd = Magma {type U = int, op = (x,y) -> x+y}
-  intMult = Magma {type U = int, op = (x,y) -> x*y}
+  intAdd = Magma {type univ = int, op = (x,y) -> x+y}
+  intMult = Magma {type univ = int, op = (x,y) -> x*y}
   theory BiMagma {
     include Carrier
-    add  : Magma {type U = U}
-    mult : Magma {type U = U}
+    add  : Magma {type univ = ..univ}
+    mult : Magma {type univ = ..univ}
   }
+  intAddMult = BiMagma {type univ = int, add = intAdd, mult = intMult}
 }
-
-// int = BiMagma {type U = int, add = intAdd, mult = intMult}

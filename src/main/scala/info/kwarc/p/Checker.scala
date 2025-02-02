@@ -34,14 +34,14 @@ class Checker(errorHandler: ErrorHandler) {
   private def expected(exp: String, found: String): String = s"expected $exp; found $found"
 
   def checkVocabulary(gc: GlobalContext, voc: Vocabulary, keepFull: Boolean)(implicit cause: SyntaxFragment) = {
-    val dsC = checkDeclarationsAndFlatten(gc, voc.decls, keepFull)
+    voc.decls.foreach {d => d.global = true}
+    val dsC = flattenCheckDeclarations(gc, voc.decls, alsoCheck=true, keepFull)
     Vocabulary(dsC).copyFrom(voc)
   }
 
   def checkProgram(p: Program): Program = matchC(p) {
     case Program(voc,mn) =>
       val gc = GlobalContext("")
-      voc.decls.foreach {d => d.global = true}
       val vocC = checkVocabulary(gc, voc, true)(p)
       val gcC = GlobalContext(vocC)
       val mnC = checkExpression(gcC,mn,AnyType)
@@ -54,11 +54,11 @@ class Checker(errorHandler: ErrorHandler) {
     val declC = decl match {
       case m:Module =>
         // checking will try to merge declarations of the same name, so no uniqueness check needed
-        val envM = gc.add(m.copy(decls = Nil).copyFrom(m)).enter(m.name)
+        val envM = gc.add(m.copy(decls = Nil).copyFrom(m)).enter(m)
         if (!m.closed) {
           m.decls.foreach {_.global = true}
         }
-        val declsC = checkDeclarationsAndFlatten(envM, m.decls, true)
+        val declsC = flattenCheckDeclarations(envM, m.decls, true, true)
         m.copy(decls = declsC)
         // TODO instance creation may occur before or while a theory is checked - needs 2-phase approach
       case id: Include =>
@@ -72,7 +72,7 @@ class Checker(errorHandler: ErrorHandler) {
           case Some(df) =>
             // infer domain from definiens
             val (dfC,dfI) = inferExpression(gc,df)(true)
-            PurityChecker(dfC)(gc,())
+            PurityChecker(gc,dfC)
             dfI match {
               case ClassType(PhysicalTheory(p)) =>
                 Include(p, Some(dfC), id.realize)
@@ -103,8 +103,8 @@ class Checker(errorHandler: ErrorHandler) {
      - Declarations are marked to retain the original list.
      keepFull determines what is returned: all non-subsumed declarations or only the subsuming ones and includes
     */
-  private def checkDeclarationsAndFlatten(gc: GlobalContext, decls: List[Declaration], keepFull: Boolean)
-                                         (implicit cause: SyntaxFragment): List[Declaration] = {
+  private def flattenCheckDeclarations(gc: GlobalContext, decls: List[Declaration], alsoCheck: Boolean, keepFull: Boolean)
+                                      (implicit cause: SyntaxFragment): List[Declaration] = {
     /* a FIFO queue of lists of declarations that must be flattened
      * Later on included lists of declarations will be prefixed with that flag negated and the definiens of the include.
      * It would be equivalent to keep a List[Declaration] instead of what is essentially a list of lists of declarations
@@ -112,7 +112,7 @@ class Checker(errorHandler: ErrorHandler) {
      * But our implementation is more efficient because it avoids that copying lists.
      */
     // initially, we need to flatten the original list, which must be checked but not translated
-    var todo = List(FlattenInput(decls,true,None))
+    var todo = List(FlattenInput(decls,alsoCheck,None))
     val numPriorDecls = gc.parentDecls.length // new declarations are appended to these
     var gcC = gc // will change as we process declarations
     // adds a declaration to the result, possibly merging with an existing one
@@ -198,7 +198,7 @@ class Checker(errorHandler: ErrorHandler) {
       d.subsuming = false
     }
     // totality check
-    realizes.foreach {p =>
+    if (alsoCheck) realizes.foreach {p =>
       if (delegates.contains(p)) {
         // nothing to do
       } else {
@@ -263,7 +263,7 @@ class Checker(errorHandler: ErrorHandler) {
     }
   }
 
-  private def checkRegional(gc: GlobalContext, rc: RegionalContext): RegionalContext = recoverWith(rc) {
+  /**private def checkRegional(gc: GlobalContext, rc: RegionalContext): RegionalContext = recoverWith(rc) {
     if (rc.theory == null && rc.owner.isEmpty) fail("underspecified region")(rc)
     val (thyC,ownC) = if (rc.theory == null) {
       val (oC,oI) = inferExpressionNorm(gc, rc.owner.get)(true)
@@ -272,15 +272,16 @@ class Checker(errorHandler: ErrorHandler) {
         case _ => fail("owner must be instance")(rc)
       }
     } else {
-      val tC = checkTheory(gc,rc.theory)(rc.theory)
+      val tC = checkTheory(gc,rc.theory,true)(rc.theory)
       val oC = rc.owner map {o =>
         checkExpression(gc,o,ClassType(tC))
       }
       (tC,oC)
     }
-    val ctxC = checkLocal(gc.push(RegionalContext(thyC,ownC)), rc.local, false, false)
+    val ctxC = checkLocal(gc.push(thyC,ownC), rc.local, false, false)
     RegionalContext(thyC,ownC,ctxC).copyFrom(rc)
   }
+  */
   private def checkTheoryPath(gc: GlobalContext, p: Path)(implicit cause: SyntaxFragment) = recoverWith(p) {
     gc.resolvePath(p) match {
       case Some((pC, m: Module)) => pC
@@ -288,15 +289,17 @@ class Checker(errorHandler: ErrorHandler) {
     }
   }
 
-  def checkTheory(gc: GlobalContext, thy: Theory)(implicit cause: SyntaxFragment): Theory = recoverWith(thy) {
+  def flattenTheory(gc: GlobalContext, thy: Theory, alsoCheck: Boolean, keepFull:Boolean)(implicit cause: SyntaxFragment): Theory = recoverWith(thy) {
     if (thy.isFlat) return thy
     // TODO simply retrieve theory if physical
-    val gcI = gc.pushEmpty()
-    val declsC = checkDeclarationsAndFlatten(gcI,thy.decls,false)
+    val gcI = gc.enterEmpty()
+    val declsC = flattenCheckDeclarations(gcI,thy.decls,alsoCheck,keepFull)
     val thyC = Theory(declsC).copyFrom(thy)
     thyC.isFlat = true
     thyC
   }
+  def checkTheory(gc: GlobalContext, thy: Theory)(implicit cause: SyntaxFragment) = flattenTheory(gc,thy,true,false)
+
   def checkLocal(gc: GlobalContext,lc: LocalContext,allowDefinitions: Boolean,allowMutable: Boolean): LocalContext = recoverWith(lc) {
     if (!lc.namesUnique) reportError("name clash in local context")(lc)
     var gcL = gc
@@ -371,19 +374,10 @@ class Checker(errorHandler: ErrorHandler) {
     (abs,subI)
   }
 
-  /** component-wise type normalization */
-  def typesNormalize(gc: GlobalContext, as: LocalContext): LocalContext = {
-    var gcI = gc
-    as.map {vd =>
-      val tpN = typeNormalize(gcI, vd.tp)
-      gcI = gcI append vd
-      vd.copy(tp = tpN)
-    }
-  }
 
   /** theory a subsumbed by b */
   def isSubtheory(a: Theory, b: Theory) = {
-    a.decls.forall(p => b.decls.contains(p))
+    a.decls.forall(b.decls.contains)
   }
 
   // ***************** Types **************************************
@@ -392,33 +386,33 @@ class Checker(errorHandler: ErrorHandler) {
     checkSubtype(gc, tpC, bound)(tp)
     tpC
   }
-  def checkType(gc: GlobalContext, tpA: Type): Type = recoverWith(tpA) {
-    implicit val cause = tpA
+  def checkType(gc: GlobalContext, tp: Type): Type = recoverWith(tp) {
+    implicit val cause = tp
     def r(x:Type): Type = checkType(gc,x)
-    disambiguateOwnedObject(gc, tpA).foreach {corrected => return checkType(gc, corrected)}
-    // tp != tA only if tpA is an unresolved reference
-    val (tpR, sdCached) = gc.resolveName(tpA).getOrElse(fail("unknown identifier"))
-    val tp = tpR match {
-      case t: Type => t
-      case _ => fail("not a type")
-    }
+    disambiguateOwnedObject(gc, tp).foreach {corrected => return checkType(gc, corrected)}
     matchC(tp) {
-      case r: OpenRef =>
-        val (rC,rd) = sdCached match {
-          case Some(d) => (r,d)
-          case _ => checkOpenRef(gc,r)
-        }
-        rd match {
-          case td: TypeDecl => tp
-          case m: Module =>
-            // indeterminate use of module as type interpreted as class type
+      case r: Ref =>
+        val (rC, sdO) = gc.resolveName(r).getOrElse(fail("unknown identifier"))
+        val sd = sdO.getOrElse("identifier not a symbol")
+        (rC,sd) match {
+          case (rC: Ref, _: TypeDecl) =>
+            // type ref
+            rC
+          case (rC: Ref, ed: ExprDecl) =>
+            // expression ref, try to coerce to type
+            Normalize(gc,ed.tp) match {
+              case ClassType(d) => gc.push(d).lookupRegional(MagicFunctions.asType) match {
+                case Some(_: TypeDecl) =>
+                  PurityChecker(gc,rC.asInstanceOf[Expression])
+                  MagicFunctions.typeOf(rC,d)
+                case _ => fail("no type coercion in type")
+              }
+              case _ => fail("expression cannot be coerced to a type")
+            }
+          case (rC:OpenRef, m: Module) =>
+            // module ref, interpret as class type
             if (!m.closed) reportError("open module not a type")
             ClassType(PhysicalTheory(rC.path))
-          case _ => fail(s"$r is not a type")
-        }
-      case ClosedRef(n) =>
-        sdCached match {
-          case Some(_: TypeDecl) => tp
           case _ => fail("not a type")
         }
       case OwnedType(owner,dom,tp) =>
@@ -447,7 +441,7 @@ class Checker(errorHandler: ErrorHandler) {
         val thyC = checkTheory(gc,thy)(tp)
         ClassType(thyC)
       case ExprsOver(sc,q) =>
-        val scC = checkTheory(gc,sc)
+        val scC = checkTheory(gc,sc)(tp)
         val qC = checkType(gc.push(scC),q)
         ExprsOver(scC,qC)
       case ProofType(f) =>
@@ -483,7 +477,7 @@ class Checker(errorHandler: ErrorHandler) {
             val c = simplifyExpression(gc,GreaterEq(i,j))
             if (c == BoolValue(true)) {}
             else if (c == BoolValue(false)) reportError("interval is not subtype")
-            else {} // type-checking incomplete}
+            else {reportError("interval type not checked")} // type-checking incomplete}
         }
         (a.upper,b.upper) match {
           case (_, None) =>
@@ -492,7 +486,7 @@ class Checker(errorHandler: ErrorHandler) {
             val c = simplifyExpression(gc, LessEq(i,j))
             if (c == BoolValue(true)) {}
             else if (c == BoolValue(false)) reportError("interval is not subtype")
-            else {}// type-checking incomplete}
+            else {reportError("interval type not checked")}// type-checking incomplete}
         }
       case (CollectionType(a,k),CollectionType(b,l)) =>
         if (!(k sub l)) reportError(s"collection type $k is not subtype of collection type $l")
@@ -510,8 +504,8 @@ class Checker(errorHandler: ErrorHandler) {
         if (!isSubtheory(bT,aT)) // larger theory = smaller type
           reportError("subtype must be larger theory")
       case _ =>
-        val aN = typeNormalize(gc, a)
-        val bN = typeNormalize(gc, b)
+        val aN = Normalize(gc,a)
+        val bN = Normalize(gc,b)
         if (a != aN || b != bN)
           checkSubtype(gc,aN,bN)
         else
@@ -576,8 +570,8 @@ class Checker(errorHandler: ErrorHandler) {
         val i = theoryIntersection(gc,aT,bT)
         if (i.decls.isEmpty) AnyType else ClassType(i)
       case _ =>
-        val aN = typeNormalize(gc, a)
-        val bN = typeNormalize(gc, b)
+        val aN = Normalize(gc,a)
+        val bN = Normalize(gc,b)
         if (aN != a || bN != b)
           typeUnion(gc, aN, bN)
         else
@@ -630,8 +624,8 @@ class Checker(errorHandler: ErrorHandler) {
         // model of aT and of bT, i.e., model of the union
         ClassType(theoryUnion(gc,aT,bT))
       case _ =>
-        val aN = typeNormalize(gc, a)
-        val bN = typeNormalize(gc, b)
+        val aN = Normalize(gc,a)
+        val bN = Normalize(gc,b)
         if (aN != a || bN != b)
           typeIntersection(gc, aN, bN)
         else
@@ -656,50 +650,47 @@ class Checker(errorHandler: ErrorHandler) {
   }
 
   /** normalizes a type: definitions expanded, but not flattened */
-  def typeNormalize(gc: GlobalContext, tp: Type): Type = {
-    implicit val cause = tp
-    def n(t: Type) = typeNormalize(gc, t)
-    def f(t: Theory) = checkTheory(gc, t)
-    matchC(tp) {
-      case ClosedRef(r) => gc.lookupRegional(r) match {
-        case Some(td: TypeDecl) => td.dfO match {
-          case Some(df) => n(df)
-          case None => tp
-        }
-        case _ => fail("illegal type")(tp) // impossible if tp is checked
-      }
-      case OpenRef(p) =>
-        gc.lookupGlobal(p) match {
+  // TODO: cache being normal
+  object Normalize extends StatelessTraverser {
+    override def apply(thy: Theory)(implicit gc: GlobalContext, a:Unit) = {
+      // possible infinite loop if keepFull==true
+      val thyF = flattenTheory(gc,thy,false,false)(thy)
+      super.apply(thyF)
+    }
+    override def apply(exp: Expression)(implicit gc: GlobalContext, a:Unit) = {
+      exp
+    }
+    override def apply(tp: Type)(implicit gc: GlobalContext, a:Unit): Type = {
+      matchC(tp) {
+        case r: Ref => gc.lookupRef(r) match {
           case Some(td: TypeDecl) => td.dfO match {
-            case None => tp
-            case Some(df) => n(df)
+            case Some(df) => apply(df)
+            case None => r
           }
           case _ => fail("illegal type")(tp) // impossible if tp is checked
         }
-      case OwnedType(own, dom, t) =>
-        val tN = typeNormalize(gc.push(dom,Some(own)), t)
-        val tpN = OwnerSubstitutor(own, dom, tN)
-        if (tpN != tp) typeNormalize(gc, tpN) else tpN
-      case _: BaseType | ExceptionType => tp
-      case IntervalType(l,u) =>
-        val lS = l map {e => simplifyExpression(gc, e)}
-        val uS = u map {e => simplifyExpression(gc, e)}
-        (lS,uS) match {
-          case (Some(IntValue(l)), Some(IntValue(u))) if l > u => EmptyType
-          case (None,None) => IntType
-          case _ => IntervalType(lS,uS)
-        }
-      case FunType(as,a) =>
-        val asN = typesNormalize(gc,as)
-        FunType(asN, typeNormalize(gc.append(asN), a))
-      case ProdType(as) => ProdType(typesNormalize(gc, as))
-      case CollectionType(a,k) => CollectionType(n(a), k)
-      case ClassType(sc) => ClassType(f(sc))
-      case ExprsOver(sc, t) =>
-        val thyN = f(sc)
-        ExprsOver(thyN, typeNormalize(gc.push(thyN), t))
-      case _:ProofType => tp
-      case u: UnknownType => if (u.known) n(u.skipUnknown) else u
+        case OwnedType(own,_,t) =>
+          // we must reinfer the domain because the fields in the cached domain may have acquired definitions
+          // when the object was moved into another region
+          val ownI = inferCheckedExpression(gc,own) match {
+            case ct:ClassType => ct
+            case t => apply(t)
+          }
+          val dom = ownI match {
+            case ClassType(d) => d
+            case _ => throw IError("unexpected type")
+          }
+          val tN = apply(gc.push(dom,Some(own)), t)
+          val tpN = OwnerSubstitutor(own,dom,tN)
+          if (tpN != tp) apply(tpN) else tpN
+        case IntervalType(l,u) =>
+          applyDefault(tp) match {
+            case (IntervalType(Some(IntValue(l)),Some(IntValue(u)))) if l > u => EmptyType
+            case IntervalType(None,None) => IntType
+            case tpN => tpN
+          }
+        case _ => applyDefault(tp)
+      }
     }
   }
 
@@ -713,7 +704,7 @@ class Checker(errorHandler: ErrorHandler) {
     implicit val cause = exp
     def withReturnVar(q: GlobalContext, o: Type) = if (returnToHere) q.append(VarDecl.output(o)) else q
     disambiguateOwnedObject(gc, exp).foreach {corrected => return checkExpression(gc, corrected, tp)}
-    val tpN = typeNormalize(gc, tp)
+    val tpN = Normalize(gc,tp)
     val eC: Expression = (exp,tpN) match {
       case (i, IntervalType(l,u)) =>
         val (iC,iI) = inferExpressionNorm(gc,i)(true)
@@ -851,7 +842,7 @@ class Checker(errorHandler: ErrorHandler) {
 
   def checkExpressionPure(gc: GlobalContext, e: Expression, t: Type) = {
     val eC = checkExpression(gc, e, t)
-    PurityChecker(eC)(gc,())
+    PurityChecker(gc,eC)
     eC
   }
 
@@ -871,14 +862,14 @@ class Checker(errorHandler: ErrorHandler) {
       if (!vd.tp.known) reportError("free variable whose type cannot be infered: " + vd.name)(e)
       vd.copy(tp = vd.tp.skipUnknown)
     }
-    PatternChecker(eC)(gc,())
+    PatternChecker(gc,eC)
     (fctxIS, eC)
   }
 
   /** like [[inferExpression]] but with the type normalized */
   def inferExpressionNorm(gc: GlobalContext,e: Expression)(implicit alsoCheck: Boolean): (Expression,Type) = {
     val (eC,eI) = inferExpression(gc, e)
-    (eC, typeNormalize(gc,eI))
+    (eC, Normalize(gc,eI))
   }
 
   /** checks an expression and infers its type
@@ -904,7 +895,7 @@ class Checker(errorHandler: ErrorHandler) {
         if (!op.tp.known) {
           reportError("cannot infer type of operator")
         }
-        val ft = typeNormalize(gc,op.tp) match {
+        val ft = Normalize(gc,op.tp) match {
           case ft: FunType if ft.simple => ft
           case _ => fail("operator type not a simple function")
         }
@@ -925,6 +916,17 @@ class Checker(errorHandler: ErrorHandler) {
         sdCached match {
           case Some(ed: ExprDecl) => (exp, ed.tp)
           case _ => fail("not an expression")
+        }
+      case This(l) =>
+        if (l<=0) fail("illegal level")
+        if (gc.regions.length < l) fail("level does not exist")
+        val (skipped,rest) = gc.regions.splitAt(l-1)
+        val reg = rest.head
+        if (skipped.exists(!_.transparent))
+          fail("level is not accessible")
+        reg.physical match {
+          case Some(false) => fail("parent is not a theory")
+          case _ => (exp,ClassType(reg.region.theory))
         }
       case OwnedExpr(owner, dom, e) =>
         val (ownerC, ownerI) = if (alsoCheck) inferExpressionNorm(gc, owner) else (owner, ClassType(dom))
@@ -947,7 +949,7 @@ class Checker(errorHandler: ErrorHandler) {
             case _ => fail("instance must be of atomic theory")
           }
           // TODO: check that ds do not have side effects outside of itself
-          if (alsoCheck) checkTheory(gc,thyR) else thy
+          if (alsoCheck) checkTheory(gc,thyR) else thyR
         }
         (Instance(thyC),ClassType(thyC))
       case ExprOver(sc,q) =>
@@ -1229,7 +1231,8 @@ class Checker(errorHandler: ErrorHandler) {
     }
   }
 
-  def simplifyExpression(gc: GlobalContext, exp: Expression) = Simplify(exp)(gc,())
+  // TODO requires purity checks
+  def simplifyExpression(gc: GlobalContext, exp: Expression) = Simplify(gc,exp)
 
   // ************ auxiliary functions for handling identifiers (sharing code for types and expressions)
 
@@ -1425,7 +1428,7 @@ class MagicFunctions(gc: GlobalContext) {
   class MagicFunction(name: String) {
     def insert(dom: Theory, owner: Expression, args: List[Expression]) = Application(owner.field(dom,name),args)
     def unapply(tp: Type) = tp match {
-      case ClassType(thy) => gc.push(thy,None).lookupRegional(name) match {
+      case ClassType(thy) => gc.push(thy).lookupRegional(name) match {
         case Some(d: ExprDecl) => Some((thy,d.tp))
         case _ => None
       }
@@ -1438,4 +1441,8 @@ class MagicFunctions(gc: GlobalContext) {
   object application extends MagicFunction("apply")
   class projection(n: Int) extends MagicFunction("component_"+n)
   object evaluation extends MagicFunction("eval")
+}
+object MagicFunctions {
+  val asType = "univ"
+  def typeOf(e: Expression, dom: Theory) = OwnedType(e,dom, ClosedRef(asType))
 }

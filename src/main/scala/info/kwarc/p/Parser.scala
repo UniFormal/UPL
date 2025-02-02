@@ -293,10 +293,12 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     as.reverse
   }
 
+  def isNameChar(c: Char) = c.isLetterOrDigit || c == '_'
+
   def parseName: String = {
     trim
     val begin = index
-    while (!atEnd && (next.isLetterOrDigit || next == '_')) index += 1
+    while (!atEnd && isNameChar(next)) index += 1
     input.substring(begin,index)
   }
 
@@ -442,7 +444,18 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       trim
       val expBeginAt = index
       var exp: Expression = if (startsWithS(".")) {
-        OpenRef(parsePath)
+        if (!atEnd && isNameChar(next)) {
+          // .id is OpenRef
+          OpenRef(parsePath)
+        } else {
+          // . is this, .. is parent and so on
+          var l = 1
+          while (startsWithS(".")) {l += 1}
+          trim
+          // .a is this.a, ..a is parent.a, and so on; thus: if .id follows, we keep the last .
+          if (!atEnd && isNameChar(next)) index-=1
+          This(l)
+        }
       } else if (startsWithS("{")) {
         var cs: List[Expression] = Nil
         var ctxL = ctxs.setAllowStatement(true)
@@ -766,7 +779,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   private val typePostOps = List("->","?")
   def parseType(implicit ctxs: PContext): Type = addRef {
     val tpBegin = index
-    var tp = if (startsWithS(".")) {
+    var tp = if (startsWith(".") && !startsWith("..")) {
+        skip(".")
         OpenRef(parsePath)
       } else if (startsWithS("int")) {
         trim
@@ -820,18 +834,23 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           // looks like a type that starts with a name
           ClosedRef(n)
         } else {
+          // We reuse expression parsing for 3 reasons:
+          // - reuse the code for parsing Refs
+          // - owned types starts with an expression
+          // - expr-to-type coercion allows expressions in type-positions
+          // Setting noWeakPostops avoids parsing -> and other operators, which we want to handle ourselves.
           index = backtrackPoint
           val exp = parseExpression(ctxs.noWeakPostops)
-          // The above parses e.tp and e{tp} into OwnedExpr.
-          // Setting noWeakPostops avoids parsing -> and other, which we want to handle ourselves.
-          // We can only turn some of those into OwnedType: e{tp} only if tp is a reference.
-          // Similarly, it parses M{ds} into Instance, which becomes ClassType
           val tp = exp match {
-            case r: ClosedRef => r
-            case o: OpenRef => o
-            case OwnedExpr(o,d,r: ClosedRef) => OwnedType(o,d,r)
-            case OwnedExpr(o,d,r: OpenRef) => OwnedType(o,d,r)
+            case r: Ref => r
+            // The above falsely parses e.tp and e{tp} into OwnedExpr. We can turn only some of those into OwnedType:
+            case OwnedExpr(o,d,r: Ref) => OwnedType(o,d,r)
+            // Similarly, it parses M{ds} into Instance, which we can turn into ClassType.
             case Instance(thy) => ClassType(thy)
+            // Any other expression, we coerce into a type.
+            // This coercion should happen during type-checking (and it does for Refs and OwnedType(_,_,Ref)),
+            // but because it changes Scala-type, we have to do it here already.
+            case _:VarRef | _:Application | _:Projection | _:ListElem => MagicFunctions.typeOf(exp,null)
             case _ => reportError("type expected"); AnyType
           }
           tp.copyFrom(exp)

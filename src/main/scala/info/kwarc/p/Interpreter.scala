@@ -162,6 +162,7 @@ class Interpreter(vocInit: Module) {
           case _ => fail("not an expression")
         }
       case ClosedRef(n) => env.lookupRegional(n)
+      // case This(l) => env.regions(l).region.getOrElse(fail("no owner")) //TODO this must count only regions corresponding to a parent
       case VarRef(n) =>
         env.lookupLocalO(n) match {
           case Some(d) => d // frame values are always interpreted
@@ -409,9 +410,11 @@ class Interpreter(vocInit: Module) {
   }
 
   private def makeIterator(tp: Type): Iterator[Expression] = {
-    val tpN = new Checker(ErrorThrower).typeNormalize(GlobalContext(env.voc), tp)
-    val tpI = TypeInterpreter(tpN)(null,())
-    tpI match {
+    val gc = GlobalContext(env.voc)
+    val tpI = TypeInterpreter(gc,tp) // replace names with values so that normalization does not have lookup failures
+    val tpIN = new Checker(ErrorThrower).Normalize(gc, tpI) // normalize the type
+    val tpINI = TypeInterpreter(gc,tpIN) // evaluate the expressions introduced by type normalization
+    tpINI match {
       case EmptyType => Iterator.empty
       case UnitType => Iterator(UnitValue)
       case BoolType => Iterator(BoolValue(true), BoolValue(false))
@@ -442,7 +445,7 @@ class Interpreter(vocInit: Module) {
           def hasNext = end.isEmpty || current <= end.get
           def next() = {val n = current; current += step; IntValue(n)}
         }
-      case _ => fail("cannot iterate")(tp)
+      case t => fail("cannot iterate")(t)
     }
   }
 

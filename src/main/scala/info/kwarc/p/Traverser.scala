@@ -10,12 +10,11 @@ import SyntaxFragment.matchC
   * All local variable bindings pass through applyVarDecl, which also returns an updated state for use in the variable's scope.
   */
 abstract class Traverser[A] {
-
   def apply(p: Path)(implicit gc: GlobalContext, a: A): Path = matchC(p) {p => p}
-
   def apply(thy: Theory)(implicit gc: GlobalContext, a: A): Theory = {
     if (thy == null) null else {
-      val psT = thy.decls map apply
+      val gcI = gc.enter(thy)
+      val psT = thy.decls map {d => apply(d)(gcI,a)}
       Theory(psT).copyFrom(thy)
     }
   }
@@ -45,7 +44,7 @@ abstract class Traverser[A] {
   def apply(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = matchC(d)(applyDefault _)
 
   protected final def applyDefault(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = d match {
-    case Module(n,op,ds) => Module(n, op, ds map {d => apply(d)(gc.enter(n),a)})
+    case m@Module(n,op,ds) => Module(n, op, ds map {d => apply(d)(gc.enter(m),a)})
     case Include(dm,df, r) => Include(apply(dm), df map apply, r)
     case TypeDecl(n, bd, dfO) => TypeDecl(n, apply(bd), dfO map apply)
     case ExprDecl(n, tp, dfO, m) => ExprDecl(n, apply(tp), dfO map apply, m)
@@ -66,7 +65,7 @@ abstract class Traverser[A] {
       }
     case ClosedRef(n) => ClosedRef(n)
     case OpenRef(p) => OpenRef(apply(p))
-    case OwnedType(e, d, o) => OwnedType(apply(e), apply(d), apply(o)(gc.push(RegionalContext(d,Some(e))),a))
+    case OwnedType(e, d, o) => OwnedType(apply(e), apply(d), apply(o)(gc.push(d,Some(e)),a))
     case b: BaseType => b
     case ExceptionType => tp
     case IntervalType(l,u) => IntervalType(l map apply, u map apply)
@@ -87,7 +86,8 @@ abstract class Traverser[A] {
     case _: VarRef => exp
     case ClosedRef(n) => ClosedRef(n)
     case OpenRef(p) => OpenRef(apply(p))
-    case OwnedExpr(o, d, e) => OwnedExpr(apply(o), apply(d), apply(e)(gc.push(RegionalContext(d,Some(o))),a))
+    case This(l) => This(l)
+    case OwnedExpr(o, d, e) => OwnedExpr(apply(o), apply(d), apply(e)(gc.push(d,Some(o)),a))
     case BaseOperator(o,tp) => BaseOperator(o, apply(tp))
     case Instance(thy) => Instance(apply(thy))
     case vd:VarDecl => applyVarDecl(vd)._1
@@ -136,7 +136,11 @@ abstract class Traverser[A] {
   }
 }
 
-abstract class StatelessTraverser extends Traverser[Unit]
+abstract class StatelessTraverser extends Traverser[Unit] {
+  def apply(gc: GlobalContext, d: Declaration): Declaration = apply(d)(gc,())
+  def apply(gc: GlobalContext, exp: Expression): Expression = apply(exp)(gc,())
+  def apply(gc: GlobalContext, tp: Type): Type = apply(tp)(gc,())
+}
 
 trait TraverseOnlyOriginalRegion {
   val initGC: GlobalContext
@@ -202,18 +206,18 @@ class OwnerSubstitutor(shallow: Boolean) extends StatelessTraverser {
   override def apply(tp: Type)(implicit gc: GlobalContext, a: Unit) = if (shallow) makeType(tp) else matchC(tp) {
     case c: ClosedRef => makeType(c)
     case e: ExprsOver => makeType(e)
-    case OwnedType(o,d,t) => apply(t)(gc.push(RegionalContext(d,Some(o))), a)
+    case OwnedType(o,d,t) => apply(t)(gc.push(d,Some(o)), a)
     case _ => applyDefault(tp)
   }
   override def apply(exp: Expression)(implicit gc: GlobalContext, a: Unit) = if (shallow) makeExpr(exp) else matchC(exp) {
     case c: ClosedRef => makeExpr(c)
     case e: ExprOver => EvalTraverser(e) {ev => apply(ev)}
-    case OwnedExpr(e,d,o) => apply(e)(gc.push(RegionalContext(d,Some(o))), a)
+    case OwnedExpr(e,d,o) => apply(e)(gc.push(d,Some(o)), a)
     case _ => applyDefault(exp)
   }
 }
 object OwnerSubstitutor {
-  private def initGC(o: Expression, dom: Theory) = GlobalContext("").push(RegionalContext(dom,Some(o)))
+  private def initGC(o: Expression, dom: Theory) = GlobalContext("").push(dom,Some(o))
   def apply(own: Expression, dom: Theory, d: Declaration): Declaration = {
     val os = new OwnerSubstitutor(true)
     os.apply(d)(initGC(own,dom),())
