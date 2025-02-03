@@ -1178,22 +1178,46 @@ class Checker(errorHandler: ErrorHandler) {
     }
   }
 
+  /**
+    * An expression may be impure in multiple ways:
+    * - partial: return no value (while, return/throw)
+    * - non-deterministic: return different values in different executions (reading from a mutable identifier, IO reads, instance creation)
+    * - effectful: change the environment (assign to a mutable identifier, any IO)
+    * All are undecidable so that we can only check sufficient criteria for purity.
+    *
+    * The following are always pure:
+    * - references to immutable identifiers (even if their initializers are absent or impure)
+    * - lambdas (even if their bodies are impure)
+    * - quotations with pure evals (even if the quoted expression is impure)
+    *
+    * A function application is pure if the resulting beta-reduction is guaranteed to be.
+    * TODO "pure" keyword needed to allow abstract identifiers in pure position.
+    *
+    * The following expressions must be pure
+    * - initializers of regional identifiers (including fields of theories, instances)
+    * - subexpressions of types (including those that are subexpressions of pure expressions)
+    * - quantified formulas
+    * - patterns in matches or assignments
+    * The following expressions must not have side-effects
+    * - Boolean conditions in if, while, assert
+    * - Evals and operator arguments (to avoid specifying their order of evaluation)
+    * - elements in a tuple or a collection value???
+    */
   private object PurityChecker extends StatelessTraverser {
     override def apply(e: Expression)(implicit gc: GlobalContext,a:Unit) = {
+      def isNot(m: String) = fail("must be " + m)(e)
       e match {
-        case OpenRef(p) => gc.lookupGlobal(p) match {
-          case Some(ed: ExprDecl) => if (ed.mutable) fail("state-dependent")
+        case r:Ref => gc.lookupRef(r) match {
+          case Some(ed: ExprDecl) => if (ed.mutable) isNot("deterministic")
           case _ =>
         }
-        case ClosedRef(n) => gc.lookupRegional(n) match {
-          case Some(ed: ExprDecl) => if  (ed.mutable) fail("state-dependent")
-          case _ =>
-        }
-        case VarRef(n) => if (gc.lookup(n).mutable) fail("state-dependent")
-        case _: Instance => fail("state-dependent")
-        case _: Assign => fail("state-changing")
-        case _: While => fail("potentially non-terminating")
-        case _: Return => fail("potentially non-value")
+        case VarRef(n) => if (gc.lookup(n).mutable) isNot("determinisitic")
+        case _: Instance => isNot("deterministic")
+        case _: Assign => isNot("effect-free")
+        // match ???
+        case _: While => isNot("total")
+        case _: Return => isNot("total")
+        case _: Lambda =>
         case _ => applyDefault(e)
       }
       e

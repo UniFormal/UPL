@@ -94,12 +94,12 @@
       <breakpoints>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Checker.scala</url>
-          <line>1301</line>
+          <line>1325</line>
           <option name="timeStamp" value="48" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Interpreter.scala</url>
-          <line>121</line>
+          <line>115</line>
           <option name="timeStamp" value="82" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
@@ -109,7 +109,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Checker.scala</url>
-          <line>1297</line>
+          <line>1321</line>
           <option name="timeStamp" value="94" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
@@ -145,7 +145,7 @@
         <line-breakpoint enabled="true" type="scala-line">
           <condition expression="asI.length &lt; 2" language="Scala" />
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Interpreter.scala</url>
-          <line>336</line>
+          <line>337</line>
           <option name="timeStamp" value="155" />
         </line-breakpoint>
         <breakpoint enabled="true" type="java-exception">
