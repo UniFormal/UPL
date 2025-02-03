@@ -5445,7 +5445,7 @@ function $c_Linfo_kwarc_p_GlobalEnvironment(voc) {
   this.Linfo_kwarc_p_GlobalEnvironment__f_voc = null;
   this.Linfo_kwarc_p_GlobalEnvironment__f_regions = null;
   this.Linfo_kwarc_p_GlobalEnvironment__f_voc = voc;
-  var array = [new $c_Linfo_kwarc_p_RegionalEnvironment("toplevel", $m_s_None$(), new $c_Linfo_kwarc_p_LocalEnvironment($m_sci_Nil$()), false)];
+  var array = [new $c_Linfo_kwarc_p_RegionalEnvironment("toplevel", $m_s_None$(), new $c_Linfo_kwarc_p_LocalEnvironment($m_sci_Nil$()), $m_s_None$())];
   var elems = $ct_sjsr_WrappedVarArgs__sjs_js_Array__(new $c_sjsr_WrappedVarArgs(), array);
   this.Linfo_kwarc_p_GlobalEnvironment__f_regions = $m_sci_Nil$().prependedAll__sc_IterableOnce__sci_List(elems);
 }
@@ -5456,99 +5456,64 @@ function $h_Linfo_kwarc_p_GlobalEnvironment() {
 }
 $h_Linfo_kwarc_p_GlobalEnvironment.prototype = $c_Linfo_kwarc_p_GlobalEnvironment.prototype;
 $c_Linfo_kwarc_p_GlobalEnvironment.prototype.lookupLocalO__T__s_Option = (function(n) {
-  var rs = this.Linfo_kwarc_p_GlobalEnvironment__f_regions;
-  while (true) {
-    var this$1 = $n(rs);
-    if ((!this$1.isEmpty__Z())) {
-      var this$2 = $n($n($as_Linfo_kwarc_p_RegionalEnvironment($n(rs).head__O())).Linfo_kwarc_p_RegionalEnvironment__f_local);
-      var x1 = $f_Linfo_kwarc_p_MutableExpressionStore__getO__T__s_Option(this$2, n);
-      if ((x1 instanceof $c_s_Some)) {
-        var x2 = $as_s_Some(x1);
-        var v = $as_Linfo_kwarc_p_MutableExpression($n(x2).s_Some__f_value);
-        return new $c_s_Some($n(v).Linfo_kwarc_p_MutableExpression__f_value);
-      } else {
-        var x = $m_s_None$();
-        if ((x === x1)) {
-          if ($n($as_Linfo_kwarc_p_RegionalEnvironment($n(rs).head__O())).Linfo_kwarc_p_RegionalEnvironment__f_transparent) {
-            rs = $as_sci_List($n(rs).tail__O());
-          } else {
-            rs = $m_sci_Nil$();
-          }
-        } else {
-          throw new $c_s_MatchError(x1);
-        }
-      }
-    } else {
-      break;
-    }
+  var this$1 = $n($n($as_Linfo_kwarc_p_RegionalEnvironment($n(this.Linfo_kwarc_p_GlobalEnvironment__f_regions).head__O())).Linfo_kwarc_p_RegionalEnvironment__f_local);
+  var this$2 = $n($f_Linfo_kwarc_p_MutableExpressionStore__getO__T__s_Option(this$1, n));
+  if (this$2.isEmpty__Z()) {
+    return $m_s_None$();
+  } else {
+    var arg1 = this$2.get__O();
+    var x$3 = $as_Linfo_kwarc_p_MutableExpression(arg1);
+    return new $c_s_Some($n(x$3).Linfo_kwarc_p_MutableExpression__f_value);
   }
-  return $m_s_None$();
 });
 $c_Linfo_kwarc_p_GlobalEnvironment.prototype.lookupRegional__T__Linfo_kwarc_p_Expression = (function(n) {
-  var rs = this.Linfo_kwarc_p_GlobalEnvironment__f_regions;
-  while (true) {
-    var this$1 = $n(rs);
-    if ((!this$1.isEmpty__Z())) {
-      var x1 = $n($as_Linfo_kwarc_p_RegionalEnvironment($n(rs).head__O())).Linfo_kwarc_p_RegionalEnvironment__f_region;
-      var x = $m_s_None$();
-      if ((x === x1)) {
-        throw new $c_Linfo_kwarc_p_IError("no instance");
-      } else if ((x1 instanceof $c_s_Some)) {
-        var x3 = $as_s_Some(x1);
-        var inst = $as_Linfo_kwarc_p_Instance($n(x3).s_Some__f_value);
-        var this$2 = $n(inst);
-        var x1$2 = $f_Linfo_kwarc_p_MutableExpressionStore__getO__T__s_Option(this$2, n);
-        if ((x1$2 instanceof $c_s_Some)) {
-          var x2 = $as_s_Some(x1$2);
-          var v = $as_Linfo_kwarc_p_MutableExpression($n(x2).s_Some__f_value);
-          return $n(v).Linfo_kwarc_p_MutableExpression__f_value;
-        } else {
-          var x$3 = $m_s_None$();
-          if ((x$3 === x1$2)) {
-            var rc7 = false;
-            var x2$2 = null;
-            var qual$1 = $m_Linfo_kwarc_p_GlobalContext$().apply__Linfo_kwarc_p_Module__Linfo_kwarc_p_GlobalContext(this.Linfo_kwarc_p_GlobalEnvironment__f_voc);
-            var x$1 = $n(inst).Linfo_kwarc_p_Instance__f_theory;
-            $n(qual$1);
-            var x$2$2 = $m_s_None$();
-            var x1$3 = $n($n(qual$1).push__Linfo_kwarc_p_Theory__s_Option__Linfo_kwarc_p_GlobalContext(x$1, x$2$2)).lookupRegional__T__s_Option(n);
-            matchEnd8: {
-              if ((x1$3 instanceof $c_s_Some)) {
-                rc7 = true;
-                x2$2 = $as_s_Some(x1$3);
-                var ed = $as_Linfo_kwarc_p_NamedDeclaration($n(x2$2).s_Some__f_value);
-                if ((ed instanceof $c_Linfo_kwarc_p_ExprDecl)) {
-                  var x3$2 = $as_Linfo_kwarc_p_ExprDecl(ed);
-                  return $as_Linfo_kwarc_p_Expression($n($n(x3$2).Linfo_kwarc_p_ExprDecl__f_dfO).get__O());
-                }
-              }
-              if (rc7) {
-                throw new $c_Linfo_kwarc_p_IError("unexpected declaration");
-              }
-              var x$5 = $m_s_None$();
-              if ((x$5 === x1$3)) {
-                if ($n($as_Linfo_kwarc_p_RegionalEnvironment($n(rs).head__O())).Linfo_kwarc_p_RegionalEnvironment__f_transparent) {
-                  rs = $as_sci_List($n(rs).tail__O());
-                  break matchEnd8;
-                } else {
-                  rs = $m_sci_Nil$();
-                  break matchEnd8;
-                }
-              }
-              throw new $c_s_MatchError(x1$3);
-            }
-          } else {
-            throw new $c_s_MatchError(x1$2);
+  var x1 = $n($as_Linfo_kwarc_p_RegionalEnvironment($n(this.Linfo_kwarc_p_GlobalEnvironment__f_regions).head__O())).Linfo_kwarc_p_RegionalEnvironment__f_region;
+  var x = $m_s_None$();
+  if ((x === x1)) {
+    throw new $c_Linfo_kwarc_p_IError("no instance");
+  } else if ((x1 instanceof $c_s_Some)) {
+    var x3 = $as_s_Some(x1);
+    var inst = $as_Linfo_kwarc_p_Instance($n(x3).s_Some__f_value);
+    var this$1 = $n(inst);
+    var x1$2 = $f_Linfo_kwarc_p_MutableExpressionStore__getO__T__s_Option(this$1, n);
+    if ((x1$2 instanceof $c_s_Some)) {
+      var x2 = $as_s_Some(x1$2);
+      var v = $as_Linfo_kwarc_p_MutableExpression($n(x2).s_Some__f_value);
+      return $n(v).Linfo_kwarc_p_MutableExpression__f_value;
+    } else {
+      var x$3 = $m_s_None$();
+      if ((x$3 === x1$2)) {
+        var rc8 = false;
+        var x2$2 = null;
+        var qual$1 = $m_Linfo_kwarc_p_GlobalContext$().apply__Linfo_kwarc_p_Module__Linfo_kwarc_p_GlobalContext(this.Linfo_kwarc_p_GlobalEnvironment__f_voc);
+        var x$1 = $n(inst).Linfo_kwarc_p_Instance__f_theory;
+        $n(qual$1);
+        var x$2$2 = $m_s_None$();
+        var x1$3 = $n($n(qual$1).push__Linfo_kwarc_p_Theory__s_Option__Linfo_kwarc_p_GlobalContext(x$1, x$2$2)).lookupRegional__T__s_Option(n);
+        if ((x1$3 instanceof $c_s_Some)) {
+          rc8 = true;
+          x2$2 = $as_s_Some(x1$3);
+          var ed = $as_Linfo_kwarc_p_NamedDeclaration($n(x2$2).s_Some__f_value);
+          if ((ed instanceof $c_Linfo_kwarc_p_ExprDecl)) {
+            var x3$2 = $as_Linfo_kwarc_p_ExprDecl(ed);
+            return $as_Linfo_kwarc_p_Expression($n($n(x3$2).Linfo_kwarc_p_ExprDecl__f_dfO).get__O());
           }
         }
+        if (rc8) {
+          throw new $c_Linfo_kwarc_p_IError("unexpected declaration");
+        }
+        var x$5 = $m_s_None$();
+        if ((x$5 === x1$3)) {
+          throw new $c_Linfo_kwarc_p_IError("unknown declaration");
+        }
+        throw new $c_s_MatchError(x1$3);
       } else {
-        throw new $c_s_MatchError(x1);
+        throw new $c_s_MatchError(x1$2);
       }
-    } else {
-      break;
     }
+  } else {
+    throw new $c_s_MatchError(x1);
   }
-  throw new $c_Linfo_kwarc_p_IError("unknown field");
 });
 var $d_Linfo_kwarc_p_GlobalEnvironment = new $TypeData().initClass($c_Linfo_kwarc_p_GlobalEnvironment, "info.kwarc.p.GlobalEnvironment", ({
   Linfo_kwarc_p_GlobalEnvironment: 1
@@ -6250,9 +6215,9 @@ function $p_Linfo_kwarc_p_Interpreter__idemp$1__sci_List__Z($thiz, es) {
 }
 function $p_Linfo_kwarc_p_Interpreter__comm$1__sci_List__Z($thiz, es) {
   var this$2 = $n(es);
-  var f = new $c_sjsr_AnonFunction1(((x$5$2) => {
-    var x$5 = $as_Linfo_kwarc_p_Expression(x$5$2);
-    return $n(x$5).hashCode__I();
+  var f = new $c_sjsr_AnonFunction1(((x$6$2) => {
+    var x$6 = $as_Linfo_kwarc_p_Expression(x$6$2);
+    return $n(x$6).hashCode__I();
   }));
   var ord = $m_s_math_Ordering$Int$();
   var x = $f_sc_SeqOps__sortBy__F1__s_math_Ordering__O(this$2, f, ord);
@@ -6368,9 +6333,18 @@ $c_Linfo_kwarc_p_Interpreter.prototype.interpretExpression__Linfo_kwarc_p_Expres
     }
     if ((exp instanceof $c_Linfo_kwarc_p_This)) {
       var x6 = $as_Linfo_kwarc_p_This(exp);
-      var l = $n(x6).Linfo_kwarc_p_This__f_level;
-      var this$4 = $n($n(this.Linfo_kwarc_p_Interpreter__f_env).Linfo_kwarc_p_GlobalEnvironment__f_regions);
-      var this$5 = $n($n($as_Linfo_kwarc_p_RegionalEnvironment($f_sc_LinearSeqOps__apply__I__O(this$4, l))).Linfo_kwarc_p_RegionalEnvironment__f_region);
+      var lev = $n(x6).Linfo_kwarc_p_This__f_level;
+      var r = $as_Linfo_kwarc_p_RegionalEnvironment($n($n(this.Linfo_kwarc_p_Interpreter__f_env).Linfo_kwarc_p_GlobalEnvironment__f_regions).head__O());
+      var l = lev;
+      while ((l > 1)) {
+        var this$4 = $n($n($as_Linfo_kwarc_p_RegionalEnvironment($n($n(this.Linfo_kwarc_p_Interpreter__f_env).Linfo_kwarc_p_GlobalEnvironment__f_regions).head__O())).Linfo_kwarc_p_RegionalEnvironment__f_parent);
+        if (this$4.isEmpty__Z()) {
+          this.fail__T__Linfo_kwarc_p_SyntaxFragment__E("no parent", $as_Linfo_kwarc_p_SyntaxFragment(exp));
+        }
+        r = $as_Linfo_kwarc_p_RegionalEnvironment(this$4.get__O());
+        l = (((-1) + l) | 0);
+      }
+      var this$5 = $n($n(r).Linfo_kwarc_p_RegionalEnvironment__f_region);
       if (this$5.isEmpty__Z()) {
         this.fail__T__Linfo_kwarc_p_SyntaxFragment__E("no owner", $as_Linfo_kwarc_p_SyntaxFragment(exp));
       }
@@ -6447,8 +6421,9 @@ $c_Linfo_kwarc_p_Interpreter.prototype.interpretExpression__Linfo_kwarc_p_Expres
       runtimeInst.Linfo_kwarc_p_Instance__f_fields = $m_sci_Nil$();
       var initDecls = $n($n(x16).Linfo_kwarc_p_Instance__f_theory).Linfo_kwarc_p_Theory__f_decls;
       var x$4$2 = new $c_s_Some(runtimeInst);
+      var x$5$2 = new $c_s_Some($as_Linfo_kwarc_p_RegionalEnvironment($n($n(this.Linfo_kwarc_p_Interpreter__f_env).Linfo_kwarc_p_GlobalEnvironment__f_regions).head__O()));
       var x$6$2 = new $c_Linfo_kwarc_p_LocalEnvironment($m_sci_Nil$());
-      var re = new $c_Linfo_kwarc_p_RegionalEnvironment("new instance", x$4$2, x$6$2, true);
+      var re = new $c_Linfo_kwarc_p_RegionalEnvironment("new instance", x$4$2, x$6$2, x$5$2);
       var array = [new $c_Linfo_kwarc_p_Interpreter$InterpretationInput$1(this, initDecls, $m_s_None$())];
       var elems = $ct_sjsr_WrappedVarArgs__sjs_js_Array__(new $c_sjsr_WrappedVarArgs(), array);
       var elem = $m_sci_Nil$().prependedAll__sc_IterableOnce__sci_List(elems);
@@ -6463,10 +6438,10 @@ $c_Linfo_kwarc_p_Interpreter.prototype.interpretExpression__Linfo_kwarc_p_Expres
           if ((!this$18.isEmpty__Z())) {
             var x1 = $as_sci_List(elem$1);
             matchEnd7: {
-              var x$3$1___1;
-              var x$3$1___2;
-              var x$3$1___3;
-              var x$3$1___4;
+              var x$4___1;
+              var x$4___2;
+              var x$4___3;
+              var x$4___4;
               if ((x1 instanceof $c_sci_$colon$colon)) {
                 var x2$1 = $as_sci_$colon$colon(x1);
                 var p3 = $as_Linfo_kwarc_p_Interpreter$InterpretationInput$1($n(x2$1).sci_$colon$colon__f_head);
@@ -6478,20 +6453,20 @@ $c_Linfo_kwarc_p_Interpreter.prototype.interpretExpression__Linfo_kwarc_p_Expres
                     var x5$1 = $as_sci_$colon$colon(p4);
                     var d$1 = $as_Linfo_kwarc_p_Declaration($n(x5$1).sci_$colon$colon__f_head);
                     var ds = $n(x5$1).sci_$colon$colon__f_next;
-                    var x$3$1___1 = d$1;
-                    var x$3$1___2 = ds;
-                    var x$3$1___3 = inclO;
-                    var x$3$1___4 = tail;
+                    var x$4___1 = d$1;
+                    var x$4___2 = ds;
+                    var x$4___3 = inclO;
+                    var x$4___4 = tail;
                     break matchEnd7;
                   }
                 }
               }
               throw new $c_s_MatchError(x1);
             }
-            var d$2 = $as_Linfo_kwarc_p_Declaration(x$3$1___1);
-            var ds$2 = $as_sci_List(x$3$1___2);
-            var inclO$2 = $as_s_Option(x$3$1___3);
-            var tail$2 = $as_sci_List(x$3$1___4);
+            var d$2 = $as_Linfo_kwarc_p_Declaration(x$4___1);
+            var ds$2 = $as_sci_List(x$4___2);
+            var inclO$2 = $as_s_Option(x$4___3);
+            var tail$2 = $as_sci_List(x$4___4);
             if ($n(ds$2).isEmpty__Z()) {
               elem$1 = tail$2;
             } else {
@@ -6594,7 +6569,11 @@ $c_Linfo_kwarc_p_Interpreter.prototype.interpretExpression__Linfo_kwarc_p_Expres
       if ((ownI instanceof $c_Linfo_kwarc_p_Instance)) {
         var x2$3 = $as_Linfo_kwarc_p_Instance(ownI);
         if ($n(x2$3).isRuntime__Z()) {
-          var fr = new $c_Linfo_kwarc_p_RegionalEnvironment($n(e).toString__T(), new $c_s_Some(x2$3), new $c_Linfo_kwarc_p_LocalEnvironment($m_sci_Nil$()), false);
+          var x$10 = $n(e).toString__T();
+          var x$11 = new $c_s_Some(x2$3);
+          var x$12 = $m_s_None$();
+          var x$13 = new $c_Linfo_kwarc_p_LocalEnvironment($m_sci_Nil$());
+          var fr = new $c_Linfo_kwarc_p_RegionalEnvironment(x$10, x$11, x$13, x$12);
           return this.interpretExpressionInFrame__Linfo_kwarc_p_RegionalEnvironment__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Expression(fr, e);
         }
       }
@@ -6678,9 +6657,9 @@ $c_Linfo_kwarc_p_Interpreter.prototype.interpretExpression__Linfo_kwarc_p_Expres
     if ((exp instanceof $c_Linfo_kwarc_p_For)) {
       var x23 = $as_Linfo_kwarc_p_For(exp);
       var vd = $n(x23).Linfo_kwarc_p_For__f_vd;
-      var r = $n(x23).Linfo_kwarc_p_For__f_range;
+      var r$2 = $n(x23).Linfo_kwarc_p_For__f_range;
       var b$2 = $n(x23).Linfo_kwarc_p_For__f_body;
-      var rI = this.interpretExpression__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Expression(r);
+      var rI = this.interpretExpression__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Expression(r$2);
       if ((rI instanceof $c_Linfo_kwarc_p_CollectionValue)) {
         var x2$7 = $as_Linfo_kwarc_p_CollectionValue(rI);
         var vs = $n(x2$7).Linfo_kwarc_p_CollectionValue__f_elems;
@@ -6793,24 +6772,24 @@ $c_Linfo_kwarc_p_Interpreter.prototype.interpretExpression__Linfo_kwarc_p_Expres
         var x3$4 = $as_Linfo_kwarc_p_Lambda(fI);
         var namedFunction = ((f$1 instanceof $c_Linfo_kwarc_p_OpenRef) || ((f$1 instanceof $c_Linfo_kwarc_p_ClosedRef) || (f$1 instanceof $c_Linfo_kwarc_p_VarRef)));
         try {
-          var r$2 = this.applyFunction__T__s_Option__Linfo_kwarc_p_Lambda__sci_List__Linfo_kwarc_p_Expression($n(f$1).toString__T(), $m_s_None$(), x3$4, asI);
+          var r$3 = this.applyFunction__T__s_Option__Linfo_kwarc_p_Lambda__sci_List__Linfo_kwarc_p_Expression($n(f$1).toString__T(), $m_s_None$(), x3$4, asI);
         } catch (e$5) {
           var e$6 = ((e$5 instanceof $c_jl_Throwable) ? e$5 : new $c_sjs_js_JavaScriptException(e$5));
           matchEnd12: {
-            var r$2;
+            var r$3;
             if ((e$6 instanceof $c_Linfo_kwarc_p_ReturnFound)) {
               var x7$2 = $as_Linfo_kwarc_p_ReturnFound(e$6);
               var e$7 = $n(x7$2).Linfo_kwarc_p_ReturnFound__f_e;
               var p8 = $n(x7$2).Linfo_kwarc_p_ReturnFound__f_thrw;
               if (((p8 === false) && namedFunction)) {
-                var r$2 = e$7;
+                var r$3 = e$7;
                 break matchEnd12;
               }
             }
             throw ((e$6 instanceof $c_sjs_js_JavaScriptException) ? e$6.sjs_js_JavaScriptException__f_exception : $n(e$6));
           }
         }
-        return r$2;
+        return r$3;
       } else if ((fI instanceof $c_Linfo_kwarc_p_OpenRef)) {
         var x4$2 = $as_Linfo_kwarc_p_OpenRef(fI);
         return new $c_Linfo_kwarc_p_Application(x4$2, asI);
@@ -7080,7 +7059,7 @@ $c_Linfo_kwarc_p_Interpreter.prototype.applyFunction__T__s_Option__Linfo_kwarc_p
     var fes = h;
   }
   var this$5 = $n($n(lam).Linfo_kwarc_p_Lambda__f_frame);
-  var fr = new $c_Linfo_kwarc_p_RegionalEnvironment(name, owner, new $c_Linfo_kwarc_p_LocalEnvironment($n($n(this$5.Linfo_kwarc_p_RegionalEnvironment__f_local).Linfo_kwarc_p_LocalEnvironment__f_fields).$colon$colon$colon__sci_List__sci_List(fes)), false);
+  var fr = new $c_Linfo_kwarc_p_RegionalEnvironment(name, owner, new $c_Linfo_kwarc_p_LocalEnvironment($n($n(this$5.Linfo_kwarc_p_RegionalEnvironment__f_local).Linfo_kwarc_p_LocalEnvironment__f_fields).$colon$colon$colon__sci_List__sci_List(fes)), $n($n(lam).Linfo_kwarc_p_Lambda__f_frame).Linfo_kwarc_p_RegionalEnvironment__f_parent);
   return this.interpretExpressionInFrame__Linfo_kwarc_p_RegionalEnvironment__Linfo_kwarc_p_Expression__Linfo_kwarc_p_Expression(fr, $n(lam).Linfo_kwarc_p_Lambda__f_body);
 });
 function $as_Linfo_kwarc_p_Interpreter(obj) {
@@ -22192,6 +22171,9 @@ var $d_Linfo_kwarc_p_Checker$PatternChecker$ = new $TypeData().initClass($c_Linf
   Linfo_kwarc_p_StatelessTraverser: 1,
   Linfo_kwarc_p_Traverser: 1
 }));
+function $p_Linfo_kwarc_p_Checker$PurityChecker$__isNot$1__T__Linfo_kwarc_p_Expression__E($thiz, m, e$2) {
+  $n($thiz.Linfo_kwarc_p_Checker$PurityChecker$__f_$outer).info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E(("must be " + m), $as_Linfo_kwarc_p_SyntaxFragment(e$2));
+}
 /** @constructor */
 function $c_Linfo_kwarc_p_Checker$PurityChecker$(outer) {
   this.Linfo_kwarc_p_Checker$PurityChecker$__f_$outer = null;
@@ -22205,11 +22187,9 @@ function $h_Linfo_kwarc_p_Checker$PurityChecker$() {
 }
 $h_Linfo_kwarc_p_Checker$PurityChecker$.prototype = $c_Linfo_kwarc_p_Checker$PurityChecker$.prototype;
 $c_Linfo_kwarc_p_Checker$PurityChecker$.prototype.apply__Linfo_kwarc_p_Expression__Linfo_kwarc_p_GlobalContext__jl_Void__Linfo_kwarc_p_Expression = (function(e, gc, a) {
-  if ((e instanceof $c_Linfo_kwarc_p_OpenRef)) {
-    var x2 = $as_Linfo_kwarc_p_OpenRef(e);
-    var p = $n(x2).Linfo_kwarc_p_OpenRef__f_path;
-    var this$1 = $n(gc);
-    var x1$2 = $n(this$1.Linfo_kwarc_p_GlobalContext__f_voc).lookupPath__Linfo_kwarc_p_Path__s_Option(p);
+  if ($is_Linfo_kwarc_p_Ref(e)) {
+    var x2 = $as_Linfo_kwarc_p_Ref(e);
+    var x1$2 = $n(gc).lookupRef__Linfo_kwarc_p_Ref__s_Option(x2);
     matchEnd5: {
       if ((x1$2 instanceof $c_s_Some)) {
         var x2$2 = $as_s_Some(x1$2);
@@ -22217,7 +22197,7 @@ $c_Linfo_kwarc_p_Checker$PurityChecker$.prototype.apply__Linfo_kwarc_p_Expressio
         if ((ed instanceof $c_Linfo_kwarc_p_ExprDecl)) {
           var x3 = $as_Linfo_kwarc_p_ExprDecl(ed);
           if ($n(x3).Linfo_kwarc_p_ExprDecl__f_mutable) {
-            $n(this.Linfo_kwarc_p_Checker$PurityChecker$__f_$outer).info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("state-dependent", gc);
+            $p_Linfo_kwarc_p_Checker$PurityChecker$__isNot$1__T__Linfo_kwarc_p_Expression__E(this, "deterministic", e);
           } else {
             (void 0);
           }
@@ -22225,41 +22205,22 @@ $c_Linfo_kwarc_p_Checker$PurityChecker$.prototype.apply__Linfo_kwarc_p_Expressio
         }
       }
     }
-  } else if ((e instanceof $c_Linfo_kwarc_p_ClosedRef)) {
-    var x3$2 = $as_Linfo_kwarc_p_ClosedRef(e);
-    var n = $n(x3$2).Linfo_kwarc_p_ClosedRef__f_n;
-    var x1$3 = $n(gc).lookupRegional__T__s_Option(n);
-    matchEnd5$2: {
-      if ((x1$3 instanceof $c_s_Some)) {
-        var x2$3 = $as_s_Some(x1$3);
-        var ed$2 = $as_Linfo_kwarc_p_NamedDeclaration($n(x2$3).s_Some__f_value);
-        if ((ed$2 instanceof $c_Linfo_kwarc_p_ExprDecl)) {
-          var x3$3 = $as_Linfo_kwarc_p_ExprDecl(ed$2);
-          if ($n(x3$3).Linfo_kwarc_p_ExprDecl__f_mutable) {
-            $n(this.Linfo_kwarc_p_Checker$PurityChecker$__f_$outer).info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("state-dependent", gc);
-          } else {
-            (void 0);
-          }
-          break matchEnd5$2;
-        }
-      }
-    }
   } else if ((e instanceof $c_Linfo_kwarc_p_VarRef)) {
-    var x4 = $as_Linfo_kwarc_p_VarRef(e);
-    var n$2 = $n(x4).Linfo_kwarc_p_VarRef__f_name;
-    var this$2 = $n(gc);
-    if ($n($as_Linfo_kwarc_p_VarDecl($f_Linfo_kwarc_p_HasChildren__lookup__T__Linfo_kwarc_p_MaybeNamed(this$2, n$2))).Linfo_kwarc_p_VarDecl__f_mutable) {
-      $n(this.Linfo_kwarc_p_Checker$PurityChecker$__f_$outer).info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("state-dependent", gc);
+    var x3$2 = $as_Linfo_kwarc_p_VarRef(e);
+    var n = $n(x3$2).Linfo_kwarc_p_VarRef__f_name;
+    var this$1 = $n(gc);
+    if ($n($as_Linfo_kwarc_p_VarDecl($f_Linfo_kwarc_p_HasChildren__lookup__T__Linfo_kwarc_p_MaybeNamed(this$1, n))).Linfo_kwarc_p_VarDecl__f_mutable) {
+      $p_Linfo_kwarc_p_Checker$PurityChecker$__isNot$1__T__Linfo_kwarc_p_Expression__E(this, "determinisitic", e);
     }
   } else if ((e instanceof $c_Linfo_kwarc_p_Instance)) {
-    $n(this.Linfo_kwarc_p_Checker$PurityChecker$__f_$outer).info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("state-dependent", gc);
+    $p_Linfo_kwarc_p_Checker$PurityChecker$__isNot$1__T__Linfo_kwarc_p_Expression__E(this, "deterministic", e);
   } else if ((e instanceof $c_Linfo_kwarc_p_Assign)) {
-    $n(this.Linfo_kwarc_p_Checker$PurityChecker$__f_$outer).info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("state-changing", gc);
+    $p_Linfo_kwarc_p_Checker$PurityChecker$__isNot$1__T__Linfo_kwarc_p_Expression__E(this, "effect-free", e);
   } else if ((e instanceof $c_Linfo_kwarc_p_While)) {
-    $n(this.Linfo_kwarc_p_Checker$PurityChecker$__f_$outer).info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("potentially non-terminating", gc);
+    $p_Linfo_kwarc_p_Checker$PurityChecker$__isNot$1__T__Linfo_kwarc_p_Expression__E(this, "total", e);
   } else if ((e instanceof $c_Linfo_kwarc_p_Return)) {
-    $n(this.Linfo_kwarc_p_Checker$PurityChecker$__f_$outer).info$kwarc$p$Checker$$fail__T__Linfo_kwarc_p_SyntaxFragment__E("potentially non-value", gc);
-  } else {
+    $p_Linfo_kwarc_p_Checker$PurityChecker$__isNot$1__T__Linfo_kwarc_p_Expression__E(this, "total", e);
+  } else if ((!(e instanceof $c_Linfo_kwarc_p_Lambda))) {
     this.applyDefault__Linfo_kwarc_p_Expression__Linfo_kwarc_p_GlobalContext__O__Linfo_kwarc_p_Expression(e, gc, a);
   }
   return e;
@@ -25423,16 +25384,16 @@ var $d_Linfo_kwarc_p_RegionalContextFrame = new $TypeData().initClass($c_Linfo_k
   Ljava_io_Serializable: 1
 }));
 /** @constructor */
-function $c_Linfo_kwarc_p_RegionalEnvironment(name, region, local, transparent) {
+function $c_Linfo_kwarc_p_RegionalEnvironment(name, region, local, parent) {
   this.Linfo_kwarc_p_RegionalEnvironment__f_name = null;
   this.Linfo_kwarc_p_RegionalEnvironment__f_region = null;
   this.Linfo_kwarc_p_RegionalEnvironment__f_local = null;
-  this.Linfo_kwarc_p_RegionalEnvironment__f_transparent = false;
+  this.Linfo_kwarc_p_RegionalEnvironment__f_parent = null;
   this.Linfo_kwarc_p_RegionalEnvironment__f_addedInBlock = null;
   this.Linfo_kwarc_p_RegionalEnvironment__f_name = name;
   this.Linfo_kwarc_p_RegionalEnvironment__f_region = region;
   this.Linfo_kwarc_p_RegionalEnvironment__f_local = local;
-  this.Linfo_kwarc_p_RegionalEnvironment__f_transparent = transparent;
+  this.Linfo_kwarc_p_RegionalEnvironment__f_parent = parent;
   this.Linfo_kwarc_p_RegionalEnvironment__f_addedInBlock = $m_sci_Nil$();
 }
 $c_Linfo_kwarc_p_RegionalEnvironment.prototype = new $h_O();
@@ -25477,7 +25438,7 @@ $c_Linfo_kwarc_p_RegionalEnvironment.prototype.productElement__I__O = (function(
       break;
     }
     case 3: {
-      return this.Linfo_kwarc_p_RegionalEnvironment__f_transparent;
+      return this.Linfo_kwarc_p_RegionalEnvironment__f_parent;
       break;
     }
     default: {
@@ -25489,40 +25450,28 @@ $c_Linfo_kwarc_p_RegionalEnvironment.prototype.productIterator__sc_Iterator = (f
   return new $c_sr_ScalaRunTime$$anon$1(this);
 });
 $c_Linfo_kwarc_p_RegionalEnvironment.prototype.hashCode__I = (function() {
-  var acc = (-889275714);
-  var hash = acc;
-  var data = $f_T__hashCode__I("RegionalEnvironment");
-  acc = $m_sr_Statics$().mix__I__I__I(hash, data);
-  var hash$1 = acc;
-  var x = this.Linfo_kwarc_p_RegionalEnvironment__f_name;
-  var data$1 = $m_sr_Statics$().anyHash__O__I(x);
-  acc = $m_sr_Statics$().mix__I__I__I(hash$1, data$1);
-  var hash$2 = acc;
-  var x$1 = this.Linfo_kwarc_p_RegionalEnvironment__f_region;
-  var data$2 = $m_sr_Statics$().anyHash__O__I(x$1);
-  acc = $m_sr_Statics$().mix__I__I__I(hash$2, data$2);
-  var hash$3 = acc;
-  var x$2 = this.Linfo_kwarc_p_RegionalEnvironment__f_local;
-  var data$3 = $m_sr_Statics$().anyHash__O__I(x$2);
-  acc = $m_sr_Statics$().mix__I__I__I(hash$3, data$3);
-  var hash$4 = acc;
-  var data$4 = (this.Linfo_kwarc_p_RegionalEnvironment__f_transparent ? 1231 : 1237);
-  acc = $m_sr_Statics$().mix__I__I__I(hash$4, data$4);
-  var hash$5 = acc;
-  return $m_sr_Statics$().finalizeHash__I__I__I(hash$5, 4);
+  var this$2 = $m_s_util_hashing_MurmurHash3$();
+  return this$2.productHash__s_Product__I__Z__I(this, (-889275714), false);
 });
 $c_Linfo_kwarc_p_RegionalEnvironment.prototype.equals__O__Z = (function(x$1) {
   if ((this === x$1)) {
     return true;
   } else if ((x$1 instanceof $c_Linfo_kwarc_p_RegionalEnvironment)) {
     var RegionalEnvironment$1 = $as_Linfo_kwarc_p_RegionalEnvironment(x$1);
-    if (((this.Linfo_kwarc_p_RegionalEnvironment__f_transparent === $n(RegionalEnvironment$1).Linfo_kwarc_p_RegionalEnvironment__f_transparent) && (this.Linfo_kwarc_p_RegionalEnvironment__f_name === $n(RegionalEnvironment$1).Linfo_kwarc_p_RegionalEnvironment__f_name))) {
+    if ((this.Linfo_kwarc_p_RegionalEnvironment__f_name === $n(RegionalEnvironment$1).Linfo_kwarc_p_RegionalEnvironment__f_name)) {
       var x = this.Linfo_kwarc_p_RegionalEnvironment__f_region;
       var x$2 = $n(RegionalEnvironment$1).Linfo_kwarc_p_RegionalEnvironment__f_region;
-      if (((x === null) ? (x$2 === null) : $n(x).equals__O__Z(x$2))) {
-        var x$3 = this.Linfo_kwarc_p_RegionalEnvironment__f_local;
-        var x$4 = $n(RegionalEnvironment$1).Linfo_kwarc_p_RegionalEnvironment__f_local;
-        if (((x$3 === null) ? (x$4 === null) : $n(x$3).equals__O__Z(x$4))) {
+      var $x_1 = ((x === null) ? (x$2 === null) : $n(x).equals__O__Z(x$2));
+    } else {
+      var $x_1 = false;
+    }
+    if ($x_1) {
+      var x$3 = this.Linfo_kwarc_p_RegionalEnvironment__f_local;
+      var x$4 = $n(RegionalEnvironment$1).Linfo_kwarc_p_RegionalEnvironment__f_local;
+      if (((x$3 === null) ? (x$4 === null) : $n(x$3).equals__O__Z(x$4))) {
+        var x$5 = this.Linfo_kwarc_p_RegionalEnvironment__f_parent;
+        var x$6 = $n(RegionalEnvironment$1).Linfo_kwarc_p_RegionalEnvironment__f_parent;
+        if (((x$5 === null) ? (x$6 === null) : $n(x$5).equals__O__Z(x$6))) {
           $n(RegionalEnvironment$1);
           return true;
         } else {

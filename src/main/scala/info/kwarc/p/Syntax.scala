@@ -769,10 +769,12 @@ sealed trait AtomicDeclaration extends Declaration {
   def children = tp :: dfO.toList
 }
 
+sealed abstract class TheoryExpr
+case class OpenRef(p: Path)
+case class OwnedTheory(owner: Expression, thy: TheoryExpr)
+
 /** include within a module */
-case class Include(dom: Path, dfO: Option[Expression], realize: Boolean)
-    extends UnnamedDeclaration
-    with AtomicDeclaration {
+case class Include(dom: TheoryExpr, dfO: Option[Expression], realize: Boolean) extends UnnamedDeclaration with AtomicDeclaration {
   def theory = PhysicalTheory(dom)
   def tp = ClassType(theory)
   override def toString = {
