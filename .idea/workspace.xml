@@ -104,7 +104,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Syntax.scala</url>
-          <line>1820</line>
+          <line>1819</line>
           <option name="timeStamp" value="84" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
@@ -114,7 +114,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Syntax.scala</url>
-          <line>519</line>
+          <line>520</line>
           <option name="timeStamp" value="107" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
@@ -124,7 +124,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Syntax.scala</url>
-          <line>516</line>
+          <line>517</line>
           <option name="timeStamp" value="138" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">

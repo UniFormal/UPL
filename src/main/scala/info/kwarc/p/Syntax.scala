@@ -440,7 +440,8 @@ case class RegionalContextFrame(region: RegionalContext, transparent: Boolean, p
   * - anonymous: theories used to create new instances and class types
   * - referenced: owned and quoted objects (owner is stored in regional context)
   * The top element is the current region and provides the semantics of regional identifiers.
-  * Physical and anonymous regions are transparent: they allow accessing the identifiers of the next region.
+  * Physical and anonymous regions are transparent: They allow accessing their parent through "..".
+  * Referenced regions block the visibility of all identifiers of the parent.
   */
 case class GlobalContext private (voc: Module, regions: List[RegionalContextFrame]) extends Context[GlobalContext] {
   def label = "global"
@@ -769,12 +770,8 @@ sealed trait AtomicDeclaration extends Declaration {
   def children = tp :: dfO.toList
 }
 
-sealed abstract class TheoryExpr
-case class OpenRef(p: Path)
-case class OwnedTheory(owner: Expression, thy: TheoryExpr)
-
 /** include within a module */
-case class Include(dom: TheoryExpr, dfO: Option[Expression], realize: Boolean) extends UnnamedDeclaration with AtomicDeclaration {
+case class Include(dom: Path, dfO: Option[Expression], realize: Boolean) extends UnnamedDeclaration with AtomicDeclaration {
   def theory = PhysicalTheory(dom)
   def tp = ClassType(theory)
   override def toString = {
@@ -826,6 +823,8 @@ case class ExprDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Bo
 }
 
 // ***************** Theories **************************************
+
+case class TheoryExpr(owner: Expression, path: Path)
 
 /** theories are anonyomous modules */
 case class Theory(decls: List[Declaration]) extends SyntaxFragment {
