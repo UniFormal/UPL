@@ -89,7 +89,7 @@ object PContext {
 object Parser {
   def file(f: File,eh: ErrorHandler) = {
     val p = new Parser(f.toSourceOrigin, getFileContent(f), eh)
-    Vocabulary(p.parseDeclarations)
+    Vocabulary(p.parseAll(p.parseDeclarations))
   }
 
   def getFileContent(f: File) = {
@@ -99,12 +99,17 @@ object Parser {
 
   def text(so: SourceOrigin,s: String,eh: ErrorHandler) = {
     val p = new Parser(so,s,eh)
-    Vocabulary(p.parseDeclarations)
+    val ds = if (so.fragment != null) {
+      p.parseAll(p.parseExpressionOrDeclarations("_" + so.fragment.hashCode.abs))
+    } else {
+      p.parseAll(p.parseDeclarations)
+    }
+    Vocabulary(ds)
   }
 
-  def expression(origin: SourceOrigin,s: String,eh: ErrorHandler) = {
-    val p = new Parser(origin,s,eh)
-    p.parseExpression(PContext.empty)
+  def expression(so: SourceOrigin,s: String,eh: ErrorHandler) = {
+    val p = new Parser(so,s,eh)
+    p.parseAll(p.parseExpression(PContext.empty))
   }
 }
 
@@ -200,7 +205,11 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     throw Abort()
   }
 
-  def makeRef(from: Int) = Location(origin, from, index)
+  def makeRef(from: Int) = {
+    var to = index // the end of the source region (exclusive)
+    while (input(to-1).isWhitespace) to -= 1 // remove trailing whitespace from source region
+    Location(origin, from, to)
+  }
   def addRef[A<:SyntaxFragment](sf: => A): A = {
     trim
     val from = index
@@ -261,6 +270,13 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
   def skipT(s: String) = {skip(s); trim}
 
+  // check if input left after parsing
+  def parseAll[A](parse: => A) = {
+    val a = parse
+    if (!atEnd) reportError("expected end of input; found: " + input.substring(index))
+    a
+  }
+
   // whitespace-separated list with brackets
   def parseBracketedList[A](parse: => A, begin: String, end: String): List[A] = {
     skip(begin)
@@ -308,12 +324,34 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
 
   import Keywords._
+
+  /** check if a declaration follows */
+  def startsWithDeclaration = {
+    val backtrackPoint = index
+    trim
+    val isDecl = allDeclKeywords.exists(startsWith) || {
+      val n = parseName
+      trim
+      n.nonEmpty && (startsWith(":") || startsWith("="))
+    }
+    index = backtrackPoint
+    isDecl
+  }
+
+  def parseExpressionOrDeclarations(defaultName: String) = {
+    if (startsWithDeclaration) parseDeclarations
+    else {
+      val e = parseExpression(PContext.empty)
+      List(ExprDecl(defaultName,Type.unknown(),Some(e),false))
+    }
+  }
+
   def parseDeclaration: Declaration = addRef {
     if (startsWithAny(closedModule,openModule)) parseModule
     else if (startsWithAny(include,totalInclude)) parseInclude
     else if (startsWithS(typeDecl)) parseTypeDecl
     else if (startsWithS(mutableExprDecl)) parseExprDecl(true)
-    else if (!atEnd && next.isLetter) parseExprDecl(false)
+    else if (startsWithDeclaration) parseExprDecl(false)
     else fail("declaration expected")
   }
 
@@ -617,30 +655,19 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
             case ClosedRef(n) => Some(Path(List(n)))
             case _ => None
           }
-          var looksLikeInstanceOf = asPath(exp)
-          if (looksLikeInstanceOf.isDefined) {
-            // check if a declaration follows
-            val backtrackPoint = index
-            val isDecl = startsWith(typeDecl) || startsWith(mutableExprDecl) || {
-              parseName
-              trim
-              startsWith(":") || startsWith("=")
-            }
-            if (!isDecl) looksLikeInstanceOf = None
-            index = backtrackPoint
-          }
-          exp = looksLikeInstanceOf match {
-            case Some(p) =>
+          asPath(exp) match {
+            case Some(p) if startsWithDeclaration =>
               // p{decls}
               val ds = parseDeclarations
               val sds = ds.flatMap {
                 case sd: SymbolDeclaration => List(sd)
                 case _ => reportError("symbol declaration expected"); Nil
               }
-              Instance(ExtendedTheory(p,sds).copyFrom(exp))
-            case None =>
-              val e = parseExpression(ctxs.push()) // in e{q}, q is a closed expression in a different theory
-              OwnedExpr(exp,null,e)
+              exp = Instance(ExtendedTheory(p,sds).copyFrom(exp))
+            case _ =>
+              // in e{q}, q is a closed expression in a different theory
+              val e = parseExpression(ctxs.push())
+              exp = OwnedExpr(exp,null,e)
           }
           skip("}")
         } else if (startsWithS("°")) {
@@ -668,8 +695,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
             case e =>
               val vd = e match {
                 case vd: VarDecl => vd
-                case VarRef(n) => VarDecl(n,Type.unknown())
-                case ClosedRef(n) => VarDecl(n,Type.unknown())
+                case VarRef(n) => VarDecl(n,Type.unknown()).copyFrom(e)
+                case ClosedRef(n) => VarDecl(n,Type.unknown()).copyFrom(e)
                 case _ => return None
               }
               Some(List(vd))
@@ -882,4 +909,5 @@ object Keywords {
   val totalInclude = "realize"
   val mutableExprDecl = "mutable"
   val typeDecl = "type"
+  val allDeclKeywords = List(openModule,closedModule,include,totalInclude,mutableExprDecl,typeDecl)
 }

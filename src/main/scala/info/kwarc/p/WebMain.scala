@@ -14,10 +14,9 @@ object WebMain {
 
   def runIn(prog: Program, expS: String) = {
     val parser = new Parser(SourceOrigin("anonymous"),expS, ErrorThrower)
-    val mod = prog.toModule
     val exp = parser.parseExpression(PContext.empty)
-    val (expC,expI) = checker.checkAndInferExpression(GlobalContext(mod), exp)
-    val intp = new Interpreter(mod)
+    val (expC,expI) = checker.checkAndInferExpression(prog.voc.toGlobalContext, exp)
+    val intp = new Interpreter(prog.voc)
     intp.interpretExpression(expC)
   }
 

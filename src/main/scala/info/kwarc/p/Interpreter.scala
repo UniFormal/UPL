@@ -53,7 +53,7 @@ case class RegionalEnvironment(name: String, region: Option[Instance] = None, lo
   private var addedInBlock: List[Int] = Nil
 }
 
-class GlobalEnvironment(var voc: Module) {
+class GlobalEnvironment(var voc: Vocabulary) {
   var regions = List(RegionalEnvironment("toplevel"))
   def frame = regions.head
   def inFrame[A](f: RegionalEnvironment)(a: => A) = {
@@ -100,13 +100,13 @@ class GlobalEnvironment(var voc: Module) {
 
 object Interpreter {
   def run(p: Program) = {
-    val ip = new Interpreter(p.toModule)
+    val ip = new Interpreter(p.voc)
     val r = ip.interpretExpression(p.main)
     (ip,r)
   }
 }
 
-class Interpreter(vocInit: Module) {
+class Interpreter(vocInit: Vocabulary) {
   private val debug = false
   /** unexpected error, e.g., typing error in input or expression does not simplify into value */
   case class Error(cause: SyntaxFragment, stack: List[RegionalEnvironment], msg: String) extends SError(cause.loc, msg)
@@ -119,7 +119,7 @@ class Interpreter(vocInit: Module) {
 
   private val env = new GlobalEnvironment(vocInit)
   def voc = env.voc
-  private val globalContext = GlobalContext(voc)
+  private def globalContext = voc.toGlobalContext
   private def stack = env.regions
   private def frame = stack.head
 
@@ -148,7 +148,7 @@ class Interpreter(vocInit: Module) {
       case _: BaseValue => exp
       case _: BaseOperator => exp
       case OpenRef(p) =>
-        env.voc.lookupPath(p) match {
+        env.voc.toModule.lookupPath(p) match {
           case Some(sd: ExprDecl) => sd.dfO match {
             case None => exp // allow this as an abstract declaration in a module; all elimination forms below must remain uninterpreted
             case Some(v) => interpretExpression(v) //TODO this re-evaluates the definiens
@@ -231,7 +231,7 @@ class Interpreter(vocInit: Module) {
                   case _ => None
                 }
                 // append at the end so that constructor fields are executed before inherited fields
-                val mod = env.voc.lookupModule(incl.dom).getOrElse(fail("unknown module"))
+                val mod = env.voc.toModule.lookupModule(incl.dom).getOrElse(fail("unknown module"))
                 todo = todo ::: List(InterpretationInput(mod.decls, delegateO))
             }
           }

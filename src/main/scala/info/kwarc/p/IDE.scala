@@ -58,6 +58,7 @@ trait TextDocument extends js.Object {
   // using val resulted in receiving undefined fields from Javascript
   def fileName: String = js.native
   def uri: Uri = js.native
+  def languageId: String = js.native
   def isDirty: Boolean = js.native
   def getText(): String = js.native
   def positionAt(offset: Int): VSCode#Position = js.native
@@ -70,25 +71,35 @@ trait DiagnosticCollection extends js.Object {
 }
 
 @js.native
-trait Uri extends js.Object
+trait Uri extends js.Object {
+  def scheme: String = js.native
+  def path: String = js.native
+  def fragment: String = js.native
+}
 
 @JSExportTopLevel("VSCodeBridge")
 @JSExportAll
 class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
-
   import vs._
-
-  private def makeOrigin(d: TextDocument) = SourceOrigin(d.fileName)
 
   val proj = new Project(Nil,None)
 
-  def update(doc: TextDocument) = {
+  private def makeOrigin(d: TextDocument) = {
+    if (d.uri.scheme == "vscode-notebook-cell") {
+      SourceOrigin(d.fileName, d.uri.fragment)
+    } else {
+      SourceOrigin(d.fileName)
+    }
+  }
+
+  def update(doc: TextDocument): Unit = {
+    if (doc.languageId != "upl") return
     // println("parsing " + doc.fileName)
     val so = makeOrigin(doc)
     val txt = doc.getText()
     val txtU = if (doc.fileName.endsWith(".tex")) Tex.detexify(txt) else txt
     proj.update(so,txtU)
-    proj.check(so)
+    proj.check(so,false)
     val pe = proj.get(so)
     val diags = pe.errors.getErrors.map {e =>
       val rg = range(doc,e.loc)
@@ -192,33 +203,40 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
   def hover(doc: TextDocument,pos: Position): VSCode#Hover = reportExceptions {
     val so = makeOrigin(doc)
     val offset = doc.offsetAt(pos)
-    val defaultLoc = info.kwarc.p.Location(so,offset,offset)
+    val defaultLoc = info.kwarc.p.Location.single(so,offset)
+    var selection = false
     val loc = vs.window.activeTextEditor.selections.headOption match {
       case Some(s) =>
-        val sl = info.kwarc.p.Location(so,doc.offsetAt(s.start),doc.offsetAt(s.end))
-        if (sl contains defaultLoc) sl else defaultLoc
+        val sL = info.kwarc.p.Location(so,doc.offsetAt(s.start),doc.offsetAt(s.end))
+        if (sL contains defaultLoc) {selection = true; sL} else defaultLoc
       case None => defaultLoc
     }
     val (gc,sf) = proj.fragmentAt(loc).getOrElse(return null)
-    //return new Hover("line: " + pos.line + "; character: " + pos.character + "\n" + sf.toStringShort)
+    // return new Hover("line: " + pos.line + "; character: " + pos.character + "\n" + sf.toStringShort + " " + sf.loc)
     val hov = sf match {
       case r: Ref => gc.lookupRef(r).getOrElse(return null) match {
-        case ed: ExprDecl => ed.tp.toString
-        case td: TypeDecl => "type"
+        case sd: SymbolDeclaration => sd.toString
         case m: Module => "module"
       }
-      case e: Expression =>
-        val tp = new Checker(ErrorThrower).inferCheckedExpression(gc,e)
-        tp.toString
+      case VarRef(n) => gc.lookupLocal(n).get.toString
+      case vd: VarDecl => vd.toString
+      case bo: BaseOperator => bo.operator.symbol + ": " + bo.tp.toString
+      case e: Expression if selection =>
+        try {new Checker(ErrorThrower).inferCheckedExpression(gc,e).toString}
+        catch {case e: PError => "inference error: " + e.getMessage}
       case tp: Type => tp.toString
-      case _ => sf.toString
+      case _ => return null // sf.toString
     }
     new Hover(hov)
   }
 
-  def createInterpreter() = new Interpreter(proj.makeGlobalContext().voc)
-  def interpretExpression(ip: Interpreter, id: Int, input: String) = {
-    proj.replLine(ip, id, input)
+  def interpretCell(doc: TextDocument) = {
+    val so = makeOrigin(doc)
+    try {
+      proj.check(so,true).toString
+    } catch {
+      case e: PError => e.getMessage
+    }
   }
 
   @inline

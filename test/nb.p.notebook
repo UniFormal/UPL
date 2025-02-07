@@ -1,1 +1,1 @@
-[{"cell_type":"code","source":["1+1"]},{"cell_type":"code","source":["res0+1"]},{"cell_type":"code","source":["res0"]},{"cell_type":"code","source":["res0"]}]
+[{"cell_type":"markdown","source":["This is an example UPL notebook that can be opened in VSCode."]},{"cell_type":"markdown","source":["Cells can contain declarations"]},{"cell_type":"code","source":["x = 1"]},{"cell_type":"markdown","source":["... or expressions (in which case an identifier is generated from the cell id)"]},{"cell_type":"code","source":["x+1"]},{"cell_type":"code","source":["_1654871161 + 1"]}]

@@ -50,6 +50,8 @@ function activate(context) {
     }
   }, ['(']))
 
+  // notebooks
+
   var encoder = new TextEncoder();
   var decoder = new TextDecoder();
   push(vscode.workspace.registerNotebookSerializer('upl-notebook', {
@@ -75,21 +77,19 @@ function activate(context) {
       return encoder.encode(JSON.stringify(contents));
     }
   }))
+
   function notebookExecuteHandler(cells, notebook, controller) {
-    var ip = UPL.createInterpreter();
-    cells.forEach(element => function (element) {
-      var execution = controller.createNotebookCellExecution(element);
+    cells.forEach(function (cell) {
+      var execution = controller.createNotebookCellExecution(cell);
       execution.start(Date.now());
-      const text = element.document.getText();
-      var result = UPL.interpretExpression(ip, element.index, text);
-      var item = vscode.NotebookCellOutputItem.text(result);
-      execution.replaceOutput([new vscode.NotebookCellOutput([item])]);
+      var result = UPL.interpretCell(cell.document);
+      var output = vscode.NotebookCellOutputItem.text(result);
+      execution.replaceOutput([new vscode.NotebookCellOutput([output])]);
       execution.end(true, Date.now());
     });
   };
-  var controller = vscode.notebooks.createNotebookController(
-    "upl-controller", "upl-notebook", "UPL Notebook", notebookExecuteHandler);
-  context.subscriptions.push(controller);
+  push(vscode.notebooks.createNotebookController(
+	"upl-controller", "upl-notebook", "UPL Notebook", notebookExecuteHandler));
 }
 
 function deactivate() { }

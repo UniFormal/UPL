@@ -169,7 +169,7 @@ class Checker(errorHandler: ErrorHandler) {
       // if it is a non-redundant include, queue the body as well
       if (changed) dC match {
         case i@Include(p,_,_) =>
-          val m: Module = gc.voc.lookupModule(p).get
+          val m: Module = gc.voc.lookupModule(p).getOrElse(fail("unknown module"))
           todo ::= FlattenInput(m.decls, false, Some(i))
         case _ =>
       }

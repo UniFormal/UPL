@@ -1,10 +1,19 @@
 package info.kwarc.p
 
+/** reference to a source location
+  * @param origin source document/file
+  * @param from begin offset (inclusive)
+  * @param to end offset (exclusive)
+  * all line ending characters are counted
+  */
 case class Location(origin: SourceOrigin, from: Int, to: Int) {
   override def toString = s"$origin#$from:$to"
-  def contains(that: Location): Boolean =
-    this.origin == that.origin && this.from <= that.from && that.to <= this.to
-  def contains(that: Int): Boolean = contains(Location(origin, that, that))
+  def contains(that: Location): Boolean = this.origin == that.origin && this.from <= that.from && that.to <= this.to
+  def contains(that: Int): Boolean = contains(Location.single(origin, that))
+}
+
+object Location {
+  def single(o: SourceOrigin, p: Int) = Location(o,p,p+1)
 }
 
 // ***************************** root classes and auxiliary data structures
@@ -522,7 +531,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     }
   }
   def parentDecl = voc.lookupModule(currentParent).getOrElse {
-    throw ASTError("unknown parent")
+    throw ASTError("unknown parent: " + currentParent)
   }
 
   /** declarations of the current parent/region */
@@ -647,11 +656,8 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
 }
 object GlobalContext {
   def apply(n: String): GlobalContext = GlobalContext(Module(n, false, Nil))
-  def apply(v: Vocabulary): GlobalContext = GlobalContext(
-    Module.anonymous(v.decls)
-  )
-  def apply(m: Module): GlobalContext = GlobalContext(m, List(RegionalContextFrame(RegionalContext(Path.empty), true, Some(false)))
-  )
+  def apply(v: Vocabulary): GlobalContext = GlobalContext(Module.anonymous(v.decls))
+  def apply(m: Module): GlobalContext = GlobalContext(m, List(RegionalContextFrame(RegionalContext(Path.empty), true, Some(false))))
 }
 
 // ***************** Programs and Declarations **************************************
@@ -661,6 +667,9 @@ case class Vocabulary(decls: List[Declaration]) extends SyntaxFragment {
   override def toString = decls.mkString("\n")
   def label = "vocabulary"
   def children = decls
+  def toModule = Module.anonymous(decls)
+  def toGlobalContext = GlobalContext(toModule)
+  def append(d: Declaration) = Vocabulary(d::decls)
 }
 
 object Vocabulary {
@@ -831,8 +840,9 @@ case class Theory(decls: List[Declaration]) extends SyntaxFragment {
   override def toString = {
     this match {
       case ExtendedTheory(p, ds) =>
-        p.toString + (if (ds.isEmpty) "" else " " + Theory(ds).toString)
-      case _ => decls.mkString("{", ", ", "}")
+        p.toString + (if (ds.isEmpty) "" else ds.mkString("{", ", ", "}"))
+      case _ =>
+        decls.mkString("{", ", ", "}")
     }
   }
   def label = "theory"
@@ -1277,14 +1287,8 @@ case class This(level: Int) extends Expression {
 }
 
 /** instance of a theory, introduction form for [[ClassType]] */
-// TODO: dependent modules, i.e., theory is an OwnedTerm(o,ClosedRef(m))
-case class Instance(theory: Theory)
-    extends Expression
-    with MutableExpressionStore {
-  override def toString = if (isRuntime) {
-    s"instance of $theory"
-  } else
-    theory.toString
+case class Instance(theory: Theory) extends Expression with MutableExpressionStore {
+  override def toString = if (isRuntime) s"instance of $theory" else theory.toString
   def label = "new"
   def children = theory.children
   override def childrenInContext =
