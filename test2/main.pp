@@ -1,0 +1,2 @@
+source: .
+main: Lists.test
