@@ -40,5 +40,23 @@ module Lists{
         }
         x
     }
-    test = get(1)([(1,2),(1,3),(2,3)]) == [2,3]
+
+
+    depth_first_search = (l:int) -> (m:[(int,int)]) -> {
+        var stack = get(l)(m)
+        var ans = false
+        while (true){
+            stack match {
+                x -: y -> {
+                    if(x == l) {ans = true}else{
+                    stack = ( get(x)(m) + stack ) 
+                    ()
+                    }
+                    }
+                [] -> ()
+            }
+        }
+        ans
+    }
+    test = depth_first_search(4)([(1,2),(1,3),(2,4),(2,5),(3,6),(3,7)])
 }
