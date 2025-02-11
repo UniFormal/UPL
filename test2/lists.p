@@ -8,5 +8,21 @@ module Lists{
                 append2(y)(z)
             }
         }
-    test = (append2([1,2,3])([4,5,6]) == [3,2,1,4,5,6])
+    
+    quickSort : _
+    quickSort = (l:[int]) -> l match {
+        [] -> []
+        x -: y -> {
+            var smaller:[int] = []
+            var larger : [int] = []
+            for (i in y){
+                if (i < x) {smaller = smaller + [i]} else {larger = larger + [i]}
+                smaller = quickSort(smaller)
+                larger = quickSort(larger)
+            }
+            smaller+[x]+larger
+        }
+    }
+
+    test = quickSort([2,5,1,7,8]) == [1,2,5,7,8]
 }
