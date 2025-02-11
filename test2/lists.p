@@ -23,6 +23,22 @@ module Lists{
             smaller+[x]+larger
         }
     }
+    length = (l:[int]) -> {
+        var count = 0;
+        for (_ in l){
+            count = count + 1
+        }
+        count
+    }
 
-    test = quickSort([2,5,1,7,8]) == [1,2,5,7,8]
+    get : int -> [(int,int)] -> [int] = l -> m -> {
+        var x:[int] = []
+        for (k in m){
+            k match {
+                (j,ans) -> if (j == l) {x = (x :- ans)}
+            }
+        }
+        x
+    }
+    test = get(1)([(1,2),(1,3),(2,3)]) == [2,3]
 }
