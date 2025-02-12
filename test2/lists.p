@@ -55,7 +55,6 @@ module Lists{
                         stack = temp + stack
                     }
                     }
-                [] -> ()
             }
         }
         ans
