@@ -251,13 +251,31 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     if (startsWithS(t)) true else {skipT(f); false}
   }
 
-  // skip all whitespace and comments
-  def trim: Unit = {
-    while (!atEnd && (next.isWhitespace || startsWith("//")))
-      if (next.isWhitespace) index += 1
+  /*+ skip all whitespace and comments, return true if newline crossed */
+  def trim: Boolean = {
+    var newlineSeen = false
+    while (!atEnd && (next.isWhitespace || startsWith("//"))) {
+      if (next.isWhitespace) {
+        if (next == '\n') newlineSeen = true
+        index += 1
+      }
       else {
         while (!atEnd && next != '\n') index += 1
       }
+    }
+    newlineSeen
+  }
+
+  /** the whitespace before the current index contains a newline */
+  def newlineBefore: Boolean = {
+    var i = index-1
+    while (i>0) {
+      val c = input(i)
+      if (!c.isWhitespace) return false
+      if (c == '\n') return true
+      i -= 1
+    }
+    false
   }
 
   // parses the string s and throws it away
@@ -617,11 +635,12 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         }
       } // end exp =
       trim
-      // avoid trying to parse nonsense if we can already tell
-      var tryPostOps = exp match {
+      // if expressions are split over multiple lines, strong postops must occur at the end of the line, not the beginning
+      // also, some expression can never be followed by a strong postop
+      var tryPostOps = !newlineBefore && (exp match {
         case _:BaseValue | _: Block | _: Assign | _: VarDecl | _:While | _:For | _: Return => false
         case _ => true
-      }
+      })
       val strongPostops = List(".","(","[","{","°")
       while (tryPostOps && startsWithAny(strongPostops:_*)) {
         setRef(exp,expBeginAt) // only the outermost expression gets its source reference automatically
@@ -713,7 +732,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         } else if (startsWithAny("match","catch")) {
           val handle = skipEither("catch","match")
           skip("{")
-          val cs = parseList(parseMatchCase,"}",false).filterNot(_==null)
+          val cs = parseList(parseMatchCase,"}",false)
           skip("}")
           Match(exp,cs,handle)
         } else exp
@@ -743,7 +762,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         else
           VarRef(ins.decls.head.name)
         MatchCase(null, p.copyFrom(ins), bd)
-      case _ => reportError("match case expected"); null
+      case e => reportError("match case expected"); MatchCase(null,VarRef(""), e)
     }
   }
 

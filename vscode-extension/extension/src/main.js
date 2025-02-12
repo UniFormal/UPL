@@ -8008,7 +8008,7 @@ function $p_Linfo_kwarc_p_Parser__parseExpressionInner__Linfo_kwarc_p_PContext__
   var seen = $m_sci_Nil$();
   var allExpBeginAt = $thiz.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index;
   while (true) {
-    $thiz.trim__V();
+    $thiz.trim__Z();
     var expBeginAt = $thiz.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index;
     if ($thiz.startsWithS__T__Z(".")) {
       if (((!$thiz.atEnd__Z()) && $thiz.isNameChar__C__Z($thiz.next__C()))) {
@@ -8018,7 +8018,7 @@ function $p_Linfo_kwarc_p_Parser__parseExpressionInner__Linfo_kwarc_p_PContext__
         while ($thiz.startsWithS__T__Z(".")) {
           l = ((1 + l) | 0);
         }
-        $thiz.trim__V();
+        $thiz.trim__Z();
         if (((!$thiz.atEnd__Z()) && $thiz.isNameChar__C__Z($thiz.next__C()))) {
           $thiz.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index = (((-1) + $thiz.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index) | 0);
         }
@@ -8027,7 +8027,7 @@ function $p_Linfo_kwarc_p_Parser__parseExpressionInner__Linfo_kwarc_p_PContext__
     } else if ($thiz.startsWithS__T__Z("{")) {
       var cs = $m_sci_Nil$();
       var ctxL = $n(ctxs).setAllowStatement__Z__Linfo_kwarc_p_PContext(true);
-      $thiz.trim__V();
+      $thiz.trim__Z();
       while ((!$thiz.startsWithS__T__Z("}"))) {
         var c = $thiz.parseExpression__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Expression(ctxL);
         var this$1 = $n(cs);
@@ -8036,24 +8036,24 @@ function $p_Linfo_kwarc_p_Parser__parseExpressionInner__Linfo_kwarc_p_PContext__
           var x2 = $as_Linfo_kwarc_p_VarDecl(c);
           ctxL = $n(ctxL).append__Linfo_kwarc_p_VarDecl__Linfo_kwarc_p_PContext(x2);
         }
-        $thiz.trim__V();
+        $thiz.trim__Z();
         if ($thiz.startsWith__T__Z(";")) {
           $thiz.skip__T__V(";");
         }
       }
       var exp = new $c_Linfo_kwarc_p_Block($n(cs).reverse__sci_List());
     } else if ($thiz.startsWithS__T__Z("var")) {
-      $thiz.trim__V();
+      $thiz.trim__Z();
       var exp = $thiz.parseVarDecl__Z__Z__Linfo_kwarc_p_PContext__Linfo_kwarc_p_VarDecl(true, true, ctxs);
     } else if ($thiz.startsWithS__T__Z("val")) {
-      $thiz.trim__V();
+      $thiz.trim__Z();
       var exp = $thiz.parseVarDecl__Z__Z__Linfo_kwarc_p_PContext__Linfo_kwarc_p_VarDecl(false, true, ctxs);
     } else {
       var array = ["exists", "forall"];
       if ($thiz.startsWithAny__sci_Seq__Z($ct_sjsr_WrappedVarArgs__sjs_js_Array__(new $c_sjsr_WrappedVarArgs(), array))) {
         var univ = $thiz.skipEither__T__T__Z("forall", "exists");
         var vars = $thiz.parseContext__Z__Linfo_kwarc_p_PContext__Linfo_kwarc_p_LocalContext(true, ctxs);
-        $thiz.skipT__T__V(".");
+        $thiz.skipT__T__Z(".");
         var body = $thiz.parseExpression__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Expression(ctxs);
         var exp = new $c_Linfo_kwarc_p_Quantifier(univ, vars, body);
       } else if ((allowS && $thiz.startsWithS__T__Z("while"))) {
@@ -8061,12 +8061,12 @@ function $p_Linfo_kwarc_p_Parser__parseExpressionInner__Linfo_kwarc_p_PContext__
         var b = $thiz.parseExpression__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Expression(doAllowS);
         var exp = new $c_Linfo_kwarc_p_While(c$2, b);
       } else if ((allowS && $thiz.startsWithS__T__Z("for"))) {
-        $thiz.skipT__T__V("(");
+        $thiz.skipT__T__Z("(");
         var v = $thiz.parseName__T();
-        $thiz.trim__V();
-        $thiz.skipT__T__V("in");
+        $thiz.trim__Z();
+        $thiz.skipT__T__Z("in");
         var r = $thiz.parseExpression__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Expression(ctxs);
-        $thiz.skipT__T__V(")");
+        $thiz.skipT__T__Z(")");
         var tp = $m_Linfo_kwarc_p_Type$().unknown__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_UnknownType(null);
         var dfO = $m_s_None$();
         var b$2 = $thiz.parseExpression__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Expression($n(doAllowS).append__Linfo_kwarc_p_VarDecl__Linfo_kwarc_p_PContext(new $c_Linfo_kwarc_p_VarDecl(v, tp, dfO, false, false)));
@@ -8076,7 +8076,7 @@ function $p_Linfo_kwarc_p_Parser__parseExpressionInner__Linfo_kwarc_p_PContext__
       } else if ($thiz.startsWithS__T__Z("if")) {
         var c$3 = $thiz.parseBracketedExpression__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Expression(ctxs);
         var th = $thiz.parseExpression__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Expression(ctxs);
-        $thiz.trim__V();
+        $thiz.trim__Z();
         if ($thiz.startsWithS__T__Z("else")) {
           var el = new $c_s_Some($thiz.parseExpression__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Expression(ctxs));
         } else {
@@ -8213,7 +8213,7 @@ function $p_Linfo_kwarc_p_Parser__parseExpressionInner__Linfo_kwarc_p_PContext__
               var exp = new $c_Linfo_kwarc_p_IntValue(this$29.apply__I__s_math_BigInt(i));
             } else if ($thiz.startsWith__T__Z("(")) {
               var es = $thiz.parseExpressions__T__T__Linfo_kwarc_p_PContext__sci_List("(", ")", ctxs);
-              $thiz.trim__V();
+              $thiz.trim__Z();
               matchEnd5: {
                 var exp;
                 var x = $m_sci_Nil$();
@@ -8243,7 +8243,7 @@ function $p_Linfo_kwarc_p_Parser__parseExpressionInner__Linfo_kwarc_p_PContext__
               var exp = new $c_Linfo_kwarc_p_Eval(e$3);
             } else {
               var n = $thiz.parseName__T();
-              $thiz.trim__V();
+              $thiz.trim__Z();
               if ($thiz.startsWith__T__Z(":")) {
                 var this$37 = $n($m_Linfo_kwarc_p_Operator$().Linfo_kwarc_p_Operator$__f_infixes);
                 _return$3: {
@@ -8280,9 +8280,13 @@ function $p_Linfo_kwarc_p_Parser__parseExpressionInner__Linfo_kwarc_p_PContext__
         }
       }
     }
-    $thiz.trim__V();
-    var x1$3 = exp;
-    var tryPostOps = (!((x1$3 instanceof $c_Linfo_kwarc_p_BaseValue) || ((x1$3 instanceof $c_Linfo_kwarc_p_Block) || ((x1$3 instanceof $c_Linfo_kwarc_p_Assign) || ((x1$3 instanceof $c_Linfo_kwarc_p_VarDecl) || ((x1$3 instanceof $c_Linfo_kwarc_p_While) || ((x1$3 instanceof $c_Linfo_kwarc_p_For) || (x1$3 instanceof $c_Linfo_kwarc_p_Return))))))));
+    $thiz.trim__Z();
+    if ((!$thiz.newlineBefore__Z())) {
+      var x1$3 = exp;
+      var tryPostOps = (!((x1$3 instanceof $c_Linfo_kwarc_p_BaseValue) || ((x1$3 instanceof $c_Linfo_kwarc_p_Block) || ((x1$3 instanceof $c_Linfo_kwarc_p_Assign) || ((x1$3 instanceof $c_Linfo_kwarc_p_VarDecl) || ((x1$3 instanceof $c_Linfo_kwarc_p_While) || ((x1$3 instanceof $c_Linfo_kwarc_p_For) || (x1$3 instanceof $c_Linfo_kwarc_p_Return))))))));
+    } else {
+      var tryPostOps = false;
+    }
     var array$3 = [".", "(", "[", "{", "\u00b0"];
     var elems$1 = $ct_sjsr_WrappedVarArgs__sjs_js_Array__(new $c_sjsr_WrappedVarArgs(), array$3);
     var strongPostops = $m_sci_Nil$().prependedAll__sc_IterableOnce__sci_List(elems$1);
@@ -8364,7 +8368,7 @@ function $p_Linfo_kwarc_p_Parser__parseExpressionInner__Linfo_kwarc_p_PContext__
         exp = new $c_Linfo_kwarc_p_Application($x_10, $m_sci_Nil$().prependedAll__sc_IterableOnce__sci_List(elems$3));
       }
     }
-    $thiz.trim__V();
+    $thiz.trim__Z();
     if ((!allowWeakPostops)) {
       return exp;
     }
@@ -8401,85 +8405,18 @@ function $p_Linfo_kwarc_p_Parser__parseExpressionInner__Linfo_kwarc_p_PContext__
           var as = $m_sci_Nil$();
           var break$1 = false;
           while ((!break$1)) {
-            $thiz.trim__V();
+            $thiz.trim__Z();
             var this$65 = $n(as);
             var elem = $thiz.parseMatchCase__Linfo_kwarc_p_PContext__Linfo_kwarc_p_MatchCase(ctxs);
             as = new $c_sci_$colon$colon(elem, this$65);
-            $thiz.trim__V();
+            $thiz.trim__Z();
             if ($thiz.startsWith__T__Z("}")) {
               break$1 = true;
             }
           }
-          var this$66 = $n($n(as).reverse__sci_List());
-          var f = ((x$7$2) => {
-            var x$7 = $as_Linfo_kwarc_p_MatchCase(x$7$2);
-            return (x$7 === null);
-          });
-          var l$1 = this$66;
-          block: {
-            var result;
-            while (true) {
-              if ($n(l$1).isEmpty__Z()) {
-                var result = $m_sci_Nil$();
-                break;
-              } else {
-                var h$1 = $n(l$1).head__O();
-                var t$1 = $as_sci_List($n(l$1).tail__O());
-                if (($uZ(f(h$1)) === true)) {
-                  l$1 = t$1;
-                  continue;
-                }
-                var start = l$1;
-                var remaining = t$1;
-                while (true) {
-                  if ($n(remaining).isEmpty__Z()) {
-                    var result = start;
-                    break block;
-                  } else {
-                    var x$1 = $n(remaining).head__O();
-                    if (($uZ(f(x$1)) !== true)) {
-                      remaining = $as_sci_List($n(remaining).tail__O());
-                      continue;
-                    }
-                    var firstMiss = remaining;
-                    var newHead = new $c_sci_$colon$colon($n(start).head__O(), $m_sci_Nil$());
-                    var toProcess = $as_sci_List($n(start).tail__O());
-                    var currentLast = newHead;
-                    while ((toProcess !== firstMiss)) {
-                      var newElem = new $c_sci_$colon$colon($n(toProcess).head__O(), $m_sci_Nil$());
-                      $n(currentLast).sci_$colon$colon__f_next = newElem;
-                      currentLast = newElem;
-                      toProcess = $as_sci_List($n(toProcess).tail__O());
-                    }
-                    var next = $as_sci_List($n(firstMiss).tail__O());
-                    var nextToCopy = next;
-                    while ((!$n(next).isEmpty__Z())) {
-                      var head = $n(next).head__O();
-                      if (($uZ(f(head)) !== true)) {
-                        next = $as_sci_List($n(next).tail__O());
-                      } else {
-                        while ((nextToCopy !== next)) {
-                          var newElem$2 = new $c_sci_$colon$colon($n(nextToCopy).head__O(), $m_sci_Nil$());
-                          $n(currentLast).sci_$colon$colon__f_next = newElem$2;
-                          currentLast = newElem$2;
-                          nextToCopy = $as_sci_List($n(nextToCopy).tail__O());
-                        }
-                        nextToCopy = $as_sci_List($n(next).tail__O());
-                        next = $as_sci_List($n(next).tail__O());
-                      }
-                    }
-                    if ((!$n(nextToCopy).isEmpty__Z())) {
-                      $n(currentLast).sci_$colon$colon__f_next = nextToCopy;
-                    }
-                    var result = newHead;
-                    break block;
-                  }
-                }
-              }
-            }
-          }
+          var cs$2 = $n(as).reverse__sci_List();
           $thiz.skip__T__V("}");
-          var expWP = new $c_Linfo_kwarc_p_Match(exp, result, handle);
+          var expWP = new $c_Linfo_kwarc_p_Match(exp, cs$2, handle);
         } else {
           var expWP = exp;
         }
@@ -8495,9 +8432,9 @@ function $p_Linfo_kwarc_p_Parser__parseExpressionInner__Linfo_kwarc_p_PContext__
       } else if ((x1$6 instanceof $c_s_Some)) {
         var x3$2 = $as_s_Some(x1$6);
         var o$6 = $as_Linfo_kwarc_p_InfixOperator($n(x3$2).s_Some__f_value);
-        var this$67 = $n(seen);
+        var this$66 = $n(seen);
         var elem$1 = new $c_T3(exp, o$6, $thiz.makeRef__I__Linfo_kwarc_p_Location(opBegin));
-        seen = new $c_sci_$colon$colon(elem$1, this$67);
+        seen = new $c_sci_$colon$colon(elem$1, this$66);
       } else {
         throw new $c_s_MatchError(x1$6);
       }
@@ -8761,7 +8698,7 @@ $c_Linfo_kwarc_p_Parser.prototype.startsWithS__T__Z = (function(s) {
   var b = this.startsWith__T__Z(s);
   if (b) {
     this.skip__T__V(s);
-    this.trim__V();
+    this.trim__Z();
   }
   return b;
 });
@@ -8779,9 +8716,10 @@ $c_Linfo_kwarc_p_Parser.prototype.startsWithAny__sci_Seq__Z = (function(k) {
   return false;
 });
 $c_Linfo_kwarc_p_Parser.prototype.skipEither__T__T__Z = (function(t, f) {
-  return (this.startsWithS__T__Z(t) || (this.skipT__T__V(f), false));
+  return (this.startsWithS__T__Z(t) || (this.skipT__T__Z(f), false));
 });
-$c_Linfo_kwarc_p_Parser.prototype.trim__V = (function() {
+$c_Linfo_kwarc_p_Parser.prototype.trim__Z = (function() {
+  var newlineSeen = false;
   while (true) {
     if ((!this.atEnd__Z())) {
       var c = this.next__C();
@@ -8798,6 +8736,9 @@ $c_Linfo_kwarc_p_Parser.prototype.trim__V = (function() {
       var c$1 = this.next__C();
       var this$6 = $m_jl_Character$();
       if (this$6.isWhitespace__I__Z(c$1)) {
+        if ((this.next__C() === 10)) {
+          newlineSeen = true;
+        }
         this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index = ((1 + this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index) | 0);
       } else {
         while (((!this.atEnd__Z()) && (this.next__C() !== 10))) {
@@ -8808,6 +8749,25 @@ $c_Linfo_kwarc_p_Parser.prototype.trim__V = (function() {
       break;
     }
   }
+  return newlineSeen;
+});
+$c_Linfo_kwarc_p_Parser.prototype.newlineBefore__Z = (function() {
+  var i = (((-1) + this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index) | 0);
+  while ((i > 0)) {
+    var x = this.Linfo_kwarc_p_Parser__f_input;
+    var i$1 = i;
+    var this$3 = $n(x);
+    var c = $charAt(this$3, i$1);
+    var this$6 = $m_jl_Character$();
+    if ((!this$6.isWhitespace__I__Z(c))) {
+      return false;
+    }
+    if ((c === 10)) {
+      return true;
+    }
+    i = (((-1) + i) | 0);
+  }
+  return false;
 });
 $c_Linfo_kwarc_p_Parser.prototype.skip__T__V = (function(s) {
   if ((!this.startsWith__T__Z(s))) {
@@ -8818,9 +8778,9 @@ $c_Linfo_kwarc_p_Parser.prototype.skip__T__V = (function(s) {
     this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index = (($x_1 + this$1.length) | 0);
   }
 });
-$c_Linfo_kwarc_p_Parser.prototype.skipT__T__V = (function(s) {
+$c_Linfo_kwarc_p_Parser.prototype.skipT__T__Z = (function(s) {
   this.skip__T__V(s);
-  this.trim__V();
+  return this.trim__Z();
 });
 $c_Linfo_kwarc_p_Parser.prototype.isNameChar__C__Z = (function(c) {
   var this$3 = $m_jl_Character$();
@@ -8831,7 +8791,7 @@ $c_Linfo_kwarc_p_Parser.prototype.isNameChar__C__Z = (function(c) {
   }
 });
 $c_Linfo_kwarc_p_Parser.prototype.parseName__T = (function() {
-  this.trim__V();
+  this.trim__Z();
   var begin = this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index;
   while (((!this.atEnd__Z()) && this.isNameChar__C__Z(this.next__C()))) {
     this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index = ((1 + this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index) | 0);
@@ -8850,7 +8810,7 @@ $c_Linfo_kwarc_p_Parser.prototype.parseName__T = (function() {
   return $as_T(this$1.substring(begin, endIndex));
 });
 $c_Linfo_kwarc_p_Parser.prototype.parsePath__Linfo_kwarc_p_Path = (function() {
-  this.trim__V();
+  this.trim__Z();
   var from = this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index;
   if (this.startsWith__T__Z(" ")) {
     var ns = $m_sci_Nil$();
@@ -8858,11 +8818,11 @@ $c_Linfo_kwarc_p_Parser.prototype.parsePath__Linfo_kwarc_p_Path = (function() {
     var as = $m_sci_Nil$();
     var break$1 = false;
     while ((!break$1)) {
-      this.trim__V();
+      this.trim__Z();
       var this$1 = $n(as);
       var elem = this.parseName__T();
       as = new $c_sci_$colon$colon(elem, this$1);
-      this.trim__V();
+      this.trim__Z();
       if (this.startsWith__T__Z(".")) {
         this.skip__T__V(".");
       } else {
@@ -8877,7 +8837,7 @@ $c_Linfo_kwarc_p_Parser.prototype.parsePath__Linfo_kwarc_p_Path = (function() {
 });
 $c_Linfo_kwarc_p_Parser.prototype.startsWithDeclaration__Z = (function() {
   var backtrackPoint = this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index;
-  this.trim__V();
+  this.trim__Z();
   var this$1 = $n($m_Linfo_kwarc_p_Keywords$().Linfo_kwarc_p_Keywords$__f_allDeclKeywords);
   _return: {
     var these = this$1;
@@ -8896,7 +8856,7 @@ $c_Linfo_kwarc_p_Parser.prototype.startsWithDeclaration__Z = (function() {
     var isDecl = true;
   } else {
     var n = this.parseName__T();
-    this.trim__V();
+    this.trim__Z();
     var this$4 = $n(n);
     if ((!(this$4 === ""))) {
       var isDecl = (this.startsWith__T__Z(":") || this.startsWith__T__Z("="));
@@ -8918,7 +8878,7 @@ $c_Linfo_kwarc_p_Parser.prototype.parseExpressionOrDeclarations__T__sci_List = (
   }
 });
 $c_Linfo_kwarc_p_Parser.prototype.parseDeclaration__Linfo_kwarc_p_Declaration = (function() {
-  this.trim__V();
+  this.trim__Z();
   var from = this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index;
   var array = [$m_Linfo_kwarc_p_Keywords$().Linfo_kwarc_p_Keywords$__f_closedModule, $m_Linfo_kwarc_p_Keywords$().Linfo_kwarc_p_Keywords$__f_openModule];
   if (this.startsWithAny__sci_Seq__Z($ct_sjsr_WrappedVarArgs__sjs_js_Array__(new $c_sjsr_WrappedVarArgs(), array))) {
@@ -8945,7 +8905,7 @@ $c_Linfo_kwarc_p_Parser.prototype.parseDeclarations__sci_List = (function() {
   var decls = $m_sci_Nil$();
   var break$1 = false;
   while ((!break$1)) {
-    this.trim__V();
+    this.trim__Z();
     if ((this.atEnd__Z() || this.startsWith__T__Z("}"))) {
       break$1 = true;
     } else {
@@ -8972,10 +8932,10 @@ $c_Linfo_kwarc_p_Parser.prototype.parseDeclarations__sci_List = (function() {
 $c_Linfo_kwarc_p_Parser.prototype.parseModule__Linfo_kwarc_p_Module = (function() {
   var closed = this.skipEither__T__T__Z($m_Linfo_kwarc_p_Keywords$().Linfo_kwarc_p_Keywords$__f_closedModule, $m_Linfo_kwarc_p_Keywords$().Linfo_kwarc_p_Keywords$__f_openModule);
   var name = this.parseName__T();
-  this.trim__V();
+  this.trim__Z();
   this.skip__T__V("{");
   var decls = this.parseDeclarations__sci_List();
-  this.trim__V();
+  this.trim__Z();
   this.skip__T__V("}");
   return new $c_Linfo_kwarc_p_Module(name, closed, decls);
 });
@@ -8983,21 +8943,21 @@ $c_Linfo_kwarc_p_Parser.prototype.parseInclude__Linfo_kwarc_p_Include = (functio
   var ctx = $m_Linfo_kwarc_p_PContext$().empty__Linfo_kwarc_p_PContext();
   var rz = this.skipEither__T__T__Z($m_Linfo_kwarc_p_Keywords$().Linfo_kwarc_p_Keywords$__f_totalInclude, $m_Linfo_kwarc_p_Keywords$().Linfo_kwarc_p_Keywords$__f_include);
   var dom = this.parsePath__Linfo_kwarc_p_Path();
-  this.trim__V();
+  this.trim__Z();
   var dfO = (((!rz) && this.startsWithS__T__Z("=")) ? new $c_s_Some(this.parseExpression__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Expression(ctx)) : $m_s_None$());
   return new $c_Linfo_kwarc_p_Include(dom, dfO, rz);
 });
 $c_Linfo_kwarc_p_Parser.prototype.parseExprDecl__Z__Linfo_kwarc_p_ExprDecl = (function(mutable) {
   var name = this.parseName__T();
-  this.trim__V();
+  this.trim__Z();
   var tp = (this.startsWithS__T__Z(":") ? this.parseType__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Type($m_Linfo_kwarc_p_PContext$().empty__Linfo_kwarc_p_PContext()) : $m_Linfo_kwarc_p_Type$().unknown__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_UnknownType(null));
-  this.trim__V();
+  this.trim__Z();
   var vl = (this.startsWithS__T__Z("=") ? new $c_s_Some(this.parseExpression__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Expression($m_Linfo_kwarc_p_PContext$().empty__Linfo_kwarc_p_PContext())) : $m_s_None$());
   return new $c_Linfo_kwarc_p_ExprDecl(name, tp, vl, mutable);
 });
 $c_Linfo_kwarc_p_Parser.prototype.parseTypeDecl__Linfo_kwarc_p_TypeDecl = (function() {
   var name = this.parseName__T();
-  this.trim__V();
+  this.trim__Z();
   if (this.startsWithS__T__Z("=")) {
     var _1 = $m_Linfo_kwarc_p_AnyType$();
     var _2 = new $c_s_Some(this.parseType__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Type($m_Linfo_kwarc_p_PContext$().empty__Linfo_kwarc_p_PContext()));
@@ -9019,12 +8979,12 @@ $c_Linfo_kwarc_p_Parser.prototype.parseTypeDecl__Linfo_kwarc_p_TypeDecl = (funct
   return new $c_Linfo_kwarc_p_TypeDecl(name, tp, df);
 });
 $c_Linfo_kwarc_p_Parser.prototype.parseVarDecl__Z__Z__Linfo_kwarc_p_PContext__Linfo_kwarc_p_VarDecl = (function(mutable, nameMandatory, ctxs) {
-  this.trim__V();
+  this.trim__Z();
   var from = this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index;
   var noStatements = $n(ctxs).setAllowStatement__Z__Linfo_kwarc_p_PContext(false);
   var backtrackPoint = this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index;
   var n = this.parseName__T();
-  this.trim__V();
+  this.trim__Z();
   var array = [":", "="];
   if ((((!this.startsWithAny__sci_Seq__Z($ct_sjsr_WrappedVarArgs__sjs_js_Array__(new $c_sjsr_WrappedVarArgs(), array))) && (!nameMandatory)) && (!mutable))) {
     this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index = backtrackPoint;
@@ -9040,7 +9000,7 @@ $c_Linfo_kwarc_p_Parser.prototype.parseVarDecl__Z__Z__Linfo_kwarc_p_PContext__Li
   return a;
 });
 $c_Linfo_kwarc_p_Parser.prototype.parseContext__Z__Linfo_kwarc_p_PContext__Linfo_kwarc_p_LocalContext = (function(namesMandatory, ctxs) {
-  this.trim__V();
+  this.trim__Z();
   var from = this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index;
   if (this.startsWith__T__Z(")")) {
     var vds = $m_sci_Nil$();
@@ -9048,11 +9008,11 @@ $c_Linfo_kwarc_p_Parser.prototype.parseContext__Z__Linfo_kwarc_p_PContext__Linfo
     var as = $m_sci_Nil$();
     var break$1 = false;
     while ((!break$1)) {
-      this.trim__V();
+      this.trim__Z();
       var this$1 = $n(as);
       var elem = this.parseVarDecl__Z__Z__Linfo_kwarc_p_PContext__Linfo_kwarc_p_VarDecl(false, namesMandatory, ctxs);
       as = new $c_sci_$colon$colon(elem, this$1);
-      this.trim__V();
+      this.trim__Z();
       if (this.startsWith__T__Z(",")) {
         this.skip__T__V(",");
       } else {
@@ -9073,11 +9033,11 @@ $c_Linfo_kwarc_p_Parser.prototype.parseExpressions__T__T__Linfo_kwarc_p_PContext
     var as = $m_sci_Nil$();
     var break$1 = false;
     while ((!break$1)) {
-      this.trim__V();
+      this.trim__Z();
       var this$1 = $n(as);
       var elem = this.parseExpression__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Expression(ctxs);
       as = new $c_sci_$colon$colon(elem, this$1);
-      this.trim__V();
+      this.trim__Z();
       if (this.startsWith__T__Z(",")) {
         this.skip__T__V(",");
       } else {
@@ -9090,7 +9050,7 @@ $c_Linfo_kwarc_p_Parser.prototype.parseExpressions__T__T__Linfo_kwarc_p_PContext
   return es;
 });
 $c_Linfo_kwarc_p_Parser.prototype.parseExpression__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Expression = (function(ctxs) {
-  this.trim__V();
+  this.trim__Z();
   var from = this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index;
   var a = $as_Linfo_kwarc_p_SyntaxFragment($p_Linfo_kwarc_p_Parser__parseExpressionInner__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Expression(this, ctxs));
   this.setRef__Linfo_kwarc_p_SyntaxFragment__I__Linfo_kwarc_p_SyntaxFragment(a, from);
@@ -9103,7 +9063,7 @@ $c_Linfo_kwarc_p_Parser.prototype.parseBracketedExpression__Linfo_kwarc_p_PConte
   return e;
 });
 $c_Linfo_kwarc_p_Parser.prototype.parseMatchCase__Linfo_kwarc_p_PContext__Linfo_kwarc_p_MatchCase = (function(ctxs) {
-  this.trim__V();
+  this.trim__Z();
   var from = this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index;
   var e = this.parseExpression__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Expression(ctxs);
   if ((e instanceof $c_Linfo_kwarc_p_MatchCase)) {
@@ -9117,9 +9077,9 @@ $c_Linfo_kwarc_p_Parser.prototype.parseMatchCase__Linfo_kwarc_p_PContext__Linfo_
     if (($n(this$1.Linfo_kwarc_p_LocalContext__f_variables).length__I() !== 1)) {
       var $x_1 = $m_Linfo_kwarc_p_Util$();
       var this$2 = $n(ins);
-      var p = new $c_Linfo_kwarc_p_Tuple($x_1.reverseMap__sci_List__F1__sci_List(this$2.Linfo_kwarc_p_LocalContext__f_variables, new $c_sjsr_AnonFunction1(((x$8$2) => {
-        var x$8 = $as_Linfo_kwarc_p_VarDecl(x$8$2);
-        return $n(x$8).toRef__Linfo_kwarc_p_VarRef();
+      var p = new $c_Linfo_kwarc_p_Tuple($x_1.reverseMap__sci_List__F1__sci_List(this$2.Linfo_kwarc_p_LocalContext__f_variables, new $c_sjsr_AnonFunction1(((x$7$2) => {
+        var x$7 = $as_Linfo_kwarc_p_VarDecl(x$7$2);
+        return $n(x$7).toRef__Linfo_kwarc_p_VarRef();
       }))));
     } else {
       var this$4 = $n(ins);
@@ -9128,7 +9088,7 @@ $c_Linfo_kwarc_p_Parser.prototype.parseMatchCase__Linfo_kwarc_p_PContext__Linfo_
     var a = new $c_Linfo_kwarc_p_MatchCase(null, $as_Linfo_kwarc_p_Expression($n($as_Linfo_kwarc_p_SyntaxFragment(p)).copyFrom__Linfo_kwarc_p_SyntaxFragment__Linfo_kwarc_p_SyntaxFragment(ins)), bd);
   } else {
     this.reportError__T__V("match case expected");
-    var a = null;
+    var a = new $c_Linfo_kwarc_p_MatchCase(null, new $c_Linfo_kwarc_p_VarRef(""), e);
   }
   this.setRef__Linfo_kwarc_p_SyntaxFragment__I__Linfo_kwarc_p_SyntaxFragment(a, from);
   return a;
@@ -9259,21 +9219,21 @@ $c_Linfo_kwarc_p_Parser.prototype.disambiguateInfixOperators__sci_List__Linfo_kw
   return last;
 });
 $c_Linfo_kwarc_p_Parser.prototype.parseType__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Type = (function(ctxs) {
-  this.trim__V();
+  this.trim__Z();
   var from = this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index;
   var tpBegin = this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index;
   if ((this.startsWith__T__Z(".") && (!this.startsWith__T__Z("..")))) {
     this.skip__T__V(".");
     var tp$2 = new $c_Linfo_kwarc_p_OpenRef(this.parsePath__Linfo_kwarc_p_Path());
   } else if (this.startsWithS__T__Z("int")) {
-    this.trim__V();
+    this.trim__Z();
     if (this.startsWithS__T__Z("[")) {
-      this.trim__V();
+      this.trim__Z();
       var l = (this.startsWith__T__Z(";") ? $m_s_None$() : new $c_s_Some(this.parseExpression__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Expression(ctxs)));
-      this.trim__V();
-      this.skipT__T__V(";");
+      this.trim__Z();
+      this.skipT__T__Z(";");
       var u = (this.startsWith__T__Z("]") ? $m_s_None$() : new $c_s_Some(this.parseExpression__Linfo_kwarc_p_PContext__Linfo_kwarc_p_Expression(ctxs)));
-      this.trim__V();
+      this.trim__Z();
       this.skip__T__V("]");
       var tp$2 = new $c_Linfo_kwarc_p_IntervalType(l, u);
     } else {
@@ -9349,7 +9309,7 @@ $c_Linfo_kwarc_p_Parser.prototype.parseType__Linfo_kwarc_p_PContext__Linfo_kwarc
     } else {
       var backtrackPoint = this.Linfo_kwarc_p_Parser__f_info$kwarc$p$Parser$$index;
       var n = this.parseName__T();
-      this.trim__V();
+      this.trim__Z();
       if ((n === "_")) {
         var tp$2 = $m_Linfo_kwarc_p_Type$().unknown__Linfo_kwarc_p_GlobalContext__Linfo_kwarc_p_UnknownType(null);
       } else {
@@ -9412,7 +9372,7 @@ $c_Linfo_kwarc_p_Parser.prototype.parseType__Linfo_kwarc_p_PContext__Linfo_kwarc
       }
     }
   }
-  this.trim__V();
+  this.trim__Z();
   while (true) {
     var this$13 = $n(this.Linfo_kwarc_p_Parser__f_typePostOps);
     _return$2: {
