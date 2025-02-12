@@ -18,6 +18,9 @@ function activate(context) {
   vscode.workspace.onDidChangeTextDocument(function (e) { UPL.update(e.document) });
 
   // implementing the commands defined in package.json
+  // There should be one command that creates a notebook with one cell containing
+  // UPL.proj.main;
+  // unless that value is undefined, in which case the notebook should have no cells
   push(vscode.commands.registerCommand('upl.build', () => {
     vscode.window.showInformationMessage('UPL is active');
   }));
