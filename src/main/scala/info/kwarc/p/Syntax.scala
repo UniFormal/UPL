@@ -1336,7 +1336,7 @@ case class Lambda(ins: LocalContext, body: Expression) extends Expression {
     super.copyFrom(sf)
     sf match {
       case l: Lambda => frame = l.frame
-      case _         =>
+      case _ =>
     }
     this
   }
