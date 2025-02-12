@@ -44,12 +44,13 @@ module Lists{
 
     depth_first_search = (l:int) -> (k:int) -> (m:[(int,int)]) -> {
         var stack = get(l)(m)
-        var ans = false
+        var ans:[int] = [l]
         var break = true
         while (break){
             stack match {
                 x -: y -> {
-                    if(x == k) {ans = true
+                    ans = ans + [x]
+                    if(x == k) {
                     break = false}else{
                         val temp = get(x)(m)
                         stack = temp + stack
@@ -59,5 +60,6 @@ module Lists{
         }
         ans
     }
-    test = depth_first_search(1)(4)([(1,2),(1,3),(2,4),(2,5),(3,6),(3,7)])
+
+    test = depth_first_search(1)(4)([(1,2),(1,3),(2,4),(2,5),(3,6),(3,7)]) == [1,2,4]
 }
