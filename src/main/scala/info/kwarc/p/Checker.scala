@@ -239,7 +239,7 @@ class Checker(errorHandler: ErrorHandler) {
           case sd: ExprDecl =>
             // definition = Undefined: nothing to do
             // definition = Defined: check against type
-            val dfC = sd.dfO.map {df => checkExpression(gc,df,tpC, returnToHere = true)}
+            val dfC = sd.dfO.map {df => checkExpression(gc,Lambda.allowReturn(df),tpC)}
             sd.copy(tp = tpC,dfO = dfC)
           case sd: TypeDecl =>
             val dfC = sd.dfO.map {df => checkType(gc, df, tpC)}
@@ -257,7 +257,7 @@ class Checker(errorHandler: ErrorHandler) {
             td.copy(tp = tpC,dfO = dfOC)
           case sd: ExprDecl =>
             val tpC = checkType(gc,sd.tp)
-            val dfC = sd.dfO map {d => checkExpression(gc,d,tpC, returnToHere = true)}
+            val dfC = sd.dfO map {d => checkExpression(gc,Lambda.allowReturn(d),tpC)}
             sd.copy(tp = tpC,dfO = dfC)
         }
     }
@@ -316,7 +316,7 @@ class Checker(errorHandler: ErrorHandler) {
     if (vd.mutable && !allowMutable) reportError("mutable variable not allowed here")
     if (vd.defined && !allowDefinitions) reportError("defined variable not allowed here")
     val tpC = checkType(gc,vd.tp)
-    val dfC = vd.dfO map {d => checkExpression(gc,d,tpC, returnToHere = true)}
+    val dfC = vd.dfO map {d => checkExpression(gc,Lambda.allowReturn(d),tpC)}
     val vdC = VarDecl(vd.name,tpC.skipUnknown,dfC,vd.mutable)
     vdC.copyFrom(vd)
   }
@@ -700,9 +700,8 @@ class Checker(errorHandler: ErrorHandler) {
     * This is helpful for infering omitted information in introduction forms from their expected type.
     * In most cases, this defers to type inference and subtype checking.
     */
-  def checkExpression(gc: GlobalContext,exp: Expression,tp: Type, returnToHere: Boolean = false): Expression = recoverWith(exp) {
+  def checkExpression(gc: GlobalContext,exp: Expression,tp: Type): Expression = recoverWith(exp) {
     implicit val cause = exp
-    def withReturnVar(q: GlobalContext, o: Type) = if (returnToHere) q.append(VarDecl.output(o)) else q
     disambiguateOwnedObject(gc, exp).foreach {corrected => return checkExpression(gc, corrected, tp)}
     val tpN = Normalize(gc,tp)
     val eC: Expression = (exp,tpN) match {
@@ -730,7 +729,7 @@ class Checker(errorHandler: ErrorHandler) {
         if (es.length != ts.length) reportError("wrong number of components in tuple")
         val esC = checkSubstitution(gc, ts.substitute(es), ts)
         Tuple(esC.exprs)
-      case (Lambda(ins,bd), ft) =>
+      case (Lambda(ins,bd,mr), ft) =>
         // this handles arbitrary function types so that we can always insert the return variable if necessary
         val insC = checkLocal(gc,ins,false,false)
         val gcI = gc.append(insC)
@@ -743,9 +742,9 @@ class Checker(errorHandler: ErrorHandler) {
             checkSubtype(gc, FunType(insC,o), ft)
             o
         }
-        val gcB = withReturnVar(gcI, outType)
+        val gcB = if (mr) gcI.append(VarDecl.output(outType)) else gcI
         val bdC = checkExpression(gcB,bd,outType)
-        Lambda(insC,bdC)
+        Lambda(insC,bdC,mr)
       case (OwnedExpr(oe, de, e), OwnedType(ot, dt, tp)) if oe == ot =>
         val (oC,oI) = inferExpression(gc, oe)(true)
         oI match {
@@ -971,10 +970,10 @@ class Checker(errorHandler: ErrorHandler) {
         }
       case MatchCase(ctx, p, b) =>
         fail("match case outside of match")
-      case Lambda(ins,bd) =>
+      case Lambda(ins,bd,mr) =>
         val insC = if (alsoCheck) checkLocal(gc,ins,false,false) else ins
         val (bdC,bdI) = inferExpression(gc.append(insC),bd)
-        (Lambda(insC,bdC),FunType(insC,bdI))
+        (Lambda(insC,bdC,mr),FunType(insC,bdI))
       case Application(f,as) =>
         f match {
           case op: BaseOperator if !op.tp.known =>

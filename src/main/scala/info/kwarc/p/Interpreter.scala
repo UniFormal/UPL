@@ -20,7 +20,9 @@ trait MutableExpressionStore {
   }
 }
 
-case class LocalEnvironment(var fields: List[MutableExpression]) extends MutableExpressionStore
+case class LocalEnvironment(var fields: List[MutableExpression]) extends MutableExpressionStore {
+  def suspension = LocalEnvironment(fields)
+}
 
 object LocalEnvironment {
   def empty = LocalEnvironment(Nil)
@@ -36,6 +38,13 @@ object LocalEnvironment {
 case class RegionalEnvironment(name: String, region: Option[Instance] = None, local: LocalEnvironment = LocalEnvironment.empty,
                                parent: Option[RegionalEnvironment] = None) {
   override def toString = name + ": " + region + fields.mkString(", ")
+
+  /** creates a copy of this environment for storing with a suspended computation
+    * The cells of the local environment are permanently shared with the original,
+    * but future creation/destruction of cells may cause divergence.
+    */
+  def suspension: RegionalEnvironment = RegionalEnvironment(name, region, local.suspension, parent.map(_.suspension))
+
   def fields = local.fields
   def allocate(n: String, vl: Expression) = {
     local.fields ::= MutableExpression(n, vl)
@@ -328,7 +337,7 @@ class Interpreter(vocInit: Vocabulary) {
       case lam: Lambda =>
         // lambdas must be interpreted at call-time, and the body is relative to the current frame
         val lamC = lam.copy() // the same lambda can be interpreted in different frames
-        lamC.frame = frame
+        lamC.frame = frame.suspension
         lamC
       case Application(f, as) =>
         val fI = interpretExpression(f)
@@ -342,14 +351,10 @@ class Interpreter(vocInit: Vocabulary) {
           case lam: Lambda =>
             // interpretation of lam has recorded the frame at abstraction time because
             // names in lam.body are relative to that
-            val namedFunction = f match {
-              case _:OpenRef | _:ClosedRef | _:VarRef => true
-              case _ => false
-            }
             val r = try {
               applyFunction(f.toString, None, lam, asI)
             } catch {
-              case ReturnFound(e, false) if namedFunction => e
+              case ReturnFound(e, false) if lam.mayReturn => e
             }
             r
           case r: OpenRef => Application(r, asI)
@@ -506,7 +511,7 @@ class Interpreter(vocInit: Vocabulary) {
         }
         if (argsE.length != args.length) fail("wrong number of arguments")(target)
         (args zip argsE).forall {case (a,e) => assign(a,e)}
-      case (Lambda(ei,eb), Lambda(vi,vb)) if inQuote =>
+      case (Lambda(ei,eb,_), Lambda(vi,vb,_)) if inQuote =>
         // contexts must match up to alpha if types are equal
         val ren = BiContext(ei,vi).renameLeftToRight
         assign(eb substitute ren, vb)(mustMatch, gc.append(vi))

@@ -121,9 +121,9 @@ abstract class Traverser[A] {
       val (vT,aT) = applyVarDecl(v)
       For(vT, apply(r), apply(b)(gc.append(v),aT))
     case Return(e, thrw) => Return(apply(e), thrw)
-    case Lambda(is,b) =>
+    case Lambda(is,b,mr) =>
       val (isT,aT) = apply(is)
-      Lambda(isT, apply(b)(gc.append(is),aT))
+      Lambda(isT, apply(b)(gc.append(is),aT), mr)
     case Application(f,as) => Application(apply(f), as map apply)
     case Tuple(es) => Tuple(es map apply)
     case Projection(e,i) => Projection(apply(e), i)
@@ -271,7 +271,7 @@ object Simplify extends StatelessTraverser {
       case Application(BaseOperator(o,_), args) => Operator.simplify(o, args)
       case Projection(Tuple(es),i) => es(i)
       case ListElem(CollectionValue(es),IntValue(i)) => es(i.toInt)
-      case Application(Lambda(vs,b), as) => Substituter(gc, vs.substitute(as), b)
+      case Application(Lambda(vs,b,false), as) => Substituter(gc, vs.substitute(as), b)
       case e => e
     }
   }

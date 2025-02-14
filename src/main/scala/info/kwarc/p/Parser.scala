@@ -727,7 +727,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
             case Some(ins) =>
               val ctx = LocalContext.make(ins)
               val b = parseExpression(doAllowS.append(ctx))
-              Lambda(ctx,b)
+              Lambda(ctx,b,false)
           }
         } else if (startsWithAny("match","catch")) {
           val handle = skipEither("catch","match")
@@ -755,7 +755,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     val e = parseExpression
     e match {
       case mc: MatchCase => mc
-      case Lambda(ins,bd) =>
+      case Lambda(ins,bd,_) =>
         // awkward: if parseExpression was able to turn the pattern into a lambda, undo that here
         val p = if (ins.decls.length != 1)
           Tuple(Util.reverseMap(ins.decls)(_.toRef))

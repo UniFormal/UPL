@@ -132,7 +132,9 @@ case class Path(names: List[String]) extends SyntaxFragment {
   def /(n: String) = Path(names ::: List(n))
   def /(p: Path) = Path(names ::: p.names)
   def up = Path(names.init)
+  def name = names.last
   def isRoot = names.isEmpty
+  def isToplevel = names.length == 1
   def label = toString
   def children = Nil
 }
@@ -1328,9 +1330,11 @@ case class Query(scope: Theory, qvars: LocalContext, query: Expression) extends 
 }
  */
 
-/** anonymous function, introduction form for [[FunType]] */
-case class Lambda(ins: LocalContext, body: Expression) extends Expression {
-  // used at run-time to store the frame relative to which the body must be interpreted when the function is applied
+/** anonymous function, introduction form for [[FunType]]
+  * @param mayReturn whether a return statement in the body is caught at this level or passed through
+  */
+case class Lambda(ins: LocalContext, body: Expression, mayReturn: Boolean) extends Expression {
+  /** used at run-time to store the frame relative to which the body must be interpreted when the function is applied */
   private[p] var frame: RegionalEnvironment = null
   override def copyFrom(sf: SyntaxFragment): this.type = {
     super.copyFrom(sf)
@@ -1344,6 +1348,14 @@ case class Lambda(ins: LocalContext, body: Expression) extends Expression {
   def label = "lambda"
   def children = ins.children ::: List(body)
   override def childrenInContext = ins.childrenInContext ::: List((None, Some(ins), body))
+}
+
+object Lambda {
+  /** makes a Lambda returnable */
+  def allowReturn(e: Expression) = e match {
+    case l:Lambda if !l.mayReturn => l.copy(mayReturn = true).copyFrom(l)
+    case _ => e
+  }
 }
 
 /** function application, elimination form for [[FunType]]
