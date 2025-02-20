@@ -41,6 +41,18 @@ module AI {
     solution: [action] -> bool = as -> exists i,g. i in initials & reachable(i,as,g) & goals(g)
   }
 
+  theory SimpleSearchProblem {
+    include SearchProblem
+    include DefaultCost
+    include Deterministic
+  }
+
+SEARCH = SimpleSearchProblem {
+  action = EnumeratedType {type univ = int, enum = [0,1,2], make: int -> univ = x -> x }
+  initials = [0]
+  goals = x -> x > 5
+  transition = (s,a) -> s + (action.enum)
+}
   theory FullyObservable {
     include SearchProblem
     initial: state
@@ -115,5 +127,5 @@ module AI {
     }
     []
   }
-  test = true
+  test = treeSearch (DFS, SEARCH) == []
 }
