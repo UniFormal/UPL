@@ -21,8 +21,9 @@ function activate(context) {
   // There should be one command that creates a notebook with one cell containing
   // UPL.proj.main;
   // unless that value is undefined, in which case the notebook should have no cells
-  push(vscode.commands.registerCommand('upl.build', () => {
-    vscode.window.showInformationMessage('UPL is active');
+  push(vscode.commands.registerCommand('upl.notebook', () => {
+    
+    vscode.window.showInformationMessage('Notebook Created');
   }));
   // auto-completion
   push(vscode.languages.registerCompletionItemProvider('upl', {

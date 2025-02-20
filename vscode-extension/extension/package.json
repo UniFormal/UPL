@@ -21,8 +21,8 @@
             }
           ],
         "commands": [{
-            "command": "upl.build",
-            "title": "Build"
+            "command": "upl.notebook",
+            "title": "Notebook"
         }],
         "notebooks": [{
             "type": "upl-notebook",
