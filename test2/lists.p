@@ -1,5 +1,5 @@
 module Lists{
-    append2:_
+    append2 : _
     append2 = (l:[int]) -> (m:[int]) -> 
     l match {
             [] -> m
@@ -8,7 +8,14 @@ module Lists{
                 append2(y)(z)
             }
         }
-    
+    append : _
+    append = (l:[int]) -> (m:[int]) -> {
+        m match {
+            [] -> l
+            x -: y -> append(l:-x)(y)
+        }
+    }
+
     quickSort : _
     quickSort = (l:[int]) -> l match {
         [] -> []
@@ -61,5 +68,5 @@ module Lists{
         ans
     }
 
-    test = depth_first_search(1)(4)([(1,2),(1,3),(2,4),(2,5),(3,6),(3,7)]) == [1,2,4]
+    test = append([1,2,3,4])([5,6,7,8]) == [1,2,3,4,5,6,7,8]
 }
