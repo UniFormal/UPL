@@ -41,14 +41,20 @@ module AI {
     solution: [action] -> bool = as -> exists i,g. i in initials & reachable(i,as,g) & goals(g)
   }
 
+  theory IntBasedType {
+    include EnumeratedType
+    type univ = int
+  }
+
   theory SimpleSearchProblem {
     include SearchProblem
+    action: IntBasedType
     include DefaultCost
     include Deterministic
   }
 
 SEARCH = SimpleSearchProblem {
-  action = EnumeratedType {type univ = int, enum = [0,1,2], make: int -> univ = x -> x }
+  action = IntBasedType {enum = [0,1,2], make: int -> univ = x -> x }
   initials = [0]
   goals = x -> x > 5
   transition = (s,a) -> s + (action.enum)
