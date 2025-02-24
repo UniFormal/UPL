@@ -4,4 +4,4 @@ copy /Y ..\target\scala-2.13\upl-fastopt\* extension\src
 :: here: add the export declaration that Node wants to have
 echo module.exports = {VSCodeBridge}; >> extension\src\main.js
 :: build the VSCode extension package (excluding this script)
-zip -r upl-vscode.vsix * -x makevsix.bat
+zip -r upl-vscode.vsix * -x makevsix.bat makevsix.sh
