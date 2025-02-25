@@ -4,7 +4,14 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a975e1f6-0b7b-45a3-9996-7e83f5a3b89c" name="Changes" comment="" />
+    <list default="true" id="a975e1f6-0b7b-45a3-9996-7e83f5a3b89c" name="Changes" comment="tests working with config for tests">
+      <change beforePath="$PROJECT_DIR$/.idea/codeStyles/Project.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/codeStyles/Project.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/codeStyles/codeStyleConfig.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/codeStyles/codeStyleConfig.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/scala/info/kwarc/p/Test.scala" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/scala/info/kwarc/p/Test.scala" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -23,18 +30,28 @@
       <state>
         <projects_view>
           <tree_state>
-            <expand>
-              <path>
-                <item name="" type="6a2764b6:ExternalProjectsStructure$RootNode" />
-                <item name="UPL" type="f1a62948:ProjectNode" />
-              </path>
-            </expand>
+            <expand />
             <select />
           </tree_state>
         </projects_view>
       </state>
     </system>
   </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;VvSsNPk&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/UniFormal/UPL.git&quot;,
+    &quot;accountId&quot;: &quot;95a6de7d-352c-44af-9550-7332ac855b86&quot;
+  }
+}</component>
   <component name="HighlightingSettingsPerFile">
     <setting file="file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Syntax.scala" root0="SKIP_INSPECTION" />
     <setting file="file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Checker.scala" root0="SKIP_INSPECTION" />
@@ -42,50 +59,79 @@
   <component name="ProjectCodeStyleSettingsMigration">
     <option name="version" value="2" />
   </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 7
+}</component>
   <component name="ProjectId" id="2jk9EpfqtzZ07KSulFwGepBcZBg" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">
-    <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
-    <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
-    <property name="panda.excluded.classes" value="" />
-    <property name="panda.monitored.classes" value="" />
-    <property name="project.structure.last.edited" value="Libraries" />
-    <property name="project.structure.proportion" value="0.15" />
-    <property name="project.structure.side.proportion" value="0.39425287" />
-    <property name="settings.editor.selected.configurable" value="preferences.sourceCode.Scala" />
-  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Application.Tests.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  }
+}</component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
       <recent name="C:\other\github.com\UniFormal\UPL\src\main\scala" />
     </key>
   </component>
-  <component name="RunManager" selected="Application.Test">
+  <component name="RunManager" selected="Application.Tests">
     <configuration name="Build" type="Application" factoryName="Application">
       <option name="ALTERNATIVE_JRE_PATH" value="BUNDLED" />
       <option name="MAIN_CLASS_NAME" value="info.kwarc.p.Main" />
-      <module name="UPL" />
+      <module name="IdeaProjectsm.UPL" />
       <option name="PROGRAM_PARAMETERS" value="--repl test/all.pp" />
       <method v="2">
         <option name="Make" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test" type="Application" factoryName="Application">
-      <option name="ALTERNATIVE_JRE_PATH" value="BUNDLED" />
-      <option name="MAIN_CLASS_NAME" value="info.kwarc.p.Test" />
-      <module name="UPL" />
-      <option name="PROGRAM_PARAMETERS" value="--repl test/all.pp" />
+    <configuration name="Tests" type="Application" factoryName="Application" temporary="true">
+      <option name="ALTERNATIVE_JRE_PATH" value="openjdk-20" />
+      <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="true" />
+      <option name="MAIN_CLASS_NAME" value="info.kwarc.p.Tests" />
+      <module name="IdeaProjectsm.UPL" />
+      <extension name="coverage">
+        <pattern>
+          <option name="PATTERN" value="info.kwarc.p.*" />
+          <option name="ENABLED" value="true" />
+        </pattern>
+      </extension>
       <method v="2">
         <option name="Make" enabled="true" />
       </method>
     </configuration>
     <list>
       <item itemvalue="Application.Build" />
-      <item itemvalue="Application.Test" />
+      <item itemvalue="Application.Tests" />
     </list>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Application.Tests" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="ScalaProjectSettings">
+    <option name="migrateConfigurationsNotificationShown" value="true" />
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-jdk-9823dce3aa75-125ca727e0f0-intellij.indexing.shared.core-IU-243.23654.117" />
+        <option value="bundled-js-predefined-d6986cc7102b-822845ee3bb5-JavaScript-IU-243.23654.117" />
+      </set>
+    </attachedChunks>
   </component>
   <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
   <component name="TaskManager">
@@ -95,20 +141,43 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1721920099005</updated>
+      <workItem from="1740510197027" duration="724000" />
+      <workItem from="1740512231514" duration="674000" />
     </task>
+    <task id="LOCAL-00001" summary="tests working with config for tests">
+      <option name="closed" value="true" />
+      <created>1740512694872</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1740512694872</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
   </component>
   <component name="UnknownFeatures">
     <option featureType="com.intellij.fileTypeFactory" implementationName="*.map" />
     <option featureType="com.intellij.fileTypeFactory" implementationName="*.p" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="tests working with config for tests" />
+    <option name="LAST_COMMIT_MESSAGE" value="tests working with config for tests" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Checker.scala</url>
-          <line>1338</line>
+          <line>1324</line>
           <option name="timeStamp" value="48" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="scala-line">
+          <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Checker.scala</url>
+          <line>415</line>
+          <option name="timeStamp" value="64" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Interpreter.scala</url>
@@ -117,51 +186,32 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Syntax.scala</url>
-          <line>1885</line>
+          <line>1835</line>
           <option name="timeStamp" value="84" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Checker.scala</url>
-          <line>1334</line>
+          <line>1320</line>
           <option name="timeStamp" value="94" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Syntax.scala</url>
-          <line>535</line>
+          <line>531</line>
           <option name="timeStamp" value="107" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Parser.scala</url>
-          <line>200</line>
+          <line>199</line>
           <option name="timeStamp" value="118" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="scala-line">
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Syntax.scala</url>
-          <line>532</line>
+          <line>528</line>
           <option name="timeStamp" value="138" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="scala-line">
-          <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Checker.scala</url>
-          <line>18</line>
-          <option name="timeStamp" value="141" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="scala-line">
-          <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Checker.scala</url>
-          <line>968</line>
-          <option name="timeStamp" value="148" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="scala-line">
-          <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Syntax.scala</url>
-          <line>329</line>
-          <option name="timeStamp" value="150" />
         </line-breakpoint>
         <breakpoint enabled="true" type="java-exception">
           <properties class="java.lang.NullPointerException" package="java.lang" />
           <option name="timeStamp" value="100" />
-        </breakpoint>
-        <breakpoint enabled="true" type="java-exception">
-          <properties class="java.lang.IndexOutOfBoundsException" package="java.lang" />
-          <option name="timeStamp" value="151" />
         </breakpoint>
       </breakpoints>
     </breakpoint-manager>
@@ -175,8 +225,6 @@
         <watch expression="((Module)gc.voc).decls" custom="info.kwarc.p.Module" />
         <watch expression="this" />
         <watch expression="((Module)mod).decls" custom="info.kwarc.p.Module" />
-        <watch expression="((Module)gc.voc).decls" custom="info.kwarc.p.Module" />
-        <watch expression="gc$14" />
       </configuration>
     </watches-manager>
   </component>
