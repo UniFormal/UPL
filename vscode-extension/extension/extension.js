@@ -1,5 +1,5 @@
 // this should be const, but making it global helps with debugging
-vscode = require('vscode');
+const vscode = require('vscode');
 const upl = require('./src/main.js');
 
 function activate(context) {
@@ -22,7 +22,7 @@ function activate(context) {
   // UPL.proj.main;
   // unless that value is undefined, in which case the notebook should have no cells
   push(vscode.commands.registerCommand('upl.notebook', () => {
-    
+    const notebook = vscode.workspace.openNotebookDocument("/sample.p.notebook")
     vscode.window.showInformationMessage('Notebook Created');
   }));
   // auto-completion
