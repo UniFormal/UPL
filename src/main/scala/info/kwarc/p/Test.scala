@@ -29,5 +29,6 @@ object Tests {
     mustFail(classOf[Checker#Error])(check("i:[int]=[1,2,3,4]"))
     mustFail(classOf[Checker#Error])(check("append : [int] -> [int] -> [int] = l -> m  = l + m"))
     mustFail(classOf[Checker#Error])(check("1+\"a\""))
+    mustFail(classOf[Parser#Error])(parse("2==2"))
   }
 }
