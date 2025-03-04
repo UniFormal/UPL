@@ -48,7 +48,7 @@ module AI {
 
   theory SimpleSearchProblem {
     include SearchProblem
-    action: IntBasedType
+    action : IntBasedType
     include DefaultCost
     include Deterministic
   }
@@ -57,7 +57,7 @@ SEARCH = SimpleSearchProblem {
   action = IntBasedType {enum = [0,1,2], make: int -> univ = x -> x }
   initials = [0]
   goals = x -> x > 5
-  transition = (s,a) -> s + (action.enum)
+  transition = (s,_) -> s?
 }
   theory FullyObservable {
     include SearchProblem
