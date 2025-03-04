@@ -31,5 +31,14 @@ object Tests {
     mustFail(classOf[Checker#Error])(check("1+\"a\""))
     mustFail(classOf[Parser#Error])(parse("2==2"))
     mustFail(classOf[Checker#Error])(check("x = \"praveen\""))
+    mustFail(classOf[Checker#Error])(check("theory EnumeratedType {" +
+      "type univ " +
+      "enum: [univ] " +
+      "complete: |- forall x: univ. x in enum" +
+      "} " +
+      "theory IntBasedType { " +
+      "include EnumeratedType" +
+      " type univ = int" +
+      "}"))
   }
 }
