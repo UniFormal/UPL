@@ -7,7 +7,7 @@ object Test {
     }
     catch {
       case e: PError if e.getClass == cls =>
-      case e => println("test failed: " + e)
+      case e : PError => println("test failed unexpected error "+ e)
     }
   }
 
@@ -28,10 +28,10 @@ object Tests {
     mustFail(classOf[Checker#Error])(check("1:int"))
     mustFail(classOf[Checker#Error])(check("i:[int]=[1,2,3,4]"))
     mustFail(classOf[Checker#Error])(check("append : [int] -> [int] -> [int] = l -> m  = l + m"))
-    mustFail(classOf[Checker#Error])(check("1+\"a\""))
+    mustFail(classOf[Checker#Error])(check("y= 3 \n x = 1+\"a\""))
     mustFail(classOf[Parser#Error])(parse("2==2"))
     mustFail(classOf[Checker#Error])(check("x = \"praveen\""))
-    mustFail(classOf[Checker#Error])(check("theory EnumeratedType {" +
+    mustFail(classOf[Parser#Error])(parse("theory EnumeratedType {" +
       "type univ " +
       "enum: [univ] " +
       "complete: |- forall x: univ. x in enum" +
@@ -41,4 +41,8 @@ object Tests {
       " type univ = int" +
       "}"))
   }
+  mustFail(classOf[Parser#Error])(parse("y = true"))
+  mustFail(classOf[Checker#Error])(check("x : [int] = [1]"))
+  mustFail(classOf[Parser#Error])(parse("1+2 == 3"))
+  mustFail(classOf[Parser#Error])(parse("theory A{ type univ = int } \n x = A { univ = 1}"))
 }

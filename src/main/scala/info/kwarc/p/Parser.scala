@@ -207,7 +207,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
 
   def makeRef(from: Int) = {
     var to = index // the end of the source region (exclusive)
-    while (input(to-1).isWhitespace) to -= 1 // remove trailing whitespace from source region
+    while (to > 0 && input(to-1).isWhitespace) to -= 1 // remove trailing whitespace from source region
     Location(origin, from, to)
   }
   def addRef[A<:SyntaxFragment](sf: => A): A = {
