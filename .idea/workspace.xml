@@ -4,9 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a975e1f6-0b7b-45a3-9996-7e83f5a3b89c" name="Changes" comment="minor tests">
+    <list default="true" id="a975e1f6-0b7b-45a3-9996-7e83f5a3b89c" name="Changes" comment="some more tests">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/scala/info/kwarc/p/Parser.scala" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/scala/info/kwarc/p/Parser.scala" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/scala/info/kwarc/p/Test.scala" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/scala/info/kwarc/p/Test.scala" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -145,7 +144,9 @@
       <workItem from="1741631818395" duration="1538000" />
       <workItem from="1741958959859" duration="10000" />
       <workItem from="1742568066329" duration="2117000" />
-      <workItem from="1742578965398" duration="297000" />
+      <workItem from="1742578965398" duration="2617000" />
+      <workItem from="1742914733352" duration="619000" />
+      <workItem from="1743065132841" duration="1000" />
     </task>
     <task id="LOCAL-00001" summary="tests working with config for tests">
       <option name="closed" value="true" />
@@ -195,7 +196,15 @@
       <option name="project" value="LOCAL" />
       <updated>1741128772776</updated>
     </task>
-    <option name="localTasksCounter" value="7" />
+    <task id="LOCAL-00007" summary="some more tests">
+      <option name="closed" value="true" />
+      <created>1742579833682</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1742579833682</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -221,7 +230,8 @@
     <MESSAGE value="config update" />
     <MESSAGE value="tests" />
     <MESSAGE value="minor tests" />
-    <option name="LAST_COMMIT_MESSAGE" value="minor tests" />
+    <MESSAGE value="some more tests" />
+    <option name="LAST_COMMIT_MESSAGE" value="some more tests" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -250,16 +260,6 @@
           <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Checker.scala</url>
           <line>1320</line>
           <option name="timeStamp" value="94" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="scala-line">
-          <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Syntax.scala</url>
-          <line>531</line>
-          <option name="timeStamp" value="107" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="scala-line">
-          <url>file://$PROJECT_DIR$/src/main/scala/info/kwarc/p/Syntax.scala</url>
-          <line>528</line>
-          <option name="timeStamp" value="138" />
         </line-breakpoint>
         <breakpoint enabled="true" type="java-exception">
           <properties class="java.lang.NullPointerException" package="java.lang" />
