@@ -1,5 +1,6 @@
 package info.kwarc.p
 
+
 object Main {
   def main(args: Array[String]): Unit = {
     var left = args.toList
@@ -10,6 +11,8 @@ object Main {
     val path = if (left.nonEmpty) File(next) else File(".")
     if (!interactive & create){
       java.nio.file.Files.createDirectory(path.toJava.toPath)
+      val file = path.resolve("main.pp")
+      java.nio.file.Files.createFile(file.toJava.toPath)
     }
     val mn = if (left.nonEmpty) Some(next) else None
     val proj = Project.fromFile(path, mn)
