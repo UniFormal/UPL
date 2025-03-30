@@ -157,7 +157,7 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
       println(result)
     }
   }
-  def runMaybeRepl(dropToRepl: Boolean) = {
+  def runMaybeRepl(dropToRepl: Boolean): Unit = {
     val ipO = run()
     if (dropToRepl) ipO foreach {ip => repl(ip)}
   }
@@ -174,10 +174,10 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
 object Project {
   private val fileEndings = List(".p", ".p.tex")
   private def pFiles(f: File) = f.descendants.filter(d => fileEndings.exists(d.getName.endsWith))
-  def fromFile(projFile: File, main: Option[String] = None) = {
+  def fromFile(projFile: File, main: Option[String] = None): Project = {
     val (paths,mainS) = if (projFile.getExtension contains "pp") {
       val props = File.readPropertiesFromString(File.read(projFile))
-      val src = props.get("source").getOrElse("").split("\\s")
+      val src = props.getOrElse("source", "").split("\\s")
       val mn = props.get("main")
       val ps = src.toList.flatMap {s =>
         val f = projFile.up.resolve(s)
@@ -195,4 +195,5 @@ object Project {
     p.entries.foreach {e => p.update(e.source, Parser.getFileContent(File(e.source.toString)))}
     p
   }
+
 }
