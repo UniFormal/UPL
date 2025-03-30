@@ -9,6 +9,7 @@ object Main {
     val interactive = if (left.headOption contains "--repl"){next; true} else false
     val create = if (left.headOption contains "-c") {next; true} else  false
     val path = if (left.nonEmpty) File(next) else File(".")
+    // this is basic maybe project creation can be integrated with the Project object or class for better exchange with vscode bridge ?
     if (!interactive & create){
       java.nio.file.Files.createDirectory(path.toJava.toPath)
       val file = path.resolve("main.pp")
