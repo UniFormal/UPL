@@ -4,10 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a975e1f6-0b7b-45a3-9996-7e83f5a3b89c" name="Changes" comment="command line functionality">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/scala/info/kwarc/p/Main.scala" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/scala/info/kwarc/p/Main.scala" afterDir="false" />
-    </list>
+    <list default="true" id="a975e1f6-0b7b-45a3-9996-7e83f5a3b89c" name="Changes" comment="-c functionality is implemented" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -161,7 +158,7 @@
       <workItem from="1743065132841" duration="1000" />
       <workItem from="1743116591117" duration="320000" />
       <workItem from="1743352848442" duration="2744000" />
-      <workItem from="1743356312118" duration="924000" />
+      <workItem from="1743356312118" duration="1019000" />
     </task>
     <task id="LOCAL-00001" summary="tests working with config for tests">
       <option name="closed" value="true" />
@@ -243,7 +240,15 @@
       <option name="project" value="LOCAL" />
       <updated>1743355545576</updated>
     </task>
-    <option name="localTasksCounter" value="11" />
+    <task id="LOCAL-00011" summary="-c functionality is implemented">
+      <option name="closed" value="true" />
+      <created>1743357272000</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1743357272000</updated>
+    </task>
+    <option name="localTasksCounter" value="12" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -271,7 +276,8 @@
     <MESSAGE value="minor tests" />
     <MESSAGE value="some more tests" />
     <MESSAGE value="command line functionality" />
-    <option name="LAST_COMMIT_MESSAGE" value="command line functionality" />
+    <MESSAGE value="-c functionality is implemented" />
+    <option name="LAST_COMMIT_MESSAGE" value="-c functionality is implemented" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
