@@ -4,8 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a975e1f6-0b7b-45a3-9996-7e83f5a3b89c" name="Changes" comment="-c functionality is implemented">
-      <change beforePath="$PROJECT_DIR$/src/main/scala/info/kwarc/p/Main.scala" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/scala/info/kwarc/p/Main.scala" afterDir="false" />
+    <list default="true" id="a975e1f6-0b7b-45a3-9996-7e83f5a3b89c" name="Changes" comment="a small thought">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -160,7 +160,8 @@
       <workItem from="1743065132841" duration="1000" />
       <workItem from="1743116591117" duration="320000" />
       <workItem from="1743352848442" duration="2744000" />
-      <workItem from="1743356312118" duration="1764000" />
+      <workItem from="1743356312118" duration="1917000" />
+      <workItem from="1743540175109" duration="23000" />
     </task>
     <task id="LOCAL-00001" summary="tests working with config for tests">
       <option name="closed" value="true" />
@@ -258,7 +259,15 @@
       <option name="project" value="LOCAL" />
       <updated>1743357373807</updated>
     </task>
-    <option name="localTasksCounter" value="13" />
+    <task id="LOCAL-00013" summary="a small thought">
+      <option name="closed" value="true" />
+      <created>1743358112755</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1743358112755</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -287,7 +296,8 @@
     <MESSAGE value="some more tests" />
     <MESSAGE value="command line functionality" />
     <MESSAGE value="-c functionality is implemented" />
-    <option name="LAST_COMMIT_MESSAGE" value="-c functionality is implemented" />
+    <MESSAGE value="a small thought" />
+    <option name="LAST_COMMIT_MESSAGE" value="a small thought" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
