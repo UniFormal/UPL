@@ -14,12 +14,12 @@ module Algebra {
     include Magma
     e: univ
   }
-  intAdd = Magma {type univ = int, op = (x,y) -> x+y}
-  intMult = Magma {type univ = int, op = (x,y) -> x*y}
   theory BiMagma {
     include Carrier
     add  : Magma {type univ = ..univ}
     mult : Magma {type univ = ..univ}
   }
+  intAdd = Magma {type univ = int, op = (x,y) -> x+y}
+  intMult = Magma {type univ = int, op = (x,y) -> x*y}
   intAddMult = BiMagma {type univ = int, add = intAdd, mult = intMult}
 }

@@ -1,9 +1,13 @@
 package info.kwarc.p
 
 abstract class JS {
-  def apply(s: String) = JObjectElem(this, s)
-  def apply(args: JS*) = JApply(this, args.toList)
+  def objectElem(s: String) = JObjectElem(this, s)
+  def applyFun(args: JS*) = JApply(this, args.toList)
   def equal(that: JS) = JBinOp("===", this, that)
+  def makeRedex(subs: List[(String,JS)]) = {
+    val (names,js) = subs.unzip
+    JApply(JFunction(names, this), js)
+  }
 }
 
 case class JInt(value: Int) extends JS {
@@ -31,6 +35,7 @@ case class JVarRef(name: String) extends JS {
 }
 case class JVarDef(name: String, df: JS) extends JS {
   override def toString = name + " = " + df + ";"
+  def toRef = JVarRef(name)
 }
 
 case class JBlock(exprs: List[JS]) extends JS {
@@ -40,8 +45,11 @@ case class JBlock(exprs: List[JS]) extends JS {
       case Nil => Nil
       case es => es.init ::: List(JReturn.prefix(es.last))
     }
-    JApply(JFunction(Nil, JBlock(esE)), Nil)
+    JBlock(esE).makeRedex(Nil)
   }
+}
+case class JForArray(name: String, elems: JS, body: JS) extends JS {
+  override def toString = s"$elems.forEach($name => $body)"
 }
 case class JWhile(cond: JS, body: JS) extends JS {
   override def toString = s"while ($cond) $body"
@@ -72,15 +80,22 @@ case class JIf(cond: JS, thn: JS, els: Option[JS]) extends JS {
 case class JTernary(cond: JS, thn: JS, els: JS) extends JS {
   override def toString = s"($cond) ? $thn : $els"
 }
-
+object JIf {
+  def chained(branches: List[(JS,JS)], deflt: JS): JS =
+    branches.foldRight(deflt){case ((cond,thn), rest) => JIf(cond,thn, Some(rest))}
+}
 case class JObject(fields: (String,JS)*) extends JS {
   override def toString = fields.map(f => f._1 + ":" + f._2).mkString("{", ",", "}")
+  def applyXXXget(f: String): Option[JS] = fields.find(_._1 == f).map(_._2)
 }
 case class JObjectElem(obj: JS, field: String) extends JS {
   override def toString = s"$obj.$field"
 }
+object JObject {
+  def apply(k: String, v: String): JObject = JObject(k -> JString(v))
+}
 
-case class JArray(elems: List[JS]) extends JS {
+case class JArray(elems: JS*) extends JS {
   override def toString = elems.map(_.toString).mkString("[", ",", "]")
 }
 case class JArrayElem(arr: JS, index: JS) extends JS {

@@ -1,5 +1,5 @@
 // this should be const, but making it global helps with debugging
-const vscode = require('vscode');
+vscode = require('vscode');
 const upl = require('./src/main.js');
 
 function activate(context) {

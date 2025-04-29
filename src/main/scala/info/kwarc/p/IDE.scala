@@ -92,7 +92,7 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
     }
   }
 
-  def update(doc: TextDocument): Unit = {
+  def update(doc: TextDocument): Unit = reportExceptions {
     if (doc.languageId != "upl") return
     // println("parsing " + doc.fileName)
     val so = makeOrigin(doc)
@@ -186,10 +186,7 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
     }
     val regionals = thy.decls.flatMap {
       case sd: NamedDeclaration => List(sd.name)
-      case i: Include => if (thy.isFlat) Nil else gc.lookupGlobal(i.dom) match {
-        case Some(m: Module) => m.domain
-        case _ => Nil
-      }
+      case i: Include => if (thy.isFlat) Nil else Checker.evaluateTheoryExpr(gc,i.dom).domain
     }
     val cs = (locals ::: regionals).distinct.map(n => new CompletionItem(n))
     js.Array(cs: _*)

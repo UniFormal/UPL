@@ -59,6 +59,7 @@ SEARCH = SimpleSearchProblem {
   goals = x -> x > 5
   transition = (s,_) -> s?
 }
+
   theory FullyObservable {
     include SearchProblem
     initial: state

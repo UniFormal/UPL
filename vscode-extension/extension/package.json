@@ -2,7 +2,7 @@
     "name": "upl",
     "version": "1.0.0",
     "engines": {
-        "vscode": "^1.94.0"
+        "vscode": "^1.97.0"
     },
     "publisher": "kwarc",
     "activationEvents": [],
@@ -22,7 +22,7 @@
           ],
         "commands": [{
             "command": "upl.notebook",
-            "title": "Notebook"
+            "title": "Open UPL Notebook"
         }],
         "notebooks": [{
             "type": "upl-notebook",

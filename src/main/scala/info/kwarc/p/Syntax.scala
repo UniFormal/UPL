@@ -116,7 +116,7 @@ sealed trait Named extends MaybeNamed {
 
 sealed trait HasChildren[A <: MaybeNamed] extends SyntaxFragment {
   def decls: List[A]
-  def domain = decls collect { case d: Named => d.name }
+  def domain = decls collect {case d: Named => d.name}
   def length = decls.length
   def empty = decls.isEmpty
   def lookupO(name: String) = decls.find(_.nameO.contains(name))
@@ -156,7 +156,7 @@ sealed trait Type extends Object {
   def known = true
   def skipUnknown = this
   def substitute(sub: Substitution) = Substituter(GlobalContext(""), sub, this)
-  def <--(ins: Type*) = FunType.simple(ins.toList, this)
+  def <--(ins: Type*) = SimpleFunType(ins.toList, this)
 
   /** true if this type is definitely finite (in complex cases, this may be false for finite types)
     * only reliable for fully normalized types
@@ -313,11 +313,15 @@ case class LocalContext(variables: List[VarDecl]) extends Context[LocalContext] 
 
   /** applies f to all declarations, outer-most first */
   def map(f: VarDecl => VarDecl) = {
-    val varsM = Util.reverseMap(variables)(f)
-    LocalContext.make(varsM)
+    LocalContext.make(this mapDecls f)
   }
+  /** applies f to all declarations, outer-most first */
+  def mapDecls[B](f: VarDecl => B) = {
+    Util.reverseMap(variables)(f)
+  }
+  def namesInOrder = domain.reverse
   def namesUnique = {
-    val names = variables collect { case vd if !vd.anonymous => vd.name }
+    val names = variables collect {case vd if !vd.anonymous => vd.name}
     Util.noReps(names)
   }
 
@@ -423,7 +427,7 @@ object BiContext {
   *   if this is defined, [[theory]] may be null, in which case it has to be infered
   * @param local the local context
   */
-case class RegionalContext(theory: Theory, owner: Option[Expression], local: LocalContext) extends Context[RegionalContext] {
+case class RegionalContext(theory: TheoryValue, owner: Option[Expression], local: LocalContext) extends Context[RegionalContext] {
   override def toString = owner.getOrElse(theory).toString + s"($local)"
   def label = "region"
   def children = theory :: local.children
@@ -434,10 +438,14 @@ case class RegionalContext(theory: Theory, owner: Option[Expression], local: Loc
 }
 object RegionalContext {
   val empty = RegionalContext(Theory.empty, None, LocalContext.empty)
-  def apply(thy: Theory, owner: Option[Expression] = None): RegionalContext = RegionalContext(thy, owner, LocalContext.empty)
+  def apply(thy: TheoryValue, owner: Option[Expression] = None): RegionalContext = RegionalContext(thy, owner, LocalContext.empty)
   def apply(p: Path): RegionalContext = RegionalContext(PhysicalTheory(p))
 }
 
+/**
+  * @param transparent subsequent frames may see this one (via .. for regional idents)
+  * @param physical iff this represents a named module, whether it is closed; in that case, region.theory is just an include of that module
+  */
 case class RegionalContextFrame(region: RegionalContext, transparent: Boolean, physical: Option[Boolean])
 
 /** program-level context: provides the vocabulary and the stack of regional+local contexts
@@ -471,19 +479,85 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     while (local.decls.exists(vd => vd.name.startsWith("_" + i))) i += 1
     "_" + i
   }
+
+  // lookups
+
+  def lookupLocal(name: String): Option[VarDecl] = {
+    var regs = regions
+    while (regs.nonEmpty) {
+      val r = regs.head
+      val vdO = r.region.local.lookupO(name)
+      if (vdO.isDefined) return vdO
+      if (r.transparent) regs = regs.tail
+      else regs = Nil
+    }
+    None
+  }
+
+  def lookupRegional(name: String): Option[NamedDeclaration] = {
+    val (mod,flat) = if (inPhysicalTheory) (parentDecl,true) else (theory.toModule,theory.isFlat)
+    // look in the current module for a primitive or previously merged declaration
+    mod.lookupO(name) match {
+      case Some(nd: NamedDeclaration) if !nd.global => return Some(nd)
+      case _ =>
+    }
+    // look in included modules (only relevant for theories, that are not flat)
+    val ds = if (flat) Nil else mod.supers.flatMap {
+      case OpenRef(p) => voc.lookupPath(p / name).toList
+      case ClosedRef(n) => lookupRegional(n) match {
+        case Some(m: Module) => m.decls collect {
+          case nd: NamedDeclaration if nd.name == n => nd
+        }
+        case Some(_) => throw IError("not a module")
+        case None => throw IError("unknown name")
+      }
+      case _ => Nil // owned theories must be flattened out
+    }.filter(d => !d.global && !d.subsumed)
+    if (ds.isEmpty) {
+      None
+    } else {
+      // find the most defined one
+      var res = ds.head
+      ds.tail.foreach {d =>
+        Declaration.compare(res, d) match {
+          case Declaration.Subsumes | Declaration.Identical =>
+          case Declaration.SubsumedBy => res = d
+          case Declaration.Independent | Declaration.Clashing => throw IError("multiple incompatible declarations found")
+        }
+      }
+      Some(res)
+    }
+  }
+
+  def lookupGlobal(p: Path) = voc.lookupPath(p)
+
+  def lookupRef(r: Ref) = r match {
+    case OpenRef(p) => lookupGlobal(p)
+    case ClosedRef(n) => lookupRegional(n)
+  }
+
+  /** lookup a module that is known to exist */
+  def lookupModule(r: Ref) = lookupRef(r) match {
+    case Some(m: Module) => m
+    case Some(_) => throw ASTError("not a module")
+    case None => throw ASTError("not a name")
+  }
+
+  // updates to stack of regional contexts
+
   /** push a physical region */
   def enter(m: Module) = pushFrame(RegionalContext(currentParent / m.name), true, Some(m.closed))
   /** push an anonymous region */
-  def enter(t: Theory): GlobalContext = pushFrame(RegionalContext(t), true, None)
+  def enter(t: Theory): GlobalContext = pushFrame(RegionalContext(t.toValue), true, None)
   /** push an empty anonymous region */
   def enterEmpty() = pushFrame(RegionalContext.empty, true, None)
   /** push a referenced region */
-  def push(t: Theory, owner: Option[Expression] = None): GlobalContext = pushFrame(RegionalContext(t, owner), false, None)
+  def push(t: Theory, owner: Option[Expression] = None): GlobalContext = pushFrame(RegionalContext(t.toValue, owner), false, None)
   private def pushFrame(r: RegionalContext, trans: Boolean, phys: Option[Boolean]) = {
     val f = RegionalContextFrame(r, trans, phys)
     copy(regions = f :: regions)
   }
-  /** removes last region, keeping its local variables in quoted form */
+  /** removes last region */
   def pop() = {
     // The code below yields the rule Q, x:U |- `e`: A  if  T, x:Q{U} |- e: Q{A}
     // It's tempting but too strong because it would make pattern-matching available on x:N{U} even though x:U extends the open world of Q.
@@ -496,12 +570,12 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     copy(regions = regions.tail)
   }
 
-  /** true if the local environment is given by the current parent(s) (as opposed to other ones that we have pushed) */
-  def inPhysicalTheory = regions.forall(_.physical.isDefined)
   def copyLocal(lc: LocalContext) = {
     val regC = currentRegion.copyLocal(lc)
     copy(regions = regions.head.copy(region = regC) :: regions.tail)
   }
+
+  // changes to current region
 
   /** adds a declaration to the current physical theory (if any) or the current region */
   def add(d: Declaration) = {
@@ -523,15 +597,19 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     this.currentRegion.local unappend smaller.currentRegion.local
   }
 
+  /** true if the local environment is given by the current parent(s) (as opposed to other ones that we have pushed) */
+  private def inPhysicalTheory = regions.forall(_.physical.isDefined)
+
+  /** the path to the current theory if in physical theory */
   private def currentParent: Path = {
-    if (regions.length == 1) Path.empty
-    else if (!inPhysicalTheory)
+    if (!inPhysicalTheory)
       throw IError("not in physical theory")
     else currentRegion.theory.decls.head match {
-      case Include(p, None, false) => p
+      case Include(OpenRef(p), None, false) => p
       case _ => throw IError("not a physical theory")
     }
   }
+  /** the current theory if in physical theory */
   def parentDecl = voc.lookupModule(currentParent).getOrElse {
     throw ASTError("unknown parent: " + currentParent)
   }
@@ -541,6 +619,8 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     if (inPhysicalTheory) parentDecl.decls
     else currentRegion.theory.decls
   }
+
+  // heuristic lookup of names from surface syntax, also return internal name
 
   /** dereferences an ambiguous relative path: looks up in transparent physical parent regions and returns the first that exists */
   def resolvePath(p: Path): Option[(Path, NamedDeclaration)] = {
@@ -561,6 +641,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
       }
     }
   }
+  /** resolves an ambiguous name */
   def resolveName(obj: Object): Option[(Object, Option[NamedDeclaration])] = {
     def make(e: Object) = if (e == obj) obj else e.copyFrom(obj)
     val n = obj match {
@@ -577,24 +658,21 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     while (gcO.isDefined) {
       val gc = gcO.get
       gc.lookupRegional(n).foreach {d =>
-        var dRet = d
         val level = regions.length - gc.regions.length + 1
         val ret = if (level > 1) {
           val owner = This(level)
           val dom = gc.currentRegion.theory
-          dRet = OwnerSubstitutor(owner, dom, dRet) match {
-            case nd: NamedDeclaration => nd
+          d match {
+            case nd: NamedDeclaration =>
+              val dO = OwnersSubstitutor.applyDecl(gc,nd,-level).asInstanceOf[NamedDeclaration]
+              val objC = OwnedReference(owner,dom,nd)
+              (objC,Some(dO))
             case _ => throw IError("impossible case")
           }
-          d match {
-            case _:ExprDecl => OwnedExpr(owner, dom, ClosedRef(n))
-            case _:TypeDecl => OwnedType(owner, dom, ClosedRef(n))
-            case _ => throw IError("unownable declaration") // TODO support owned modules
-          }
         } else {
-          make(ClosedRef(n))
+          (make(ClosedRef(n)), Some(d))
         }
-        return Some((ret,Some(dRet)))
+        return Some(ret)
       }
       // look in transparent enclosing regions
       if (gc.regions.length > 1 && gc.currentIsTransparent) {
@@ -610,56 +688,12 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     // give up
     None
   }
-
-  def lookupLocal(name: String): Option[VarDecl] = {
-    var regs = regions
-    while (regs.nonEmpty) {
-      val r = regs.head
-      val vdO = r.region.local.lookupO(name)
-      if (vdO.isDefined) return vdO
-      if (r.transparent) regs = regs.tail
-      else regs = Nil
-    }
-    None
-  }
-
-  def lookupRegional(name: String): Option[NamedDeclaration] = {
-    val mod = if (inPhysicalTheory) parentDecl else theory.toModule
-    // look in the current module for a primitive or previously merged declaration
-    mod.lookupO(name) match {
-      case Some(nd: NamedDeclaration) if !nd.global => return Some(nd)
-      case _ =>
-    }
-    // look in included modules
-    val ds = mod.supers.flatMap {p => voc.lookupPath(p / name).toList}.filter(d => !d.global && !d.subsumed)
-    if (ds.isEmpty) {
-      None
-    } else {
-      // find the most defined one
-      var res = ds.head
-      ds.tail.foreach { d =>
-        Declaration.compare(res, d) match {
-          case Declaration.Subsumes | Declaration.Identical =>
-          case Declaration.SubsumedBy                       => res = d
-          case Declaration.Independent | Declaration.Clashing =>
-            throw IError("multiple incompatible declarations found")
-        }
-      }
-      Some(res)
-    }
-  }
-
-  def lookupGlobal(p: Path) = voc.lookupPath(p)
-
-  def lookupRef(r: Ref) = r match {
-    case OpenRef(p) => lookupGlobal(p)
-    case ClosedRef(n) => lookupRegional(n)
-  }
 }
+
 object GlobalContext {
   def apply(n: String): GlobalContext = GlobalContext(Module(n, false, Nil))
   def apply(v: Vocabulary): GlobalContext = GlobalContext(Module.anonymous(v.decls))
-  def apply(m: Module): GlobalContext = GlobalContext(m, List(RegionalContextFrame(RegionalContext(Path.empty), true, Some(false))))
+  def apply(m: Module): GlobalContext = GlobalContext(m, List(RegionalContextFrame(RegionalContext(Path.empty), true, Some(m.closed))))
 }
 
 // ***************** Programs and Declarations **************************************
@@ -715,13 +749,15 @@ case class Module(name: String, closed: Boolean, decls: List[Declaration]) exten
     val r = Some(PhysicalTheory(Path(name)))
     decls.map(d => (r, None, d))
   }
+  /** the definiens of a module is its body */
+  def df = TheoryValue(decls)
 
-  /** after checking: all included modules */
+  /** after checking: all included theories */
   def supers = decls.collect { case id: Include =>
     id.dom
   }
 
-  /** after checking: all undefined included modules */
+  /** after checking: all undefined included theories */
   def base = decls.collect {
     case id: Include if id.dfO.isEmpty => id.dom
   }
@@ -782,8 +818,8 @@ sealed trait AtomicDeclaration extends Declaration {
 }
 
 /** include within a module */
-case class Include(dom: Path, dfO: Option[Expression], realize: Boolean) extends UnnamedDeclaration with AtomicDeclaration {
-  def theory = PhysicalTheory(dom)
+case class Include(dom: TheoryExpr, dfO: Option[Expression], realize: Boolean) extends UnnamedDeclaration with AtomicDeclaration {
+  def theory = dom.toValue
   def tp = ClassType(theory)
   override def toString = {
     val kw = if (realize) "realize" else "include"
@@ -797,8 +833,7 @@ case class Include(dom: Path, dfO: Option[Expression], realize: Boolean) extends
 }
 
 object Include {
-  def apply(p: Path, dfO: Option[Expression] = None): Include =
-    Include(p, dfO, false)
+  def apply(dom: TheoryExpr, dfO: Option[Expression] = None): Include = Include(dom, dfO, false)
 }
 
 /** parent class of all declarations that introduce symbols, e.g., type, function, predicate symbols */
@@ -835,65 +870,77 @@ case class ExprDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Bo
 
 // ***************** Theories **************************************
 
-case class TheoryExpr(owner: Expression, path: Path)
+sealed trait Theory extends Object {
+  def toValue: TheoryValue
+  def decls: List[Declaration]
+  private[p] def isFlat: Boolean
+}
+
+sealed trait TheoryExpr extends Theory {
+  def toValue = TheoryValue(List(Include(this)))
+  def decls = toValue.decls
+  private[p] def isFlat = false
+}
 
 /** theories are anonyomous modules */
-case class Theory(decls: List[Declaration]) extends SyntaxFragment {
+case class TheoryValue(decls: List[Declaration]) extends Theory {
   override def toString = {
     this match {
-      case ExtendedTheory(p, ds) =>
-        p.toString + (if (ds.isEmpty) "" else ds.mkString("{", ", ", "}"))
-      case _ =>
-        decls.mkString("{", ", ", "}")
+      case ExtendedTheory(p, ds) => p.toString + (if (ds.isEmpty) "" else ds.mkString("{", ", ", "}"))
+      case _ => decls.mkString("{", ", ", "}")
     }
   }
   def label = "theory"
   def children = decls
+  def toValue = this
 
   /** prepend a declaration */
   def add(d: Declaration) = copy(decls = d :: decls)
+
+  def toModule = Module("", true, decls)
+  def lookupPath(path: Path) = {
+    toModule.lookupPath(path)
+  }
 
   private[p] var isFlat = false
   override def copyFrom(sf: SyntaxFragment): this.type = {
     super.copyFrom(sf)
     sf match {
-      case t: Theory => isFlat = t.isFlat
-      case _         =>
+      case t: TheoryValue => isFlat = t.isFlat
+      case _ =>
     }
     this
   }
-  def domain = decls.collect {case nd: NamedDeclaration => nd.name}
-  def sub(that: Theory) = this.decls.forall(d => that.decls contains d)
-  def union(that: Theory) = Theory(this.decls ::: that.decls)
   override def equals(that: Any) = that match {
-    case that: Theory =>
+    case that: TheoryValue =>
       // hardcode associativity, commutativity, idempotency of union
       decls.length == that.decls.length && (this sub that) && (that sub this)
     case _ => false
   }
   override def hashCode(): Int = decls.sortBy(_.toString).hashCode()
 
-  def toModule = Module("", true, decls)
-  def lookupPath(path: Path) = {
-    toModule.lookupPath(path)
-  }
+  def domain = decls.collect {case nd: NamedDeclaration => nd.name}
+  def sub(that: TheoryValue) = this.decls.forall(d => that.decls contains d)
+  def union(that: TheoryValue) = Theory(this.decls ::: that.decls)
+  //def map(f: Declaration => Declaration) = Theory(decls map f)
 }
 object Theory {
-  def empty = Theory(Nil)
+  def empty = TheoryValue(Nil)
+  def apply(ds: List[Declaration]) = TheoryValue(ds)
 }
 
 object PhysicalTheory {
-  def apply(p: Path): Theory = Theory(List(Include(p)))
-  def unapply(thy: Theory) = thy.decls match {
+  def apply(p: Path): TheoryValue = OpenRef(p).toValue
+  def unapply(thy: Theory) = thy.toValue.decls match {
     case Include(p, None, false) :: Nil => Some(p)
-    case _                              => None
+    case _ => None
   }
 }
 
 object ExtendedTheory {
-  def apply(p: Path, sds: List[SymbolDeclaration]): Theory = Theory(Include(p) :: sds)
-  def unapply(thy: Theory) = thy.decls match {
-    case Include(p, None, _) :: ds if ds.forall(_.isInstanceOf[SymbolDeclaration]) =>
+  def apply(p: Path, sds: List[SymbolDeclaration]): Theory = Theory(Include(OpenRef(p)) :: sds)
+  def unapply(thy: Theory) = thy.toValue.decls match {
+    case Include(OpenRef(p), None, _) :: ds if ds.forall(_.isInstanceOf[SymbolDeclaration]) =>
       Some((p, ds.map(_.asInstanceOf[SymbolDeclaration])))
     case _ => None
   }
@@ -904,7 +951,7 @@ object ExtendedTheory {
 // Some classes dealing with symbol references and scoping are shared between types and expressions
 
 /** reference to a name */
-sealed trait Ref extends Expression with Type {
+sealed trait Ref extends Expression with Type with TheoryExpr {
   override def substitute(s: Substitution) = this // needed due to double-inheritance
 }
 
@@ -944,6 +991,17 @@ sealed trait OwnedObject extends Object {
   override def childrenInContext = List((None, None, owner), (None, None, ownerDom), (Some(ownerDom), None, owned))
 }
 
+object OwnedReference {
+  def apply(o: Expression, d: Theory, nd: NamedDeclaration): OwnedObject = {
+    val n = nd.name
+    nd match {
+      case _:ExprDecl => OwnedExpr(o,d, ClosedRef(n))
+      case _:TypeDecl => OwnedType(o,d, ClosedRef(n))
+      case _:Module => OwnedTheory(o,d, ClosedRef(n))
+    }
+  }
+}
+
 /** expressions translated into another regional context
   *
   * If t is ClosedRef(n), this is the usual field access o.n known from OOP. See also [[Expression.field]]
@@ -963,6 +1021,13 @@ case class OwnedExpr(owner: Expression, ownerDom: Theory, owned: Expression) ext
 // interpreter invariant: semantics should not depend on types other than class refs, computation of types should never be needed,
 // i.e., removing all types from declarations and type fields from modules/instances should be allowed
 case class OwnedType(owner: Expression, ownerDom: Theory, owned: Type) extends Type with OwnedObject {
+  def finite = false
+}
+
+/** theories translated to another environment
+  * - t nested inside d (in which case t extends d): if o: d -> X, then OwnedTheory(o,d,t) is pushout of t along o
+  */
+case class OwnedTheory(owner: Expression, ownerDom: Theory, owned: TheoryExpr) extends TheoryExpr with OwnedObject {
   def finite = false
 }
 
@@ -1042,10 +1107,10 @@ case class ClassType(domain: Theory) extends Type {
 
 /** the type of instances of any theory */
 object AnyStructure {
-  def apply() = ClassType(Theory(Nil))
+  def apply() = ClassType(TheoryValue(Nil))
   def unapply(t: Type) = t match {
-    case ClassType(Theory(Nil)) => Some(())
-    case _                      =>
+    case ClassType(TheoryValue(Nil)) => Some(())
+    case _ => None
   }
 }
 
@@ -1185,9 +1250,13 @@ case class FunType(ins: LocalContext, out: Type) extends Type {
   /** only valid if this.simple */
   def simpleInputs = Util.reverseMap(ins.decls)(_.tp)
 }
-object FunType {
-  def simple(ts: List[Type], t: Type) =
-    FunType(LocalContext.make(ts.map(VarDecl.anonymous)), t)
+
+object SimpleFunType {
+  def apply(ts: List[Type], t: Type) = FunType(LocalContext.make(ts.map(VarDecl.anonymous)), t)
+  def unapply(ft: Type): Option[(List[Type],Type)] = ft match {
+    case FunType(ins,out) if ins.decls.forall(_.anonymous) => Some((Util.reverseMap(ins.decls)(_.tp), out))
+    case _ => None
+  }
 }
 
 /** dependent sums/tuples
@@ -1394,9 +1463,16 @@ case class Projection(tuple: Expression, index: Int) extends Expression {
 
 /** collections, introduction form for [[CollectionType]] */
 case class CollectionValue(elems: List[Expression]) extends Expression {
-  override def toString = elems.mkString("[", ",", "]")
+  override def toString = elems.mkString("[",",","]")
   def label = "collection"
   def children = elems
+  /** the elements, normalized according to collection kind */
+  def as(k: CollectionKind) = {
+    var es = elems
+    if (k.idemp) es = es.distinct
+    if (k.comm) es = es.sortBy(_.hashCode())
+    es
+  }
 }
 
 /** list elements access, elimination form for non-commutative [[CollectionType]]s
@@ -1509,6 +1585,15 @@ object VarDecl {
   def anonymous(tp: Type) = VarDecl("", tp)
   def output(tp: Type) = VarDecl("", tp, None, false, true)
   def sub(n: String, df: Expression) = VarDecl(n, null, Some(df))
+
+  class SpecialVarName(key: String) {
+    var next = -1
+    val prefix = "_" + key + "_"
+    val prefixL = prefix.length
+    def fresh() = {next += 1; apply(next)}
+    def apply(i:Int) = prefix + i.toString
+    def unapply(s: String) = if (s.startsWith(prefix)) Some(s.substring(prefixL)) else None
+  }
 }
 
 /** local reference: to a variable */
@@ -1609,14 +1694,12 @@ sealed abstract class Operator(val symbol: String) {
   val length = symbol.length
   def types: List[FunType]
   def polyTypes(u: UnknownType): List[FunType] = Nil
-  def makeExpr(args: List[Expression]) =
-    Application(BaseOperator(this, Type.unknown(null)), args)
+  def makeExpr(args: List[Expression]) = Application(BaseOperator(this, Type.unknown(null)), args)
   def invertible: Boolean
 }
 
 /** operators with binary infix notation (flexary flag not supported yet) */
-sealed abstract class InfixOperator(s: String, val precedence: Int, val assoc: Associativity = NotAssociative)
-  extends Operator(s) {
+sealed abstract class InfixOperator(s: String, val precedence: Int, val assoc: Associativity = NotAssociative) extends Operator(s) {
   def apply(l: Expression, r: Expression) = makeExpr(List(l, r))
   def invertible = false
   def rightAssociative = assoc == RightAssociative
@@ -1629,6 +1712,12 @@ sealed abstract class InfixOperator(s: String, val precedence: Int, val assoc: A
     case _ => None
   }
 }
+
+abstract class Associativity
+case object NotAssociative extends Associativity
+case object Semigroup extends Associativity
+case class Monoid(neut: Expression) extends Associativity
+case object RightAssociative extends Associativity
 
 /** operators with prefix notation */
 sealed abstract class PrefixOperator(s: String) extends Operator(s) {
@@ -1645,8 +1734,10 @@ sealed trait Arithmetic {
 }
 
 /** boolean connectives */
-sealed trait Connective {
-  val types = List(B <-- (B, B))
+sealed trait Connective extends Operator {
+  def tp = B <-- (B, B)
+  val types = List(tp)
+  def toBaseOperator = BaseOperator(this,tp)
 }
 
 /** comparison operators for base values */
@@ -1657,36 +1748,37 @@ sealed trait Comparison {
 /** polymorphic (in)equality at any type */
 sealed trait Equality extends Operator {
   def types = Nil
-  override def polyTypes(u: UnknownType) = List(B <-- (u, u))
-  def apply(tp: Type, l: Expression, r: Expression) = Application(BaseOperator(this, BoolType <-- (tp, tp)), List(l, r))
+  def polyType(a: Type) = B<--(a,a)
+  override def polyTypes(u: UnknownType) = List(polyType(u))
+  def toBaseOperator(a: Type) = BaseOperator(this, polyType(a))
+  def apply(a: Type, l: Expression, r: Expression) = Application(toBaseOperator(a), List(l, r))
 
   /** the operator to reduce after applying this operator on a list of pairs */
-  def reduce: Operator
+  def reduce: Connective
   /** this == Equal */
   def positive: Boolean
 }
 
 case object Plus extends InfixOperator("+", 0, Semigroup) with Arithmetic {
-  override val types = (S <-- (S, S)) :: Times.types
-  override def polyTypes(u: UnknownType) = List(L(u) <-- (L(u), L(u)))
+  override val types = (S<--(S,S)) :: Times.types
+  override def polyTypes(u: UnknownType) = List(L(u)<--(L(u),L(u)))
   override def associative = true
 }
 case object Minus extends InfixOperator("-", 0) with Arithmetic
 case object Times extends InfixOperator("*", 10, Monoid(IntValue(1))) with Arithmetic
 case object Divide extends InfixOperator("/", 10) {
-  val types = List(R <-- (I, I), R <-- (R, R), R <-- (I, R), R <-- (R, I))
+  val types = List(R<--(I,I), R<--(R,R), R<--(I,R), R<--(R,I))
 }
 case object Minimum extends InfixOperator("min", 10, Semigroup) with Arithmetic
 case object Maximum extends InfixOperator("max", 10, Semigroup) with Arithmetic
 
 case object Power extends InfixOperator("^", 20, RightAssociative) {
-  val types = List(I <-- (I, I), R <-- (R, R), R <-- (I, R), R <-- (R, I))
+  val types = List(R<--(I,I), R<--(R,R), R<--(I,R), R<--(R,I))
 }
 
 case object In extends InfixOperator("in", -10) {
   val types = Nil
-  override def polyTypes(u: UnknownType) =
-    List(BoolType <-- (u, CollectionKind.Set(u)))
+  override def polyTypes(u: UnknownType) = List(BoolType <-- (u, CollectionKind.Set(u)))
 }
 
 case object Cons extends InfixOperator("-:", -10, RightAssociative) {
@@ -1737,12 +1829,6 @@ case object Not extends PrefixOperator("!") {
   val types = List(B <-- B)
 }
 
-abstract class Associativity
-case object NotAssociative extends Associativity
-case object Semigroup extends Associativity
-case class Monoid(neut: Expression) extends Associativity
-case object RightAssociative extends Associativity
-
 object Operator {
   val infixes = List(
     Plus, Minus, Times, Divide, Power,
@@ -1754,7 +1840,12 @@ object Operator {
   )
   val prefixes = List(UMinus, Not)
 
-  def simplify(o: Operator, as: List[Expression]): Expression = {
+  def simplify(bo: BaseOperator, as: List[Expression]): Expression = {
+    val o = bo.operator
+    val inTypes = bo.tp match {
+      case SimpleFunType(ins,_) => ins
+      case _ => throw IError("unexpected type")
+    }
     val numArgs = as.length
     def failNumArgs = throw IError(o + " applied to " + numArgs + " arguments")
     o match {
@@ -1770,7 +1861,7 @@ object Operator {
           if (inf.associative) {
             if (numArgs == 0) inf.neutral getOrElse failNumArgs
             else if (numArgs == 1) as(0)
-            else simplify(o, List(as.head, simplify(o,as.tail)))
+            else simplify(bo, List(as.head, simplify(bo,as.tail)))
           } else {
             failNumArgs
           }
@@ -1809,25 +1900,34 @@ object Operator {
           case (Plus, CollectionValue(l), CollectionValue(r)) =>
             CollectionValue(l ::: r)
           case (e: Equality, l: BaseValue, r: BaseValue) =>
-            // TODO: more types
             val b = ((e == Equal) == (l.value == r.value))
             BoolValue(b)
           case (e: Equality, Tuple(ls), Tuple(rs)) =>
             if (ls.length != rs.length) BoolValue(!e.positive)
             else {
-              val lrs = (ls zip rs).map {case (l, r) => simplify(e, List(l, r))}
-              simplify(e.reduce, lrs)
+              val tps = inTypes.head match {
+                case ProdType(c) => Util.reverseMap(c.decls)(_.tp)
+                case _ => throw IError("unexpected type")
+              }
+              val lrs = (ls zip rs).zip(tps).map {case ((l,r),a) => simplify(e.toBaseOperator(a), List(l, r))}
+              simplify(e.reduce.toBaseOperator, lrs)
             }
-          case (e: Equality, CollectionValue(ls), CollectionValue(rs)) =>
-            // TODO: depends on the collection kind
+          case (e: Equality, l:CollectionValue, r:CollectionValue) =>
+            val CollectionType(a,k) = inTypes.head
+            val ls = l.as(k)
+            val rs = r.as(k)
             if (ls.length != rs.length) BoolValue(!e.positive)
             else {
-              val lrs = (ls zip rs).map {case (l, r) => simplify(e, List(l, r))}
-              simplify(e.reduce, lrs)
+              val ea = e.toBaseOperator(a)
+              val lrs = (ls zip rs).map {case (l, r) => simplify(ea, List(l, r))}
+              simplify(e.reduce.toBaseOperator, lrs)
             }
           case (e: Equality, ExprOver(_,exp1), ExprOver(_,exp2)) =>
             // theories are irrelevant for well-typed expressions
             BoolValue((exp1 == exp2) == e.positive)
+          case (e: Equality, _, _) if inTypes.head.isInstanceOf[ProofType] =>
+            // proof-irrelevance
+            BoolValue(e.positive)
           case (In, e, CollectionValue(es)) =>
             val b = es.contains(e)
             BoolValue(b)

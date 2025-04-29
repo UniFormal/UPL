@@ -84,13 +84,12 @@ module UPL {
 
     // control flow
     declare: VarDecl -> Expr
-    assign: (Expr,Expr) -> Expr
+    assign: (target: Expr, value: Expr) -> Expr
     doif: (cond: Expr, then: Expr, elseO: Expr?) -> Expr
     dowhile: (cond: Expr, body: Expr) -> Expr
-    dofor: (VarDecl,Expr,Expr) -> Expr
-    matchOrCatch: (bool,Expr,[(Expr,Expr)]) -> Expr
-    returnOrThrow: (bool,Expr) -> Expr
-
+    dofor: (index: VarDecl, range: Expr, body: Expr) -> Expr
+    matchOrCatch: (isCatch: bool, scrutinee: Expr, cases: [(pattern: Expr, body: Expr)]) -> Expr
+    returnOrThrow: (isThrow: bool, value: Expr) -> Expr
   }
   
   // (beginnings of) a declarative type system for UPL
@@ -104,9 +103,9 @@ module UPL {
     
     Int_tp: (g:_) -> |- tp(g,Int)
     intVal_expr: (g:_,i:_) -> |- expr(g, intVal(i), Int)
-
   }
   
+  // an API for processing UPL content
   theory Process {
     type G = Typing{Globe}
     parseTheory: string -> Syntax{Theory}

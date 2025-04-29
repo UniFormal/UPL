@@ -406,7 +406,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   def parseInclude: Include = {
     implicit val ctx = PContext.empty
     val rz = skipEither(totalInclude,include)
-    val dom = parsePath
+    val dom = parseTheory
     trim
     val dfO = if (!rz && startsWithS("=")) {
       Some(parseExpression)
@@ -414,6 +414,13 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       None
     }
     Include(dom, dfO, rz)
+  }
+  /** theory expressions are a subset of expressions in the AST */
+  def parseTheory(implicit ctxs: PContext): TheoryExpr = expressionToTheory(parseExpression)
+  private def expressionToTheory(exp: Expression): TheoryExpr = exp match {
+    case r: Ref => r
+    case OwnedExpr(o,d,e) => OwnedTheory(o,d,expressionToTheory(e)).copyFrom(exp)
+    case _ => fail("expected theory, found expression")
   }
 
   def parseExprDecl(mutable: Boolean): ExprDecl = {
@@ -467,12 +474,6 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     LocalContext.make(vds)
   }
 
-  def parseTheory(implicit ctxs: PContext): Theory = addRef {
-    trim
-    val ps = parseList(parsePath, "+", "|")
-    Theory(ps.map(p => Include(p)))
-  }
-
   def parseExpressions(open: String, close: String)(implicit ctxs: PContext) = {
     skip(open)
     val es = parseList(parseExpression, ",", close)
@@ -513,20 +514,27 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           This(l)
         }
       } else if (startsWithS("{")) {
-        var cs: List[Expression] = Nil
-        var ctxL = ctxs.setAllowStatement(true)
-        trim
-        while (!startsWithS("}")) {
-          val c = parseExpression(ctxL)
-          cs ::= c
-          c match {
-            case vd: VarDecl => ctxL = ctxL.append(vd)
-            case _ =>
-          }
+        if (startsWithDeclaration) {
+          val ds = parseDeclarations
           trim
-          if (startsWith(";")) skip(";")
+          skip("}")
+          Instance(Theory(ds))
+        } else {
+          var cs: List[Expression] = Nil
+          var ctxL = ctxs.setAllowStatement(true)
+          trim
+          while (!startsWithS("}")) {
+            val c = parseExpression(ctxL)
+            cs ::= c
+            c match {
+              case vd: VarDecl => ctxL = ctxL.append(vd)
+              case _ =>
+            }
+            trim
+            if (startsWith(";")) skip(";")
+          }
+          Block(cs.reverse)
         }
-        Block(cs.reverse)
       } else if (startsWithS("var")) {
         trim
         parseVarDecl(true, true)

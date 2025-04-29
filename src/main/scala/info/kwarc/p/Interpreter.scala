@@ -240,8 +240,9 @@ class Interpreter(vocInit: Vocabulary) {
                   case _ => None
                 }
                 // append at the end so that constructor fields are executed before inherited fields
-                val mod = env.voc.toModule.lookupModule(incl.dom).getOrElse(fail("unknown module"))
-                todo = todo ::: List(InterpretationInput(mod.decls, delegateO))
+                // TODO: this does not find regional modules
+                val decls = Checker.evaluateTheoryExpr(globalContext,incl.dom).decls
+                todo = todo ::: List(InterpretationInput(decls, delegateO))
             }
           }
         }
@@ -343,8 +344,8 @@ class Interpreter(vocInit: Vocabulary) {
         val fI = interpretExpression(f)
         val asI = as map interpretExpression
         fI match {
-          case o: BaseOperator =>
-            Operator.simplify(o.operator, asI)
+          case bo: BaseOperator =>
+            Operator.simplify(bo, asI)
             //catch {case ASTError(m) =>
             //  fail(m)
             //}

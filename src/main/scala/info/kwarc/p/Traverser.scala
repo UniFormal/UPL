@@ -8,16 +8,32 @@ import SyntaxFragment.matchC
   *
   * All methods carry a state a:A.
   * All local variable bindings pass through applyVarDecl, which also returns an updated state for use in the variable's scope.
+  *
+  * The value 'null' is respected for theories and contexts, assuming they are infered later.
   */
 abstract class Traverser[A] {
   def apply(p: Path)(implicit gc: GlobalContext, a: A): Path = matchC(p) {p => p}
-  def apply(thy: Theory)(implicit gc: GlobalContext, a: A): Theory = {
-    if (thy == null) null else {
+
+  /** must satisfy apply(thy.toValue) == apply(thy).toValue */
+  def apply(thy: Theory)(implicit gc: GlobalContext, a: A): Theory = applyDefault(thy)
+
+  protected final def applyDefault(thy: Theory)(implicit gc: GlobalContext, a: A) = matchC(thy) {
+    case null => null
+    case ClosedRef(n) => ClosedRef(n)
+    case OpenRef(p) => OpenRef(apply(p))
+    case OwnedTheory(o,d,t) =>
+      val tT = applyThyExpr(t)(gc.push(d,Some(o)), a)
+      OwnedTheory(apply(o), apply(d), tT)
+    case TheoryValue(ds) =>
       val gcI = gc.enter(thy)
-      val psT = thy.decls map {d => apply(d)(gcI,a)}
-      Theory(psT).copyFrom(thy)
-    }
+      val psT = ds map {d => apply(d)(gcI,a)}
+      TheoryValue(psT)
   }
+  /** like apply but with refined return type, cast can be removed if Include allow arbitrary Theory */
+  private def applyThyExpr(thy: TheoryExpr)(implicit gc: GlobalContext, a: A): TheoryExpr = {
+    apply(thy).asInstanceOf[TheoryExpr]
+  }
+
   def apply(ctx: LocalContext)(implicit gc: GlobalContext, a:A): (LocalContext,A) = {
     if (ctx == null) (null,a) else {
       var aT = a
@@ -38,14 +54,14 @@ abstract class Traverser[A] {
   }
 
   def apply(rc: RegionalContext)(implicit gc: GlobalContext, a:A): RegionalContext = {
-    RegionalContext(apply(rc.theory), rc.owner map apply, apply(rc.local)._1)
+    RegionalContext(apply(rc.theory).toValue, rc.owner map apply, apply(rc.local)._1)
   }
 
   def apply(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = matchC(d)(applyDefault _)
 
   protected final def applyDefault(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = d match {
     case m@Module(n,op,ds) => Module(n, op, ds map {d => apply(d)(gc.enter(m),a)})
-    case Include(dm,df, r) => Include(apply(dm), df map apply, r)
+    case Include(dm,df, r) => Include(applyThyExpr(dm), df map apply, r)
     case TypeDecl(n, bd, dfO) => TypeDecl(n, apply(bd), dfO map apply)
     case ExprDecl(n, tp, dfO, m) => ExprDecl(n, apply(tp), dfO map apply, m)
   }
@@ -149,86 +165,116 @@ trait TraverseOnlyOriginalRegion {
 
 object IdentityTraverser extends StatelessTraverser
 
-class EvalTraverser(cont: Expression => Expression) extends StatelessTraverser {
+class EvalTraverser(initGC: GlobalContext, cont: Expression => Expression) extends StatelessTraverser {
   override def apply(exp: Expression)(implicit gc: GlobalContext, a: Unit) = matchC(exp) {
-    case Eval(e) => if (gc.inPhysicalTheory) cont(e) else applyDefault(exp)
+    case Eval(e) if gc.regions.length == initGC.regions.length+1 => Eval(cont(e))
     case _ => applyDefault(exp)
   }
 }
 object EvalTraverser {
   def apply(e: ExprOver)(cont: Expression => Expression) = {
     val gc = GlobalContext("")
-    new EvalTraverser(cont).apply(e.expr)(gc, ())
+    new EvalTraverser(gc,cont).apply(e.expr)(gc, ())
   }
   /** returns the quoted expression with all evals replaced by variables and context declaring the latter */
   def replaceEvals(eo: ExprOver) = {
     var evals : List[VarDecl] = Nil
     var i = 0
     val eoT = EvalTraverser(eo) {ev =>
-      val n = "EVAL__" + i.toString
+      val n = ReplaceVarName(i)
       i += 1
       evals = VarDecl(n, null, Some(ev)) :: evals
       VarRef(n)
     }
     (LocalContext(evals.reverse), eoT)
   }
+  object ReplaceVarName extends VarDecl.SpecialVarName("eval")
 }
 
-class OwnerSubstitutor(shallow: Boolean) extends StatelessTraverser {
+/** Substitution for the [This]-operator
+  *
+  * E << n,s arises by replacing This(l) as follows:
+  * - 1   <= l <= s     unchanged
+  * - s   <  l <= s+n   owner of l-th region
+  * - otherwise         This(l-n)
+  * s is incremented when traversing into nested regions so that they remain unchanged.
+  *
+  * Then
+  * if gc.push(on)....push(o1) |- E, then gc |- E << n,0
+  *   pushes E up by n regions
+  *   This is needed when normalizing owned objects.
+  * if gc |- E, then gc.push(_)....push(_) |- E << -n,0
+  *   pushes E down by n regions
+  *   This is needed when looking up objects in higher regions.
+  *
+  * Below n=numSubs. s is not carried but computed by comparing the initial and the current context.
+  * If the substitution is shallow, an OwnedXXX is returned.
+  * Original input is well-formed over initGC, output over initGC.pop^n.
+  * Intermediate values over initGC.push...
+  */
+class OwnersSubstitutor(val initGC: GlobalContext, numSubs: Int) extends StatelessTraverser {
+
   private def owner(implicit gc: GlobalContext) = {
-    val dos = gc.regions.collect {
-      case r if r.region.owner.isDefined => (r.region.theory,r.region.owner.get)
-    }
-    if (dos.isEmpty) None else {
-      val last = dos.last
-      var dom = last._1
-      var sofar = last._2
-      dos.init.foreach {case (d,o) =>
-        sofar = OwnedExpr(sofar,dom,o)
-        dom = d
-      }
-      Some((sofar,dom))
+    val s = gc.regions.length - initGC.regions.length
+    if (s > 0) None
+    else {
+      val reg = gc.regions.last.region
+      val o = reg.owner.getOrElse(if (numSubs<0) This(-numSubs) else throw IError("no owner"))
+      Some((o,reg.theory))
     }
   }
 
-  private def makeType(tp: Type)(implicit gc: GlobalContext) = {
-    owner match {
-      case None => tp
-      case Some((o,d)) => OwnedType(o,d,tp)
-    }
+  override def apply(thy: Theory)(implicit gc: GlobalContext, a:Unit) = matchC(thy) {
+    case c: ClosedRef =>
+      owner match {
+        case None => c
+        case Some((o,d)) => OwnedTheory(o,d,c)
+      }
+    case _ => applyDefault(thy)
   }
-  private def makeExpr(e: Expression)(implicit gc: GlobalContext) = {
-    owner match {
-      case None => e
-      case Some((o,d)) => OwnedExpr(o,d,e)
-    }
-  }
-  override def apply(tp: Type)(implicit gc: GlobalContext, a: Unit) = if (shallow) makeType(tp) else matchC(tp) {
-    case c: ClosedRef => makeType(c)
-    case e: ExprsOver => makeType(e)
-    case OwnedType(o,d,t) => apply(t)(gc.push(d,Some(o)), a)
+  override def apply(tp: Type)(implicit gc: GlobalContext, a:Unit) = matchC(tp) {
+    case c: ClosedRef =>
+      owner match {
+        case None => c
+        case Some((o,d)) => OwnedType(o,d,c)
+      }
     case _ => applyDefault(tp)
   }
-  override def apply(exp: Expression)(implicit gc: GlobalContext, a: Unit) = if (shallow) makeExpr(exp) else matchC(exp) {
-    case c: ClosedRef => makeExpr(c)
-    case e: ExprOver => EvalTraverser(e) {ev => apply(ev)}
-    case OwnedExpr(e,d,o) => apply(e)(gc.push(d,Some(o)), a)
+  override def apply(exp: Expression)(implicit gc: GlobalContext, a:Unit) = matchC(exp) {
+    case c: ClosedRef =>
+      owner match {
+        case None => c
+        case Some((o,d)) => OwnedExpr(o,d,c)
+      }
+    case This(l) =>
+      val s = gc.regions.length - initGC.regions.length
+      if (l <= s) exp
+      else if (l <= s+numSubs) {
+        val reg = gc.regions(l).region
+        val o = reg.owner.getOrElse {throw IError("no owner")}
+        o // TODO substitute higher owner occurring in o
+      } else
+        This(l-numSubs)
     case _ => applyDefault(exp)
   }
 }
-object OwnerSubstitutor {
-  private def initGC(o: Expression, dom: Theory) = GlobalContext("").push(dom,Some(o))
-  def apply(own: Expression, dom: Theory, d: Declaration): Declaration = {
-    val os = new OwnerSubstitutor(true)
-    os.apply(d)(initGC(own,dom),())
+
+object OwnersSubstitutor {
+  def applyDecl(gc: GlobalContext, d: Declaration, numSubs: Int = 1): Declaration = {
+    val os = new OwnersSubstitutor(gc,numSubs)
+    os.apply(d)(gc, ())
   }
-  def apply(own: Expression, dom: Theory, tp: Type): Type = {
-    val os = new OwnerSubstitutor(false)
-    os.apply(tp)(initGC(own,dom),())
+  def applyTheory(gc: GlobalContext, thy: Theory, numSubs: Int = 1): Theory = {
+    val os = new OwnersSubstitutor(gc,numSubs)
+    os.apply(thy)(gc, ())
   }
-  def apply(own: Expression, dom: Theory, e: Expression): Expression = {
-    val os = new OwnerSubstitutor(false)
-    os.apply(e)(initGC(own, dom),())
+  def applyType(gc: GlobalContext, tp: Type, numSubs: Int = 1): Type = {
+    val os = new OwnersSubstitutor(gc,numSubs)
+    os.apply(tp)(gc, ())
+  }
+  def applyExpr(gc: GlobalContext, e: Expression, numSubs: Int = 1): Expression = {
+    val os = new OwnersSubstitutor(gc,numSubs)
+    os.apply(e)(gc, ())
   }
 }
 
@@ -268,7 +314,7 @@ object Simplify extends StatelessTraverser {
         case Some(ed: ExprDecl) if !ed.mutable && ed.dfO.isDefined => apply(ed.dfO.get)
         case _ => expR
       }
-      case Application(BaseOperator(o,_), args) => Operator.simplify(o, args)
+      case Application(bo: BaseOperator, args) => Operator.simplify(bo, args)
       case Projection(Tuple(es),i) => es(i)
       case ListElem(CollectionValue(es),IntValue(i)) => es(i.toInt)
       case Application(Lambda(vs,b,false), as) => Substituter(gc, vs.substitute(as), b)

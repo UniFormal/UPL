@@ -40,11 +40,10 @@ object Tests {
       "include EnumeratedType" +
       " type univ = int" +
       "}"))
+    mustFail(classOf[Parser#Error])(parse("y = true"))
+    mustFail(classOf[Checker#Error])(check("x : [int] = [1]"))
+    mustFail(classOf[Parser#Error])(parse("1+2 == 3"))
+    mustFail(classOf[Parser#Error])(parse("theory A{ type univ = int } \n x = A { univ = 1}"))
+    mustFail(classOf[Parser#Error])(parse("x = [1,7]"))
   }
-  mustFail(classOf[Parser#Error])(parse("y = true"))
-  mustFail(classOf[Checker#Error])(check("x : [int] = [1]"))
-  mustFail(classOf[Parser#Error])(parse("1+2 == 3"))
-  mustFail(classOf[Parser#Error])(parse("theory A{ type univ = int } \n x = A { univ = 1}"))
-  mustFail(classOf[Parser#Error])(parse("x = [1,7]"))
-
 }
