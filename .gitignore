@@ -1,3 +1,13 @@
 /out
 /project
 /target
+scala_compiler.xml
+workspace.xml
+codeStyles
+libraries
+modules
+misc.xml
+modules.xml
+sbt.xml
+/.bsp
+/javascript
