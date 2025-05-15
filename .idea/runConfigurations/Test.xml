@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Test" type="Application" factoryName="Application">
+    <option name="ALTERNATIVE_JRE_PATH" value="BUNDLED" />
+    <option name="MAIN_CLASS_NAME" value="info.kwarc.p.Test" />
+    <module name="UPL" />
+    <option name="PROGRAM_PARAMETERS" value="--repl test/all.pp" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>
