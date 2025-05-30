@@ -1,0 +1,54 @@
+\documentclass{stex}
+\libinput{preamble}
+\begin{document}
+\begin{smodule}[id=IncidenceGeometry]{incidence-geometry}
+\importmodule[smglom/sets]{mod?pair}
+\importmodule[smglom/sets]{mod?subsupset}
+\importmodule[smglom/mv]{mod?structure}
+\symdecl*{point}
+\symdecl*{line}
+\symdecl*{incidence relation}
+\symdecl*{collinear}
+
+\begin{mathstructure}{incidencestructure}[incidence structure]
+\symdef{points}{\comp P}
+\symdef{lines}{\comp L}
+\symdef{online}[args=2,name=on]{#1\maincomp{I}#2}
+
+\begin{sdefinition}[for={points,lines}]
+  We call a triple $\incidencestructure{}{}$ an \definame{incidence structure} (or   \definiendum{incidence structure}{incidence geometry}), with 
+  \definame[post=s]{point}\uplinline|type point| $\points$, 
+  \definame[post=s]{line}\uplinline|type line| $\lines$, and 
+  \definame{incidence relation} \uplinline|incidenceRelation: (point, line) -> bool|
+  $\sseteq{\online!}{\pairs\points\lines}$ (we say $\inset{p}\points$ is \definame{on}
+  $\inset{l}\lines$ (written $\online{p}l$), if $\inset{\pair{p}l}I$), \sn{iff}
+  \begin{itemize}
+    \item There are at least two \sns{point} in $\points$.
+    \item For any two \sns{point} $\inset{p,q}P$, there is exactly one \sn{line}
+        $\inset{l}L$ such that $\inset{\pair{p}l}I$ and $\inset{\pair{q}l}I$.
+    \item For every \sn{line} $\inset{l}\lines$ there are at least two
+        \sns{point} on $l$.
+    %    \[\foralS{l}\lines{\exisS{x,y}P{\notequal{x}y}}\]
+    \item For every \sn{line} $\inset{l}L$ there is at least one \sn{point} $p$
+        with $\ninset{p}l$.
+  \end{itemize}
+\end{sdefinition}
+
+\begin{upl}
+  c:a
+  f = (x:a) -> x+c
+\end{upl}
+
+\end{mathstructure}
+
+\begin{sdefinition}[id=collinear.def]
+  A \sn{set} $S$ of \sns{point} is called \definame{collinear}, if there
+  is a \sn{line} $l$ with $\inset{\pair{p}l}I$ for all $\inset{s}S$.
+\end{sdefinition}
+\end{smodule}
+\end{document}
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: t
+%%% End:
