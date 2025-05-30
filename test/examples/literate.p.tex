@@ -1,0 +1,26 @@
+\documentclass{stex}
+\libinput{preamble}
+
+\begin{document}
+This file is a literate UPL source file.
+UPL processes only the parts inside \newenvironment{upl} and uplinline|...|.
+
+For processing in LaTeX, define those to your liking.
+
+STeX module declarations are picked up as UPL modules of the same name.
+\begin{smodule}[id=LatexExample]
+
+  You can use inline UPL for short snippets
+  \uplinline|type a = int|
+ 
+  Longer UPL segments can be put in an environment.
+
+  \begin{upl}
+  c:a
+  f = (x:a) -> x+c
+  \end{upl}
+
+When editing such files in VS Code all UPL UI functionality is available for the UPL segments.
+
+\end{smodule}
+\end{document}
