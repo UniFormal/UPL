@@ -9,6 +9,6 @@ module FiniteStructures {
     edgeTo: univ -> set[univ]
   }
   reflexive = (g: Graph) -> forall x: g.node. x in g.edgeTo(x)
-  loop = Graph {size = 1, edgeTo = x -> [x]}
-  test = reflexive(loop)
+  loops = s -> Graph {size = s, edgeTo = x -> [x]}
+  test = reflexive(loops(2))
 }

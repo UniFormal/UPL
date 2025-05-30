@@ -22,16 +22,12 @@ abstract class Traverser[A] {
     case ClosedRef(n) => ClosedRef(n)
     case OpenRef(p) => OpenRef(apply(p))
     case OwnedTheory(o,d,t) =>
-      val tT = applyThyExpr(t)(gc.push(d,Some(o)), a)
+      val tT = apply(t)(gc.push(d,Some(o)), a)
       OwnedTheory(apply(o), apply(d), tT)
     case TheoryValue(ds) =>
       val gcI = gc.enter(thy)
-      val psT = ds map {d => apply(d)(gcI,a)}
-      TheoryValue(psT)
-  }
-  /** like apply but with refined return type, cast can be removed if Include allow arbitrary Theory */
-  private def applyThyExpr(thy: TheoryExpr)(implicit gc: GlobalContext, a: A): TheoryExpr = {
-    apply(thy).asInstanceOf[TheoryExpr]
+      val dsT = ds map {d => apply(d)(gcI,a)}
+      TheoryValue(dsT)
   }
 
   def apply(ctx: LocalContext)(implicit gc: GlobalContext, a:A): (LocalContext,A) = {
@@ -60,8 +56,9 @@ abstract class Traverser[A] {
   def apply(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = matchC(d)(applyDefault _)
 
   protected final def applyDefault(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = d match {
-    case m@Module(n,op,ds) => Module(n, op, ds map {d => apply(d)(gc.enter(m),a)})
-    case Include(dm,df, r) => Include(applyThyExpr(dm), df map apply, r)
+    case Module(n,op,df) => Module(n, op, apply(df).asInstanceOf[TheoryValue])
+    case Include(dm,df, r) =>
+      Include(apply(dm), df map apply, r)
     case TypeDecl(n, bd, dfO) => TypeDecl(n, apply(bd), dfO map apply)
     case ExprDecl(n, tp, dfO, m) => ExprDecl(n, apply(tp), dfO map apply, m)
   }
@@ -86,7 +83,7 @@ abstract class Traverser[A] {
     case ExceptionType => tp
     case IntervalType(l,u) => IntervalType(l map apply, u map apply)
     case ClassType(thy) => ClassType(apply(thy))
-    case ExprsOver(thy,q) => ExprsOver(apply(thy), apply(q)(gc.push(thy),a))
+    case ExprsOver(thy,q) => ExprsOver(apply(thy), apply(q)(gc.pushQuoted(thy),a))
     case FunType(ins,t) =>
       val (insT,aT) = apply(ins)
       FunType(insT, apply(t)(gc.append(ins), aT))
@@ -108,7 +105,7 @@ abstract class Traverser[A] {
     case Instance(thy) => Instance(apply(thy))
     case vd:VarDecl => applyVarDecl(vd)._1
     case Assign(k,v) => Assign(apply(k), apply(v))
-    case ExprOver(t,e) => ExprOver(apply(t), apply(e)(gc.push(t),a))
+    case ExprOver(t,e) => ExprOver(apply(t), apply(e)(gc.pushQuoted(t),a))
     case Eval(e) => Eval(apply(e)(gc.pop(),a))
     case Block(es) =>
       var gcI = gc
@@ -149,6 +146,7 @@ abstract class Traverser[A] {
       val (vsT,aT) = apply(vs)
       Quantifier(q, vsT, apply(b)(gc.append(vs),aT))
     case Assert(f) => Assert(apply(f))
+    case UndefinedValue(tp) => UndefinedValue(apply(tp))
   }
 }
 
@@ -156,6 +154,7 @@ abstract class StatelessTraverser extends Traverser[Unit] {
   def apply(gc: GlobalContext, d: Declaration): Declaration = apply(d)(gc,())
   def apply(gc: GlobalContext, exp: Expression): Expression = apply(exp)(gc,())
   def apply(gc: GlobalContext, tp: Type): Type = apply(tp)(gc,())
+  def apply(gc: GlobalContext, thy: Theory): Theory = apply(thy)(gc,())
 }
 
 trait TraverseOnlyOriginalRegion {
@@ -198,16 +197,19 @@ object EvalTraverser {
   * - s   <  l <= s+n   owner of l-th region
   * - otherwise         This(l-n)
   * s is incremented when traversing into nested regions so that they remain unchanged.
+  * n is fixed during traversal.
   *
   * Then
+  * if gc |- E, then gc |- E << 0,0
+ *    Identity
   * if gc.push(on)....push(o1) |- E, then gc |- E << n,0
-  *   pushes E up by n regions
-  *   This is needed when normalizing owned objects.
+  *   Intuitively, all This(0), ..., This(n-1) are substituted by the respective owner.
+  *   This takes E from a lower region and substitutes all owners.
   * if gc |- E, then gc.push(_)....push(_) |- E << -n,0
-  *   pushes E down by n regions
-  *   This is needed when looking up objects in higher regions.
+  *   Intuitively, all This(l) in E are replaced with This(l+|n|).
+  *   This is needed when moving an object from a higher region into the current region.
   *
-  * Below n=numSubs. s is not carried but computed by comparing the initial and the current context.
+  * Below n=numSubs. s is not carried but computed by comparing the size of initial and current context.
   * If the substitution is shallow, an OwnedXXX is returned.
   * Original input is well-formed over initGC, output over initGC.pop^n.
   * Intermediate values over initGC.push...
@@ -218,8 +220,11 @@ class OwnersSubstitutor(val initGC: GlobalContext, numSubs: Int) extends Statele
     val s = gc.regions.length - initGC.regions.length
     if (s > 0) None
     else {
-      val reg = gc.regions.last.region
-      val o = reg.owner.getOrElse(if (numSubs<0) This(-numSubs) else throw IError("no owner"))
+      val reg = gc.currentRegion
+      val o = reg.owner.getOrElse {
+        if (numSubs<0) This(-numSubs)
+        else throw IError("no owner")
+      }
       Some((o,reg.theory))
     }
   }
@@ -261,18 +266,22 @@ class OwnersSubstitutor(val initGC: GlobalContext, numSubs: Int) extends Statele
 
 object OwnersSubstitutor {
   def applyDecl(gc: GlobalContext, d: Declaration, numSubs: Int = 1): Declaration = {
+    if (numSubs == 0) return d
     val os = new OwnersSubstitutor(gc,numSubs)
     os.apply(d)(gc, ())
   }
   def applyTheory(gc: GlobalContext, thy: Theory, numSubs: Int = 1): Theory = {
+    if (numSubs == 0) return thy
     val os = new OwnersSubstitutor(gc,numSubs)
     os.apply(thy)(gc, ())
   }
   def applyType(gc: GlobalContext, tp: Type, numSubs: Int = 1): Type = {
+    if (numSubs == 0) return tp
     val os = new OwnersSubstitutor(gc,numSubs)
     os.apply(tp)(gc, ())
   }
   def applyExpr(gc: GlobalContext, e: Expression, numSubs: Int = 1): Expression = {
+    if (numSubs == 0) return e
     val os = new OwnersSubstitutor(gc,numSubs)
     os.apply(e)(gc, ())
   }

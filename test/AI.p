@@ -53,13 +53,6 @@ module AI {
     include Deterministic
   }
 
-SEARCH = SimpleSearchProblem {
-  action = IntBasedType {enum = [0,1,2], make: int -> univ = x -> x }
-  initials = [0]
-  goals = x -> x > 5
-  transition = (s,_) -> s?
-}
-
   theory FullyObservable {
     include SearchProblem
     initial: state
@@ -93,7 +86,7 @@ SEARCH = SimpleSearchProblem {
     }
   }
 
-  DFS = TakeFromFrontStrategy {
+  DFS = () -> TakeFromFrontStrategy {
     insert = (l,n) -> l :- n
   }
 
@@ -134,5 +127,13 @@ SEARCH = SimpleSearchProblem {
     }
     []
   }
-  test = treeSearch (DFS, SEARCH) == []
+
+  exampleProblem = () -> SimpleSearchProblem {
+    action = IntBasedType {enum = [0,1,2], complete = ???}
+    initials = [0]
+    goals = x -> x > 5
+    transition = (s,a) -> [s+a]
+  }
+
+  test = treeSearch(exampleProblem(), DFS()) != []
 }

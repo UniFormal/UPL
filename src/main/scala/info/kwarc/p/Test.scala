@@ -11,9 +11,9 @@ object Test {
     }
   }
 
-  def parse(s: String):Vocabulary = Parser.text(SourceOrigin("test"), s, ErrorThrower)
+  def parse(s: String): TheoryValue = Parser.text(SourceOrigin("test"), s, ErrorThrower)
 
-  def check(s: String): Vocabulary = {
+  def check(s: String): TheoryValue = {
     val v = parse(s)
     new Checker(ErrorThrower).checkVocabulary(GlobalContext("test"), v, keepFull = true)(v)
   }

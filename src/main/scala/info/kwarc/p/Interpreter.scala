@@ -37,7 +37,7 @@ object LocalEnvironment {
   */
 case class RegionalEnvironment(name: String, region: Option[Instance] = None, local: LocalEnvironment = LocalEnvironment.empty,
                                parent: Option[RegionalEnvironment] = None) {
-  override def toString = name + ": " + region + fields.mkString(", ")
+  override def toString = name + ": " + region + "; " + fields.mkString(", ")
 
   /** creates a copy of this environment for storing with a suspended computation
     * The cells of the local environment are permanently shared with the original,
@@ -62,7 +62,7 @@ case class RegionalEnvironment(name: String, region: Option[Instance] = None, lo
   private var addedInBlock: List[Int] = Nil
 }
 
-class GlobalEnvironment(var voc: Vocabulary) {
+class GlobalEnvironment(var voc: TheoryValue) {
   var regions = List(RegionalEnvironment("toplevel"))
   def frame = regions.head
   def inFrame[A](f: RegionalEnvironment)(a: => A) = {
@@ -71,18 +71,16 @@ class GlobalEnvironment(var voc: Vocabulary) {
     finally {regions = regions.tail}
   }
 
-  def lookupLocalO(n: String): Option[Expression] = regions.head.local.getO(n).map(_.value)
-/*    var rs = regions
-    while (rs.nonEmpty) {
-      rs.head.local.getO(n) match {
+  def lookupLocalO(n: String): Option[Expression] = {
+    var reg = regions.headOption
+    while (reg.nonEmpty) {
+      reg.get.local.getO(n) match {
         case Some(v) => return Some(v.value)
-        case None =>
-          if (rs.head.transparent) rs = rs.tail
-          else rs = Nil
+        case None => reg = reg.get.parent
       }
     }
     None
-  }*/
+  }
 
   def lookupRegional(n: String): Expression = {
     regions.head.region match {
@@ -115,7 +113,7 @@ object Interpreter {
   }
 }
 
-class Interpreter(vocInit: Vocabulary) {
+class Interpreter(vocInit: TheoryValue) {
   private val debug = false
   /** unexpected error, e.g., typing error in input or expression does not simplify into value */
   case class Error(cause: SyntaxFragment, stack: List[RegionalEnvironment], msg: String) extends SError(cause.loc, msg)
@@ -128,7 +126,7 @@ class Interpreter(vocInit: Vocabulary) {
 
   private val env = new GlobalEnvironment(vocInit)
   def voc = env.voc
-  private def globalContext = voc.toGlobalContext
+  private def globalContext = GlobalContext(voc)
   private def stack = env.regions
   private def frame = stack.head
 
@@ -139,7 +137,7 @@ class Interpreter(vocInit: Vocabulary) {
         val dfI = interpretExpression(df)
         val edI = ed.copy(dfO = Some(dfI))
         edI.global = true
-        env.voc = env.voc.append(edI)
+        env.voc = env.voc.add(edI)
         edI
       case _ => fail("uninterpretable")(d)
     }
@@ -157,7 +155,7 @@ class Interpreter(vocInit: Vocabulary) {
       case _: BaseValue => exp
       case _: BaseOperator => exp
       case OpenRef(p) =>
-        env.voc.toModule.lookupPath(p) match {
+        env.voc.lookupPath(p) match {
           case Some(sd: ExprDecl) => sd.dfO match {
             case None => exp // allow this as an abstract declaration in a module; all elimination forms below must remain uninterpreted
             case Some(v) => interpretExpression(v) //TODO this re-evaluates the definiens
@@ -212,7 +210,7 @@ class Interpreter(vocInit: Vocabulary) {
             val InterpretationInput(d :: ds, inclO) :: tail = todo
             todo = if (ds.isEmpty) tail else InterpretationInput(ds,inclO) :: tail
             d match {
-              case _:Module => fail("unexpected module in instance")
+              case _: Module => fail("unexpected module in instance")
               case _: TypeDecl => // not needed
               case sd: ExprDecl if runtimeInst.getO(sd.name).isDefined => // definition from elsewhere already executed
               case sd: ExprDecl =>
@@ -221,7 +219,7 @@ class Interpreter(vocInit: Vocabulary) {
                     sd.dfO.getOrElse(fail("no definiens"))
                   case Some(incl) =>
                     // execute inherited definition and then apply delegate
-                    OwnedExpr(incl.dfO.get, incl.theory, sd.toRef)
+                    OwnedExpr(incl.dfO.get, incl.dom, sd.toRef)
                 }
                 val dfI = interpretExpression(df)
                 // we keep all fields that are local (i.e., a constructor argument),
@@ -241,7 +239,7 @@ class Interpreter(vocInit: Vocabulary) {
                 }
                 // append at the end so that constructor fields are executed before inherited fields
                 // TODO: this does not find regional modules
-                val decls = Checker.evaluateTheoryExpr(globalContext,incl.dom).decls
+                val decls = Checker.evaluateTheory(globalContext,incl.dom).decls
                 todo = todo ::: List(InterpretationInput(decls, delegateO))
             }
           }
@@ -274,14 +272,14 @@ class Interpreter(vocInit: Vocabulary) {
               case Some(e) => interpretExpression(e)
               case None => UnitValue
             }
-          case _ => fail("condition not a boolean")
+          case _ => fail("condition does not evaluate")
         }
       case While(c,b) =>
         var break = false
         while (!break) {
           val cI = interpretExpression(c) match {
             case b: BoolValue => b.v
-            case _ => fail("condition not a boolean")
+            case _ => fail("condition does not evaluate")
           }
           if (cI) interpretExpression(b) else break = true
         }
@@ -346,14 +344,11 @@ class Interpreter(vocInit: Vocabulary) {
         fI match {
           case bo: BaseOperator =>
             Operator.simplify(bo, asI)
-            //catch {case ASTError(m) =>
-            //  fail(m)
-            //}
           case lam: Lambda =>
             // interpretation of lam has recorded the frame at abstraction time because
             // names in lam.body are relative to that
             val r = try {
-              applyFunction(f.toString, None, lam, asI)
+              applyFunction(f.toString, lam, asI)
             } catch {
               case ReturnFound(e, false) if lam.mayReturn => e
             }
@@ -409,11 +404,13 @@ class Interpreter(vocInit: Vocabulary) {
           case _ => abort("assertion inconclusive: " + f)
         }
         UnitValue
+      case u: UndefinedValue => u
     } // end match
   }
 
   private object TypeInterpreter extends StatelessTraverser {
     override def apply(e: Expression)(implicit gc:GlobalContext, a: Unit) = interpretExpression(e)
+    override def apply(t: Theory)(implicit gc:GlobalContext, a: Unit) = t
   }
 
   private def makeIterator(tp: Type): Iterator[Expression] = {
@@ -543,9 +540,9 @@ class Interpreter(vocInit: Vocabulary) {
     }
   }
 
-  def applyFunction(name: String, owner: Option[Instance], lam: Lambda, args: List[Expression]) = {
+  def applyFunction(name: String, lam: Lambda, args: List[Expression]) = {
     val fes = (lam.ins.decls.reverse zip args) map {case (i,a) => MutableExpression(i.name,a)}
-    val fr = RegionalEnvironment(name, owner, LocalEnvironment(fes:::lam.frame.fields), lam.frame.parent)
+    val fr = RegionalEnvironment(name, lam.frame.region, LocalEnvironment(fes:::lam.frame.fields), lam.frame.parent)
     interpretExpressionInFrame(fr, lam.body)
   }
 

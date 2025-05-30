@@ -8,10 +8,10 @@ class ProjectEntry(val source: SourceOrigin) {
     * Such documents can see the global ones but not each other.
     */
   def global = source.fragment == null
-  var parsed: Vocabulary = Vocabulary.empty
-  var checked: Vocabulary = Vocabulary.empty
+  var parsed = Theory.empty
+  var checked = Theory.empty
   var checkedIsDirty = false
-  var result: Vocabulary = Vocabulary.empty
+  var result = Theory.empty
   var errors = new ErrorCollector
   def getVocabulary = if (checkedIsDirty) parsed else checked
 }
@@ -45,12 +45,12 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
     val les = entries.filter(e => !e.global && e.source.path == so.path && e.source.fragment != so.fragment)
     val lesC = les.flatMap(_.checked.decls)
     val lesR = les.flatMap(_.result.decls)
-    (Vocabulary(gs:::lesC),Vocabulary(gs:::lesR))
+    (TheoryValue(gs:::lesC),TheoryValue(gs:::lesR))
   }
   /** all global entries concatenated */
   def makeGlobalContext() = {
     val ds = entries.filter(_.global).flatMap(_.getVocabulary.decls)
-    Vocabulary(ds).toGlobalContext
+    GlobalContext(TheoryValue(ds))
   }
 
   def update(so: SourceOrigin, src: String) = {
@@ -60,13 +60,13 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
     le.checkedIsDirty = true
   }
 
-  def check(so: SourceOrigin, alsoRun: Boolean): Vocabulary = {
+  def check(so: SourceOrigin, alsoRun: Boolean): TheoryValue = {
     val le = get(so)
     val (vocC,vocR) = makeGlobalContext(so)
     if (le.checkedIsDirty) {
       if (le.errors.hasErrors) return le.parsed
       val ch = new Checker(le.errors)
-      val leC = ch.checkVocabulary(vocC.toGlobalContext,le.parsed,true)(le.parsed)
+      val leC = ch.checkVocabulary(GlobalContext(vocC),le.parsed,true)(le.parsed)
       le.checked = leC
       le.checkedIsDirty = false
     }
@@ -74,7 +74,7 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
       if (le.errors.hasErrors) return le.checked
       val ip = new Interpreter(vocR)
       val leR = le.checked.decls.map(ip.interpretDeclaration(_))
-      le.result = Vocabulary(leR)
+      le.result = TheoryValue(leR)
       le.result
     } else {
       le.checked
@@ -83,7 +83,7 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
 
   def check(stopOnError: Boolean) = {
     val ds = entries.flatMap(_.parsed.decls)
-    val voc = Vocabulary(ds)
+    val voc = TheoryValue(ds)
     val ec = if (stopOnError) ErrorThrower else new ErrorCollector
     val ch = new Checker(ec)
     val vocC = ch.checkVocabulary(GlobalContext(""), voc, true)(voc)
@@ -98,12 +98,18 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
     vocC
   }
 
-  def run(): Option[Interpreter] = {
-    val voc = check(true)
+  private def checkErrors() = {
     if (hasErrors) {
       println(getErrors.mkString("\n"))
-      return None
-    }
+      true
+    } else
+      false
+  }
+
+  def run(): Option[Interpreter] = {
+    if (checkErrors()) return None
+    val voc = check(true)
+    if (checkErrors()) return None
     val e = main.getOrElse(UnitValue)
     val ch = new Checker(ErrorThrower)
     try {

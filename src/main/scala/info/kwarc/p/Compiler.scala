@@ -94,7 +94,7 @@ object Compiler {
       case Instance(thy) =>
         val n = instanceVarName(regions.length+1)
         val tC = thy match {
-          case ExtendedTheory(p,_) => compilePath(p)
+          case PhysicalTheory(p,_) => compilePath(p)
           case _ => throw Error(thy, "unexpected theory")
         }
         val regs = RegionalCompilationContext(tC,JVarRef(n)) :: regions
@@ -109,7 +109,7 @@ object Compiler {
         val ownerName = "_owner_" + (regions.length+1)
         val ownerJ = JVarDef(ownerName, c(owner))
         val path = dom match {
-          case ExtendedTheory(p,_) => p
+          case PhysicalTheory(p,_) => p
           case _ => throw Error(exp, "unexpected domain")
         }
         // TODO further regions must be picked from dom if dom is an OwnedModule

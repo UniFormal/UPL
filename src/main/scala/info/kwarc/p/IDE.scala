@@ -186,7 +186,7 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
     }
     val regionals = thy.decls.flatMap {
       case sd: NamedDeclaration => List(sd.name)
-      case i: Include => if (thy.isFlat) Nil else Checker.evaluateTheoryExpr(gc,i.dom).domain
+      case i: Include => if (thy.isFlat) Nil else Checker.evaluateTheory(gc,i.dom).domain
     }
     val cs = (locals ::: regionals).distinct.map(n => new CompletionItem(n))
     js.Array(cs: _*)

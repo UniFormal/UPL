@@ -1,10 +1,14 @@
 package info.kwarc.p
 
 /** parent of all errors */
-abstract class PError(msg: String) extends Exception(msg)
+abstract class PError(msg: String) extends Exception(msg) {
+  override def toString = "error: " + msg
+}
 
 /** user error in source */
-abstract class SError(val loc: Location, msg: String) extends PError(msg)
+abstract class SError(val loc: Location, msg: String) extends PError(msg) {
+  override def toString = "error at " + loc + ":" + msg
+}
 
 /** implementation errors */
 case class IError(msg: String) extends PError(msg)

@@ -1,6 +1,7 @@
 package info.kwarc.p
 
 import SyntaxFragment.matchC
+import info.kwarc.p.Checker.evaluateTheory
 
 import java.awt.event.FocusEvent.Cause
 import scala.scalajs.js.|
@@ -35,10 +36,10 @@ class Checker(errorHandler: ErrorHandler) {
   private def expected(exp: SyntaxFragment, found: SyntaxFragment): String = expected(exp.toString, found.toString)
   private def expected(exp: String, found: String): String = s"expected $exp; found $found"
 
-  def checkVocabulary(gc: GlobalContext, voc: Vocabulary, keepFull: Boolean)(implicit cause: SyntaxFragment) = {
+  def checkVocabulary(gc: GlobalContext, voc: TheoryValue, keepFull: Boolean)(implicit cause: SyntaxFragment) = {
     voc.decls.foreach {d => d.global = true}
     val dsC = flattenCheckDeclarations(gc, voc.decls, FlattenParams(alsoCheck=true, mustBeConcrete=false, keepFull))
-    Vocabulary(dsC).copyFrom(voc)
+    TheoryValue(dsC).copyFrom(voc)
   }
 
   def checkProgram(p: Program): Program = matchC(p) {
@@ -56,16 +57,17 @@ class Checker(errorHandler: ErrorHandler) {
     val declC = decl match {
       case m:Module =>
         // checking will try to merge declarations of the same name, so no uniqueness check needed
-        val envM = gc.add(m.copy(decls = Nil).copyFrom(m)).enter(m)
+        val envM = gc.add(m.copy(df = Theory.empty).copyFrom(m)).enter(m)
         if (!m.closed) {
           m.decls.foreach {_.global = true}
         }
-        val declsC = flattenCheckDeclarations(envM, m.decls, FlattenParams(alsoCheck=true, mustBeConcrete=false, keepFull=true))
-        m.copy(decls = declsC)
+        val kf = true
+        val declsC = flattenCheckDeclarations(envM, m.decls, FlattenParams(alsoCheck=true, mustBeConcrete=false, keepFull=kf))
+        m.copy(df = Theory(declsC, Some(kf)))
         // TODO instance creation may occur before or while a theory is checked - needs 2-phase approach
       case id: Include =>
         if (id.dom != null) {
-          val domC = checkTheoryExpr(gc, id.dom)(id)
+          val domC = checkTheory(gc, id.dom)(id)
           // TODO: what about includes of open theories
           val dfOC = id.dfO map {d => checkExpression(gc,d,ClassType(domC))}
           Include(domC,dfOC,id.realize)
@@ -76,8 +78,8 @@ class Checker(errorHandler: ErrorHandler) {
             val (dfC,dfI) = inferExpression(gc,df)(true)
             PurityChecker(gc,dfC)
             dfI match {
-              case ClassType(PhysicalTheory(p)) => Include(p, Some(dfC), id.realize)
-              case _ => fail("domain not an atomic theory")
+              case ClassType(thy) => Include(thy, Some(dfC), id.realize)
+              case _ => fail("definiens of include must be an instance")
             }
         }
       case sd: SymbolDeclaration =>
@@ -109,7 +111,6 @@ class Checker(errorHandler: ErrorHandler) {
      - A subsumed declarations is marked and removed at the end.
      - If a new declaration has to be generated, it is added and both refinees are marked as subsumed.
      - Subsuming declarations are marked as well.
-     - Declarations are marked to retain the original list.
     */
   private def flattenCheckDeclarations(gc: GlobalContext, decls: List[Declaration], pars: FlattenParams)
                                       (implicit cause: SyntaxFragment): List[Declaration] = {
@@ -129,57 +130,6 @@ class Checker(errorHandler: ErrorHandler) {
     var mustDefine: List[String] = Nil // symbols for which definedness must be checked at the end
     var doesDefine: List[String] = Nil // symbols for which definitions are present
     // ***** flattening *****
-    /** adds a declaration to the result, possibly merging with an existing one
-      * returns true if added, i.e., gcC changed; false if redundant, i.e., gcC unchanged
-      */
-    def add(d: Declaration, current: FlattenInput): Boolean = {
-      val dT = current.include match {
-        case None => d
-        case Some(incl) => incl.dfO match {
-          case None => d
-          case Some(df) =>
-            // translate
-            val dS = OwnersSubstitutor.applyDecl(gcC.push(incl.theory,Some(df)),d,1)
-            // add definiens if none yet
-            dS match {
-              case ed: ExprDecl if !ed.defined => ed.copy(dfO = Some(OwnedExpr(df,incl.theory,ed.toRef)))
-              case td: TypeDecl if !td.defined => td.copy(dfO = Some(OwnedType(df,incl.theory,td.toRef)))
-              case id: Include if !id.defined => id.copy(realize = false,dfO = Some(df))
-              case _ => dS
-            }
-        }
-      }
-      val old = gcC
-      val existing = gcC.parentDecls.view.map {e =>
-        (e,Declaration.compare(e,dT))
-      }.find {case (e,c) => c != Declaration.Independent}
-      existing match {
-        case None =>
-          if (debug) println("new declaration: " + dT)
-          gcC = gcC.add(dT)
-        case Some((e,r)) => r match {
-          case Declaration.Identical =>
-            // new declaration is copy: nothing to do
-            if (debug) println("duplicate declaration: " + dT)
-          case Declaration.Subsumes =>
-            if (debug) println("subsumed declaration: " + dT)
-            // new declaration is redundant: nothing to do but remember
-            e.subsuming = true
-          case Declaration.SubsumedBy =>
-            // old declaration is redundant: mark it for later removal
-            e.subsumed = true
-            dT.subsuming = true
-            if (debug) println("subsuming declaration: " + dT)
-            gcC = gcC.add(dT)
-          case Declaration.Clashing =>
-            // declarations could be incompatible; further comparison needed
-            reportError("declaration clash")(d)
-          case Declaration.Independent =>
-            throw IError("impossible case")
-        }
-      }
-      gcC != old
-    }
     // repeat until no todos are left (skipping empty todos)
     while ({todo = todo.dropWhile(_.decls.isEmpty); todo.nonEmpty}) {
       // take off the first among the todos
@@ -188,27 +138,137 @@ class Checker(errorHandler: ErrorHandler) {
       todo = current.tail :: todo.tail
       // check it if necessary (already merges with declarations of the same name that are already present)
       val dC = if (current.alsoCheck) checkDeclaration(gcC, d) else d
-      // add the declarations (its FlattenInput is passed because it may still need translating)
-      val changed = add(dC, current)
-      // if it is a non-redundant include, queue the body as well (depth-first traversal of the include tree)
-      if (changed) dC match {
-        case sd: SymbolDeclaration =>
-          // track if the declaration has or needs a definition
-          if (sd.defined) {
-            doesDefine ::= sd.name
-          } else if (pars.alsoCheck && (pars.mustBeConcrete || current.include.exists(_.realize)))
-            mustDefine ::= sd.name
-        case i@Include(dom,_,_) =>
-          // recurse into included declarations
-          val tv = Checker.evaluateTheoryExpr(gc,dom)
-          val isRealize = current.include match {
-            case None => i.realize && !i.defined
-            case Some(c) => c.realize && !c.defined && !i.realize && !i.defined // defined or realized includes are already total
-          }
-          todo ::= FlattenInput(tv.decls, false, Some(i.copy(realize = isRealize)))
-        case _ =>
+      // translate if necessary
+      val dT = current.include match {
+        case None => dC
+        case Some(incl) => incl.dfO match {
+          case None => dC
+          case Some(df) =>
+            // translate
+            val dS = OwnersSubstitutor.applyDecl(gcC.push(incl.dom,Some(df)),dC,1)
+            // add definiens if none yet
+            dS match {
+              case ed: ExprDecl if !ed.defined => ed.copy(dfO = Some(OwnedExpr(df,incl.dom,ed.toRef)))
+              case td: TypeDecl if !td.defined => td.copy(dfO = Some(OwnedType(df,incl.dom,td.toRef)))
+              case id: Include if !id.defined => id.copy(realize = false,dfO = Some(df))
+              case _ => dS
+            }
+        }
       }
-    }
+      // shared code for adding a new sym decl
+      def add(sd: SymbolDeclaration): Unit = {
+        gcC = gcC.add(sd)
+        // track if the declaration has or needs a definition
+        if (sd.defined) {
+          doesDefine ::= sd.name
+        } else if (pars.alsoCheck && (pars.mustBeConcrete || current.include.exists(_.realize)))
+          mustDefine ::= sd.name
+      }
+      // compare with compatible existing declaration and merge if any; otherwise add
+      dT match {
+        case nw: Include =>
+          /* Adding a redundant include is harmless because the declaration merging will absorb the redundant declarations.
+             But it is inefficient. So we apply sufficient criteria to skip redundant includes. */
+          val existing = gcC.parentDecls.collectFirst {
+            case old: Include if old.dom == nw.dom => old
+          }
+          val added = existing match {
+            case None =>
+              gcC = gcC.add(nw)
+              true
+            case Some(old) =>
+              if (!nw.total) {
+                // a new plain include is subsumed by any old include
+                false
+              } else if (nw.actualRealize && old.total) {
+                // a new realizing include is subsumed by an old total one
+                false
+              } else if (nw.defined && old.defined) {
+                // if both are defined, it's either redundant or an error (realizations don't matter)
+                if (nw.dfO != old.dfO) {
+                  reportError(s"definitions of includes not compatible")(nw)
+                }
+                false
+              } else {
+                // now nw.defined && !old.defined: add
+                // or nw.actualRealize && !old.total: also add, but actually it would suffice to set must-define
+                old.subsumed = true
+                nw.subsuming = true
+                gcC = gcC.add(nw)
+                true
+              }
+          }
+          // if it is a non-redundant include, queue the body as well (depth-first traversal of the include tree)
+          if (added) {
+            // check if the included declarations must be realized
+            val isRealize = current.include match {
+              case None => nw.actualRealize
+              case Some(c) => c.actualRealize && !nw.total // composed include is only realization when non-total composed with realize
+            }
+            // queue the included declarations
+            val domE = evaluateTheory(gcC, nw.dom)
+            todo ::= FlattenInput(domE.decls, false, Some(nw.copy(realize = isRealize)))
+          }
+        case nw: NamedDeclaration =>
+          val existing = gcC.parentDecls.find {e => e.nameO contains nw.name}
+          existing match {
+            case None =>
+              // new declaration is new: add
+              if (debug) println("new declaration: " + nw)
+              nw match {
+                case sd: SymbolDeclaration => add(sd)
+                case _ => gcC = gcC.add(nw)
+              }
+            case Some(old) =>
+              (old, nw) match {
+                case (o, n) if o.kind != n.kind =>
+                  // new declaration clashes: error
+                  reportError(s"declarations for ${nw.name} not compatible")
+                case (o, n) if o == n =>
+                // new module is redundant: skip (optimization for the common case of copies of declarations)
+                case (old: Module, nw: Module) =>
+                  if (old.closed != nw.closed) {
+                    reportError(s"modules for ${nw.name} of different openness")
+                  } else if (old.df != nw.df) {
+                    // TODO: merge bodies
+                    reportError(s"declaration for ${nw.name} already exists")
+                  } else {
+                    // new module is redundant: skip
+                  }
+                case (old: SymbolDeclaration, nw: SymbolDeclaration) =>
+                  // now nw of the same name/kind as old
+                  val comp = Compare(gcC, old, nw)
+                  comp match {
+                    case Compare.Identical =>
+                      // new declaration is copy: nothing to do
+                      if (debug) println("duplicate declaration: " + nw)
+                    case Compare.Subsumes =>
+                      // new declaration is redundant: nothing to do but remember
+                      if (debug) println("subsumed declaration: " + nw)
+                    case Compare.SubsumedBy =>
+                      // old declaration is redundant: mark it for later removal and add the new one
+                      old.subsumed = true
+                      nw.subsuming = true
+                      if (debug) println("subsuming declaration: " + nw)
+                      add(nw)
+                    case Compare.Merged(tM, dM) =>
+                      val merged = nw match {
+                        // TODO merges that involve mutable fields
+                        case ed: ExprDecl => ExprDecl(nw.name, tM, dM.asInstanceOf[Option[Expression]], ed.mutable)
+                        case td: TypeDecl => TypeDecl(nw.name, tM, dM.asInstanceOf[Option[Type]])
+                      }
+                      old.subsumed = true
+                      merged.subsuming = true
+                      add(merged.copyFrom(nw)) // nw is more likely to have the definition
+                    case Compare.Clashing =>
+                      // declarations incompatible; further comparison needed
+                      reportError("declaration clash")(nw)
+                  }
+                case _ => throw IError("unexpected declarations")
+              }
+          }
+      }
+    } // end while
     // ***** finalization *****
     /* newDecls is the list of newly added declarations in reverse order
        We still have to reverse it, drop all subsumed declarations, and perform final checks. */
@@ -234,11 +294,68 @@ class Checker(errorHandler: ErrorHandler) {
     result
   }
 
-  /** fully flattens a theory */
-  def flattenTheory(gc: GlobalContext, thy: Theory)(implicit cause: SyntaxFragment): TheoryValue = {
-    val pars = FlattenParams(alsoCheck=false, mustBeConcrete=false, keepFull=false)
-    val declsF = flattenCheckDeclarations(gc,thy.toValue.decls,pars)
-    TheoryValue(declsF)
+  private object Compare {
+    sealed abstract class Result
+    case object Identical extends Result
+    case object Subsumes extends Result
+    case object SubsumedBy extends Result
+    case class Merged(tp: Type, df: Option[Object]) extends Result
+    case object Clashing extends Result
+
+    /** tries to merge two symbol declarations
+      * pre: same name, same kind
+      */
+    def apply(gc: GlobalContext, sd1: SymbolDeclaration, sd2: SymbolDeclaration): Result = {
+      if (sd1 == sd2) return Identical
+      // compare type (bound) and definiens separately
+      val tpComp = compareTT(gc, sd1.tp, sd2.tp)
+      val dfComp = compareOO(sd1.dfO, sd2.dfO)
+      (tpComp, dfComp) match {
+        // either clashes
+        case (Clashing, _) | (_, Clashing) => Clashing
+        // both identical
+        case (Identical, Identical) => Identical
+        // both at least subsume
+        case ((Identical|Subsumes), (Identical|Subsumes)) => Subsumes
+        // both at least subsumed by
+        case ((Identical|SubsumedBy), (Identical|SubsumedBy)) => SubsumedBy
+        // both subsume but in different directions
+        case (Subsumes, SubsumedBy) | (SubsumedBy, Subsumes) =>
+          val (tpM, dfM) = if (tpComp == Subsumes) (sd1.tp, sd2.dfO.get) else (sd2.tp, sd1.dfO.get)
+          // definiens must be checked against now-tighter type
+          checkTypeOrExpression(gc, dfM, tpM)(dfM)
+          Merged(tpM, Some(dfM))
+        // types merged, definitions compatible
+        case (Merged(tpM, _), _) =>
+          val dfOM = sd1.dfO orElse sd2.dfO
+          dfOM.foreach {dfM =>
+            // definiens must be checked against now-tighter type
+            // if both defs are present, this should be redundant, but we do it anyway to account for approximate intersection types
+            checkTypeOrExpression(gc, dfM, tpM)(dfM)
+          }
+          Merged(tpM, dfOM)
+        case _ => throw IError("unexpected comparison case")
+      }
+    }
+    def compareTT(gc: GlobalContext, t1: Type, t2: Type): Result = {
+      if (t1 == t2) return Identical
+      val t1N = Normalize(gc,t1)
+      val t2N = Normalize(gc,t2)
+      if (t1N == t2N) Identical else {
+        val tI = typeIntersection(gc, t1N, t2N)
+        if (tI == EmptyType) Clashing
+        else if (tI == t1) Subsumes
+        else if (tI == t2) SubsumedBy
+        else Merged(tI,None)
+      }
+    }
+    def compareOO(o1: Option[Object], o2: Option[Object]): Result =
+      (o1, o2) match {
+        case (Some(_), None)    => Subsumes
+        case (None, Some(_))    => SubsumedBy
+        case (Some(x), Some(y)) => if (x == y) Identical else Clashing
+        case (None, None)       => Identical
+      }
   }
 
   /** checks a declaration against a module, which may provide an expected type for the declaration
@@ -313,45 +430,48 @@ class Checker(errorHandler: ErrorHandler) {
   }
   */
 
-  /** auxiliary function of checkTheory to sharpen the return type */
-  private def checkTheoryExpr(gc: GlobalContext, thy: TheoryExpr, mustBeConcrete: Boolean = false)(implicit cause: SyntaxFragment): TheoryExpr = recoverWith(thy) {
-   thy match {
-     case r: Ref =>
-       val (rC,ndO) = gc.resolveName(r).getOrElse(fail("unknown identifier"))
-       val nd = ndO.getOrElse(fail("identifier not a module"))
-       (rC,nd) match {
-         case (rC: Ref,m: Module) =>
-           if (!m.closed) fail("module not closed")
-           val undef = m.undefined
-           if (mustBeConcrete && undef.nonEmpty) fail("theory not concrete, missing definitions for: " + undef.map(_.name).mkString(", "))
-           // realizations were already checked when checking r
-           rC
-         case _ => fail("identifier not a module")
-       }
-     case OwnedTheory(owner,dom,t) =>
-       // owning a theory does not affect, definedness of fields; so no definedness checks needed here
-       val (ownerC,ownerI) = inferExpressionNorm(gc,owner)(true)
-       PurityChecker(ownerC)(gc,())
-       ownerI match {
-         case ClassType(domC) =>
-           if (dom != null && dom != domC) reportError("unexpected theory")
-           val envO = gc.push(domC,Some(ownerC))
-           val tC = checkTheoryExpr(envO,t,mustBeConcrete)
-           OwnedTheory(ownerC,domC,tC)
-         case _ => fail("owner must be an instance")
-       }
-   }
+  /** checks a theory, preserving its structure */
+  def checkTheory(gc: GlobalContext, thy: Theory, mustBeConcrete: Boolean = false)(implicit cause: SyntaxFragment): Theory = {
+    if (thy.isFlat) return thy
+    thy match {
+      case thy: TheoryValue =>
+        val kf = false
+        val declsC = flattenCheckDeclarations(gc.enterEmpty(),thy.decls,FlattenParams(alsoCheck=true,mustBeConcrete,keepFull=kf))
+        Theory(declsC, Some(kf))
+      case r: Ref =>
+        val (rC,ndO) = gc.resolveName(r).getOrElse(fail("unknown identifier"))
+        val nd = ndO.getOrElse(gc.lookupModule(r))
+        (rC,nd) match {
+          case (rC: Ref,m: Module) =>
+            if (!m.closed) fail("module not closed")
+            val undef = m.df.undefined
+            if (mustBeConcrete && undef.nonEmpty) fail("theory not concrete, missing definitions for: " + undef.map(_.name).mkString(", "))
+            // realizations were already checked when checking r
+            rC
+          case _ => fail("identifier not a module")
+        }
+      case OwnedTheory(owner,dom,t) =>
+        // owning a theory does not affect, definedness of fields; so no definedness checks needed here
+        val (ownerC,ownerI) = inferExpressionNorm(gc,owner)(true)
+        PurityChecker(ownerC)(gc,())
+        ownerI match {
+          case ClassType(domC) =>
+            if (dom != null && dom != domC) reportError("unexpected theory")
+            val gcD = gc.push(domC,Some(ownerC))
+            val tC = checkTheory(gcD,t,mustBeConcrete)
+            OwnedTheory(ownerC,domC,tC)
+          case _ => fail("owner must be an instance")
+        }
+    }
   }
 
-  /** checks a theory, preserving its structure */
-  def checkTheory(gc: GlobalContext, thy: Theory, mustBeConcrete: Boolean = false)(implicit cause: SyntaxFragment) = {
-    thy match {
-      case thy: TheoryExpr =>
-        checkTheoryExpr(gc, thy, mustBeConcrete)
-      case thy: TheoryValue =>
-        val declsC = flattenCheckDeclarations(gc,thy.decls,FlattenParams(alsoCheck=true,mustBeConcrete,keepFull=false))
-        TheoryValue(declsC)
-    }
+  /** tests equality of theories quickly; returns None if inclonclusive */
+  def tryCheckTheoryEqual(gc: GlobalContext, a: Theory, b: Theory): Option[Boolean] = {
+    if (a == b) return Some(true)
+    val aE = evaluateTheory(gc, a)
+    val bE = evaluateTheory(gc, b)
+    if (a == b) return Some(true)
+    None
   }
 
   def checkLocal(gc: GlobalContext,lc: LocalContext,allowDefinitions: Boolean,allowMutable: Boolean): LocalContext = recoverWith(lc) {
@@ -407,17 +527,18 @@ class Checker(errorHandler: ErrorHandler) {
 
   /** component-wise operation on types,
     * reuses names of the first argument, and additionally returns renaming bs -> result
+    * pre: same length, no definitions
     * TODO substitution into union context is not well-formed; every argument must be checked individually
     */
   def typesUnionOrIntersection(union: Boolean)
-                              (gc: GlobalContext, as: LocalContext, bs: LocalContext)
-                              (implicit cause: SyntaxFragment): (LocalContext,Substitution) = {
-    if (as.length != bs.length) reportError("wrong number of components: " + expected(as.length.toString,bs.length.toString))
+                              (gc: GlobalContext, as: LocalContext, bs: LocalContext): Option[(LocalContext,Substitution)] = {
+    // fail("wrong number of components: " + expected(as.length.toString,bs.length.toString))
+    if (as.length != bs.length) return None
     var gcI = gc
     var subI = Substitution.empty
     var abs = LocalContext.empty
     (as.decls.reverse zip bs.decls.reverse).foreach {case (a,b) =>
-      if (a.defined || b.defined) reportError("union with defined variables")
+      if (a.defined || b.defined) return None //reportError("union with defined variables")
       val bS = Substituter(gcI, subI, b.tp)
       val ab = if (union) typeUnion(gcI, a.tp, bS) else typeIntersection(gcI, a.tp, bS)
       val vd = VarDecl(a.name, ab)
@@ -425,17 +546,73 @@ class Checker(errorHandler: ErrorHandler) {
       gcI = gcI append vd
       subI = subI.appendRename(b.name, vd)
     }
-    (abs,subI)
+    Some((abs,subI))
   }
 
 
   /** theory a subsumbed by b */
-  def isSubtheory(a: Theory, b: Theory) = {
-    a.decls.forall(b.decls.contains)
+  def checkSubtheory(gc: GlobalContext, a: Theory, b: Theory)(implicit cause: SyntaxFragment): Unit = {
+    // we apply sufficient criteria first, in order of efficiency
+    // identical
+    if (a == b) return
+    val bE = evaluateTheory(gc, b)
+    val bEDecls = bE.decls
+    // "include a" part of bE
+    if (!a.isInstanceOf[TheoryValue] && a.decls.forall(bEDecls.contains)) return
+    val aE = evaluateTheory(gc, a)
+    val skipIncludes = aE.flatness == Theory.FullyFlat
+    // check if all declarations of aE are subsumed by a declaration in bE
+    def notAmong(ds: List[Declaration]) =
+      aE.decls.filterNot(c => (skipIncludes && c.isInstanceOf[Include]) || ds.exists(d => c.subsumedBy(d)))
+    if (notAmong(bEDecls).isEmpty) return
+    val bN = Normalize(gc, bE)
+    val missing = notAmong(bN.decls)
+    if (missing.isEmpty) return
+    def giveUp(msg: String) = {
+      reportError(s"theory not included:\nsub:    $a\nsuper:  $b\nreason: $msg\n")
+    }
+    // eventually: check in depth
+    missing.foreach {
+      case m: SymbolDeclaration =>
+        val gcB = gc.push(bN)
+        gcB.lookupRegional(m.name) match {
+          case None => giveUp(s"no declaration for ${m.name}")
+          case Some(p) => checkSubsumedBy(gcB,m,p)
+        }
+      case m => giveUp("not subsumed: " + m)
+    }
+  }
+
+  def checkSubsumedBy(gc: GlobalContext, a: Declaration, b: Declaration)(implicit cause: SyntaxFragment): Unit = {
+    if (a == b) return
+    if (!a.similar(b))
+      reportError("declaration not similar: " + b)
+    if (a.subsumedBy(b)) return
+    (a,b) match {
+      case (a: SymbolDeclaration, b: SymbolDeclaration) =>
+        checkSubtype(gc, b.tp, a.tp)
+        (a.dfO,b.dfO) match {
+          case (None,_) =>
+          case (Some(_),None) => reportError(s"missing definition for${a.name}\n$a\n$b")
+          case (Some(aD:Expression), Some(bD:Expression)) =>
+            if (aD != bD) reportError(s"clashing definitions for ${a.name}\n$a\n$b")
+          case (Some(aD: Type), Some(bD: Type)) =>
+            checkEqualType(gc,aD,bD)
+          case _ => throw IError("unexpected definition types")
+        }
+      case _ => reportError("incompatible declarations")
+    }
   }
 
   // ***************** Types **************************************
-  def checkType(gc: GlobalContext,tp: Type, bound: Type): Type = {
+  /** checks an expression against a type, or a type against a bound */
+  def checkTypeOrExpression(gc: GlobalContext, o: Object, tp: Type)(cause: SyntaxFragment): Unit = o match {
+    case e: Expression => checkExpression(gc, e, tp)
+    case t: Type => checkSubtype(gc, t, tp)(o)
+    case th: Theory => throw IError("cannot check theory against type")
+  }
+
+  def checkType(gc: GlobalContext, tp: Type, bound: Type): Type = {
     val tpC = checkType(gc,tp)
     checkSubtype(gc, tpC, bound)(tp)
     tpC
@@ -464,9 +641,9 @@ class Checker(errorHandler: ErrorHandler) {
               case _ => fail("expression cannot be coerced to a type")
             }
           case (rC:OpenRef, m: Module) =>
-            // module ref, interpret as class type
-            if (!m.closed) reportError("open module not a type")
-            ClassType(PhysicalTheory(rC.path))
+            // module ref, interpret as class type, closed ref not supported yet
+            // if (!m.closed) reportError("open module not a type")
+            checkType(gc, ClassType(rC))
           case _ => fail("not a type")
         }
       case OwnedType(owner,dom,tp) =>
@@ -496,7 +673,7 @@ class Checker(errorHandler: ErrorHandler) {
         ClassType(thyC)
       case ExprsOver(sc,q) =>
         val scC = checkTheory(gc,sc)(tp)
-        val qC = checkType(gc.push(scC),q)
+        val qC = checkType(gc.pushQuoted(scC),q)
         ExprsOver(scC,qC)
       case ProofType(f) =>
         val fC = checkExpressionPure(gc,f,BoolType)
@@ -514,7 +691,17 @@ class Checker(errorHandler: ErrorHandler) {
     }
   }
 
-  /** a <: b */
+  def checkEqualType(gc: GlobalContext, a: Type, b: Type)(implicit cause: SyntaxFragment): Unit = {
+    if (a == b) return
+    val aN = Normalize(gc,a)
+    val bN = Normalize(gc,b)
+    if (aN != bN) reportError(s"types not equal\n$a\n$b")
+  }
+
+  /** a <: b
+   *  force: solve variables, raise error if fail, return Some(true)
+   *  !force: no side effect, return None if inconclusive
+   */
   def checkSubtype(gc: GlobalContext, a: Type, b: Type)(implicit cause: SyntaxFragment): Unit = {
     val equated = equateTypes(gc,a,b)(Some(true))
     if (equated) return
@@ -551,12 +738,11 @@ class Checker(errorHandler: ErrorHandler) {
         checkSubtypes(gc, bs, as)
         checkSubtype(gc.append(bs),o,p)
       case (ExprsOver(aT,u),ExprsOver(bT,v)) =>
-        if (!isSubtheory(aT,bT)) reportError("not quoted from the same theory")
-        checkSubtype(gc.push(aT),u,v)
+        checkSubtheory(gc,aT,bT)
+        checkSubtype(gc.pushQuoted(aT),u,v)
       case (ClassType(aT),ClassType(bT)) =>
         // model of aT or model of bT, i.e., model of intersection
-        if (!isSubtheory(bT,aT)) // larger theory = smaller type
-          reportError("subtype must be larger theory")
+        checkSubtheory(gc,bT,aT) // larger theory = smaller type
       case _ =>
         val aN = Normalize(gc,a)
         val bN = Normalize(gc,b)
@@ -568,7 +754,7 @@ class Checker(errorHandler: ErrorHandler) {
   }
 
   /** flattened if the inputs are */
-  def typeUnion(gc: GlobalContext,tps: List[Type])(implicit cause: SyntaxFragment): Type = {
+  def typeUnion(gc: GlobalContext,tps: List[Type]): Type = {
     if (tps.isEmpty) {
       EmptyType
     } else {
@@ -582,7 +768,7 @@ class Checker(errorHandler: ErrorHandler) {
     * flattened if the inputs are
     */
     //TODO type bounds
-  def typeUnion(gc: GlobalContext,a: Type,b: Type)(implicit cause: SyntaxFragment): Type = {
+  def typeUnion(gc: GlobalContext,a: Type,b: Type): Type = {
     // equality, possibly by inference
     val equated = equateTypes(gc,a,b)(Some(true))
     if (equated) return b
@@ -605,20 +791,24 @@ class Checker(errorHandler: ErrorHandler) {
         }
         IntervalType(l,u)
       case (CollectionType(a,k),CollectionType(b,l)) => CollectionType(typeUnion(gc,a,b), k union l)
-      case (ProdType(as),ProdType(bs)) =>
-        val (abs,_) = typesUnionOrIntersection(true)(gc,as,bs)
-        ProdType(abs)
-      case (FunType(as,o),FunType(bs,p)) =>
-        val (abs,sub) = typesUnionOrIntersection(false)(gc, as, bs)
-        val gcI = gc.append(abs)
-        val pS = Substituter(gcI, sub, p)
-        val op = typeUnion(gcI,o,pS)
-        FunType(abs,op)
+      case (ProdType(as),ProdType(bs)) if as.length == bs.length =>
+        typesUnionOrIntersection(true)(gc,as,bs) match {
+          case Some((abs,_)) => ProdType(abs)
+          case None => AnyType
+        }
+      case (FunType(as,o),FunType(bs,p)) if as.length == bs.length =>
+        typesUnionOrIntersection(false)(gc, as, bs) match {
+          case Some((abs, sub)) =>
+            val gcI = gc.append(abs)
+            val pS = Substituter(gcI, sub, p)
+            val op = typeUnion(gcI, o, pS)
+            FunType(abs, op)
+          case None => AnyType
+        }
       case (ExprsOver(aT,u), ExprsOver(bT, v)) =>
-        if (aT != bT) reportError("not quoted from the same theory")
         val thyU = theoryUnion(gc, aT, bT)
         // aT-expression of type u or bT-expression of type v, i.e., expression over union of union type
-        ExprsOver(thyU, typeUnion(gc.push(thyU), u, v))
+        ExprsOver(thyU, typeUnion(gc.pushQuoted(thyU), u, v))
       case (ClassType(aT), ClassType(bT)) =>
         // model of aT or model of bT, i.e., model of intersection
         val i = theoryIntersection(gc,aT,bT)
@@ -637,9 +827,9 @@ class Checker(errorHandler: ErrorHandler) {
     * flattened if the inputs are
     */
    //TODO type bounds
-  def typeIntersection(gc: GlobalContext, a: Type, b: Type)(implicit cause: SyntaxFragment): Type = {
-     val equated = equateTypes(gc,a,b)(Some(true))
-     if (equated) return a
+  def typeIntersection(gc: GlobalContext, a: Type, b: Type): Type = {
+    val equated = equateTypes(gc,a,b)(Some(true))
+    if (equated) return a
     (a,b) match {
       case (AnyType,t) => t
       case (t,AnyType) => t
@@ -661,19 +851,24 @@ class Checker(errorHandler: ErrorHandler) {
         IntervalType(l,u)
       case (CollectionType(a,k),CollectionType(b,l)) => CollectionType(typeIntersection(gc,a,b), k inter l)
       case (ProdType(as),ProdType(bs)) if as.length == bs.length =>
-        val (abs,_) = typesUnionOrIntersection(false)(gc,as,bs)
-        ProdType(abs)
+        typesUnionOrIntersection(false)(gc,as,bs) match {
+          case Some((abs,_)) => ProdType(abs)
+          case None => EmptyType
+        }
       case (FunType(as,o),FunType(bs,p)) if as.length == bs.length =>
-        val (abs,sub) = typesUnionOrIntersection(true)(gc,as,bs)
-        val gcI = gc.append(abs)
-        val pS = Substituter(gcI,sub,p)
-        val op = typeIntersection(gcI,o,pS)
-        FunType(abs,op)
+        typesUnionOrIntersection(true)(gc,as,bs) match {
+          case Some((abs,sub)) =>
+            val gcI = gc.append(abs)
+            val pS = Substituter(gcI,sub,p)
+            val op = typeIntersection(gcI,o,pS)
+            FunType(abs,op)
+          case None => EmptyType
+        }
       case (ExprsOver(aT,u), ExprsOver(bT, v)) =>
         // aT-expression of type u and bT-expression of type v, i.e., expression over the intersection of intersection type
         val thyI = theoryIntersection(gc, aT, bT)
         val thyU = theoryUnion(gc, aT, bT)
-        ExprsOver(thyI, typeIntersection(gc.push(thyU), u, v))
+        ExprsOver(thyI, typeIntersection(gc.pushQuoted(thyU), u, v))
       case (ClassType(aT), ClassType(bT)) =>
         // model of aT and of bT, i.e., model of the union
         ClassType(theoryUnion(gc,aT,bT))
@@ -689,27 +884,31 @@ class Checker(errorHandler: ErrorHandler) {
 
   /** union (colimit) of theories */
   def theoryUnion(gc: GlobalContext, a: Theory, b: Theory): Theory = {
-    val pqs = (a.decls ::: b.decls).distinct //TODO error if not compatible
-    val thy = Theory(pqs)
-    thy.isFlat = a.isFlat && b.isFlat // flat if the inputs are
-    thy
+    if (a.isEmpty) return b
+    if (b.isEmpty) return a
+    if (a == b) return a
+    val thy = Theory(a.decls:::b.decls)
+    val declsF = flattenCheckDeclarations(gc.enterEmpty(), thy.decls, FlattenParams(false,false,false))(thy)
+    // thy.isFlat = a.isFlat && b.isFlat
+    TheoryValue(declsF)
   }
 
   /** intersection of theories: the union of all common includes */
   def theoryIntersection(gc: GlobalContext, a: Theory, b: Theory): Theory = {
     val pqs = a.decls intersect b.decls // TODO remove definiens if not the same
     val thy = Theory(pqs)
-    thy.isFlat = a.isFlat && b.isFlat // flat if the inputs are
     thy
   }
 
-  /** normalizes a type: definitions expanded, but not flattened */
-  // TODO: cache being normal
+  /** normalizes a type: definitions expanded, flattened */
   object Normalize extends StatelessTraverser {
-    override def apply(thy: Theory)(implicit gc: GlobalContext, a:Unit) = {
+    override def apply(thy: Theory)(implicit gc: GlobalContext, a:Unit): Theory = {
       // possible infinite loop if keepFull==true
-      val thyF = flattenTheory(gc,thy)(thy) // TODO violates cast in Traverser (only call of flattenTheory)
-      super.apply(thyF)
+      if (thy.isFlat) return thy
+      val kf = true
+      val pars = FlattenParams(alsoCheck=false, mustBeConcrete=false, keepFull=kf)
+      val declsF = flattenCheckDeclarations(gc.enterEmpty(),thy.decls,pars)
+      Theory(declsF, Some(kf))
     }
     override def apply(exp: Expression)(implicit gc: GlobalContext, a:Unit) = {
       exp
@@ -810,14 +1009,14 @@ class Checker(errorHandler: ErrorHandler) {
           case _ => fail("owner must be class type")
         }
       case (Instance(thyA), ClassType(thyB)) =>
-        val instC = checkTheory(gc, thyB.toValue union thyA.toValue, true)
+        val instC = checkTheory(gc, Theory(Include(thyB) :: thyA.decls), true)
         Instance(instC)
       case (ExprOver(scE,e), ExprsOver(scT, tp)) =>
         val scTC = checkTheory(gc, scT)
         if (scE != null) {
-          if (!isSubtheory(scE, scTC)) reportError("quoted scope not part of expected type")
+          checkSubtheory(gc, scE, scTC)
         }
-        val eC = checkExpression(gc.push(scTC), e, tp)
+        val eC = checkExpression(gc.pushQuoted(scTC), e, tp)
         ExprOver(scTC, eC)
       case (Eval(q), a) =>
         val qC = checkExpression(gc.pop(), q, ExprsOver(gc.theory, a))
@@ -864,6 +1063,9 @@ class Checker(errorHandler: ErrorHandler) {
           }
         }
         Block(esC)
+      case (UndefinedValue(a), b) =>
+        val aC = checkType(gc,a,b)
+        UndefinedValue(aC)
       // TODO there are more opportunities to pass on the expected type: If, Match, ListElem, Proj, ... (but only if the expected is known)
       case _ =>
         val (eC,eI) = inferExpression(gc,exp)(true)
@@ -901,8 +1103,9 @@ class Checker(errorHandler: ErrorHandler) {
   }
 
   /** like check, but also infers a context with the free variables */
-  def checkExpressionPattern(gc: GlobalContext, e: Expression, tp: Type) = {
+  def checkExpressionPattern(gc: GlobalContext, e: Expression, tp: Type): (LocalContext,Expression) = {
     // TODO: this interprets any name bound in the context as a constant pattern, rather than shadowing it
+    disambiguateOwnedObject(gc, e).foreach {corrected => return checkExpressionPattern(gc, corrected, tp)}
     val fvs = FreeVariables.infer(gc,e)
     var fctxI = LocalContext.empty
     var gcI = gc
@@ -979,12 +1182,10 @@ class Checker(errorHandler: ErrorHandler) {
         if (skipped.exists(!_.transparent))
           fail("level is not accessible")
         reg.physical match {
-          case Some(false) => fail("parent is not a theory")
+          case Some(false) => fail("parent is not a closed theory")
           case _ =>
             val thy = reg.region.theory
-            val thyS = if (l == 1)
-              thy // optimization
-            else OwnersSubstitutor.applyTheory(gc, reg.region.theory, -(l-1))
+            val thyS = OwnersSubstitutor.applyTheory(gc, reg.region.theory, -(l-1))
             (exp,ClassType(thyS))
         }
       case OwnedExpr(owner, dom, e) =>
@@ -1006,7 +1207,7 @@ class Checker(errorHandler: ErrorHandler) {
         (Instance(thyC),ClassType(thyC))
       case ExprOver(sc,q) =>
         val scC = if (alsoCheck) checkTheory(gc,sc) else sc
-        val (qC,qI) = inferExpression(gc.push(scC),q)
+        val (qC,qI) = inferExpression(gc.pushQuoted(scC),q)
         (ExprOver(scC,qC),ExprsOver(scC,qI))
       case Eval(e) =>
         if (alsoCheck)
@@ -1014,8 +1215,9 @@ class Checker(errorHandler: ErrorHandler) {
         val (eC,eI) = inferExpressionNorm(gc.pop(),e)
         eI match {
           case ExprsOver(eT,q) =>
-            if (alsoCheck)
-              if (!isSubtheory(eT, gc.theory)) fail("quoted over wrong theory")
+            if (alsoCheck) {
+              checkSubtheory(gc, eT, gc.theory)
+            }
             (Eval(eC),q)
           case mf.evaluation(dom,a) =>
             (mf.evaluation.insert(dom,eC, Nil), a)
@@ -1121,6 +1323,9 @@ class Checker(errorHandler: ErrorHandler) {
       case Assert(f) =>
         val fC = if (alsoCheck) checkExpressionPure(gc, f, BoolType) else f
         (Assert(fC), UnitType)
+      case UndefinedValue(a) =>
+        val aC = checkType(gc, a)
+        (UndefinedValue(aC), aC)
       case Block(es) =>
         if (alsoCheck) {
           inferExpressionViaCheck(gc, exp)
@@ -1518,7 +1723,8 @@ class Checker(errorHandler: ErrorHandler) {
 object Checker {
   // This does not really belong here. But it feels too semantic to be part of GlobalContext
   /**
-    * flattens a well-formed theory expression
+    * normalizes a well-formed theory expression into a TheoryValue
+    * expands definitions and applied owners, but does not necessarily flatten TheoryValues
     * Examples: Assume gc + (o2:d2) + (o1:d1) |- r ---> {ds}
     * - then  gc |- o2.(o1.r) is (o2:d2).((o1:d1).r)
     *   and flattens to {ds} with . for ., o1 for .., o2 for ..., .. for ...., and so on
@@ -1526,8 +1732,7 @@ object Checker {
     *   thus  gc + (o:d) |- r ---> o2.{ds}
     *   and the expression flattens to the same result as before
     */
-  def evaluateTheoryExpr(gc: GlobalContext, thy: TheoryExpr): TheoryValue = {
-    // TODO simply retrieve theory if physical?
+  def evaluateTheory(gc: GlobalContext, thy: Theory): TheoryValue = {
     // invariants: gcI |- thyI : THEORY,  gcI = gc.push(_)....push(_)
     var gcI = gc
     var thyI = thy
@@ -1537,7 +1742,13 @@ object Checker {
           gcI = gcI.push(d,Some(o))
           thyI = t
         case r: Ref =>
-          val tv = gcI.lookupModule(r).df
+          val df = gcI.lookupModule(r).df
+          val dfS = OwnersSubstitutor.applyTheory(gcI, df, gcI.regions.length - gc.regions.length)
+          return evaluateTheory(gcI, dfS)
+        case TheoryAsValue(t) =>
+          // special case to undo any call of .toValue on one of the above
+          return evaluateTheory(gcI, t)
+        case tv: TheoryValue =>
           val tvO = OwnersSubstitutor.applyTheory(gcI, tv, gcI.regions.length - gc.regions.length)
           return tvO.toValue
       }

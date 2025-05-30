@@ -89,7 +89,7 @@ object PContext {
 object Parser {
   def file(f: File,eh: ErrorHandler) = {
     val p = new Parser(f.toSourceOrigin, getFileContent(f), eh)
-    Vocabulary(p.parseAll(p.parseDeclarations))
+    TheoryValue(p.parseAll(p.parseDeclarations))
   }
 
   def getFileContent(f: File) = {
@@ -104,7 +104,7 @@ object Parser {
     } else {
       p.parseAll(p.parseDeclarations)
     }
-    Vocabulary(ds)
+    TheoryValue(ds)
   }
 
   def expression(so: SourceOrigin,s: String,eh: ErrorHandler) = {
@@ -416,8 +416,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     Include(dom, dfO, rz)
   }
   /** theory expressions are a subset of expressions in the AST */
-  def parseTheory(implicit ctxs: PContext): TheoryExpr = expressionToTheory(parseExpression)
-  private def expressionToTheory(exp: Expression): TheoryExpr = exp match {
+  def parseTheory(implicit ctxs: PContext): Theory = expressionToTheory(parseExpression)
+  private def expressionToTheory(exp: Expression): Theory = exp match {
     case r: Ref => r
     case OwnedExpr(o,d,e) => OwnedTheory(o,d,expressionToTheory(e)).copyFrom(exp)
     case _ => fail("expected theory, found expression")
@@ -513,28 +513,26 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           if (!atEnd && isNameChar(next)) index-=1
           This(l)
         }
+      } else if (startsWithS("§{")) {
+        val ds = parseDeclarations
+        trim
+        skip("}")
+        Instance(Theory(ds))
       } else if (startsWithS("{")) {
-        if (startsWithDeclaration) {
-          val ds = parseDeclarations
-          trim
-          skip("}")
-          Instance(Theory(ds))
-        } else {
-          var cs: List[Expression] = Nil
-          var ctxL = ctxs.setAllowStatement(true)
-          trim
-          while (!startsWithS("}")) {
-            val c = parseExpression(ctxL)
-            cs ::= c
-            c match {
-              case vd: VarDecl => ctxL = ctxL.append(vd)
-              case _ =>
-            }
-            trim
-            if (startsWith(";")) skip(";")
+        var cs: List[Expression] = Nil
+        var ctxL = ctxs.setAllowStatement(true)
+        trim
+        while (!startsWithS("}")) {
+          val c = parseExpression(ctxL)
+          cs ::= c
+          c match {
+            case vd: VarDecl => ctxL = ctxL.append(vd)
+            case _ =>
           }
-          Block(cs.reverse)
+          trim
+          if (startsWith(";")) skip(";")
         }
+        Block(cs.reverse)
       } else if (startsWithS("var")) {
         trim
         parseVarDecl(true, true)
@@ -597,6 +595,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         BoolValue(true)
       } else if (startsWithS("false")) {
         BoolValue(false)
+      } else if (startsWithS("???")) {
+        UndefinedValue(Type.unknown())
       } else if (!atEnd && (next.isDigit || next == '-')) {
         val begin = index
         if (next == '-') skip("-")
@@ -676,21 +676,24 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         } else if (startsWithS("{")) {
           // conflict between M{decls} and exp{exp}
           // we look back and ahead to see if it is the former, in which case looksLikeInstanceOf.isDefined
-          // check if there was a Path before
-          def asPath(e: Expression): Option[Path] = e match {
-            case OwnedExpr(e,_,ClosedRef(n)) => asPath(e).map(_ / n)
-            case ClosedRef(n) => Some(Path(List(n)))
+          // check if there was a Ref before
+          def asRef(e: Expression): Option[Ref] = e match {
+            case OwnedExpr(e,_,ClosedRef(n)) => asRef(e).map {
+              case r: OpenRef => OpenRef(r.path/n)
+              case ClosedRef(m) => OpenRef(Path(m) / n)
+            }
+            case r: Ref => Some(r)
             case _ => None
           }
-          asPath(exp) match {
-            case Some(p) if startsWithDeclaration =>
+          asRef(exp) match {
+            case Some(r) if startsWithDeclaration =>
               // p{decls}
               val ds = parseDeclarations
               val sds = ds.flatMap {
                 case sd: SymbolDeclaration => List(sd)
                 case _ => reportError("symbol declaration expected"); Nil
               }
-              exp = Instance(ExtendedTheory(p,sds).copyFrom(exp))
+              exp = Instance(Theory(Include(r)::sds)).copyFrom(exp)
             case _ =>
               // in e{q}, q is a closed expression in a different theory
               val e = parseExpression(ctxs.push())
@@ -715,6 +718,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         } else if (startsWithS("->")) {
           // decls -> body is a Lambda, pattern -> body is a MatchCase
           def asVarDecls(e: Expression,top: Boolean): Option[List[VarDecl]] = e match {
+            case UnitValue if top => Some(Nil)
             case Tuple(es) if top =>
               val esV = es.map(e => asVarDecls(e,false))
               if (esV.forall(_.isDefined)) Some(esV.flatMap(_.get))
