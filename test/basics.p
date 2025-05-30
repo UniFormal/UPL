@@ -6,7 +6,7 @@
 // - The terms in the language induced by the declarations of a theory can be constructed and pattern-matched in the style of inductive types.
 module M {
   // Atomic declaration in a module/theory can be for types and terms. The latter uses no keyword.
-  // string, int, bool are the usual base types.
+  // string, int, rat, bool are the usual base types.
   type a = int
   c1: a = 0
   // Types are inferred if omitted.
@@ -26,7 +26,7 @@ module M {
   // The collection kind "C" can be set, list, bag, option. If omitted, it defaults to 'List'.
   ls: list[int] = [1,2,3,4]
   ls0 = ls[0] // Index bounds are not checked and may cause run-time errors.
-  // Collections for a subtype hierarchy, i.e., lists are special cases of sets.
+  // Collections form a subtype hierarchy, i.e., lists are special cases of sets.
   st: set[int] = ls
   // -: and :- are cons and snoc.
   ls2 = 1 -: 2 -: [3] :- 4

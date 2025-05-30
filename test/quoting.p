@@ -17,11 +17,11 @@ module Q {
   // representation rule (analogue of eta): Q |- e == N{`e`}
   // computation rule (analogue of beta):   N |- `N{t}` == t 
 
-  zero = N{z}
+  zero:_ = N{z}
   one = N{s(z)}
   two = N{s(`one`)}
-  succ = (x:N{n}) -> N{s(`x`)}
-  pred = x -> x match {
+  succ: _ = (x:N{n}) -> N{s(`x`)}
+  pred: _ = x -> x match {
     N.z -> []
     N{s(`p`)} -> [p]
   }

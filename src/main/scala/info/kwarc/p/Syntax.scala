@@ -1173,7 +1173,7 @@ case object AnyType extends BaseType("any") {
   def finite = false
 }
 
-/** user-declared excpetions */
+/** user-declared exceptions */
 case object ExceptionType extends Type {
   override def toString = "exn"
   def finite = false
