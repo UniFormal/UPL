@@ -3,7 +3,7 @@
     <option name="ALTERNATIVE_JRE_PATH" value="BUNDLED" />
     <option name="MAIN_CLASS_NAME" value="info.kwarc.p.Main" />
     <module name="UPL" />
-    <option name="PROGRAM_PARAMETERS" value="--repl test/all.pp" />
+    <option name="PROGRAM_PARAMETERS" value="--repl test/examples/all.pp" />
     <method v="2">
       <option name="Make" enabled="true" />
     </method>
