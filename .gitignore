@@ -11,3 +11,5 @@ modules.xml
 sbt.xml
 /.bsp
 /javascript
+/.idea/*
+!/.idea/runConfigurations
