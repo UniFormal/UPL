@@ -1,0 +1,77 @@
+package info.kwarc.p
+
+class Solver {
+   val checker = new Checker(ErrorThrower)
+   case class Error(msg: String, thy: Theory) extends SError(thy.loc, msg + " while solving " + thy)
+   def fail(msg: String)(implicit thy: Theory) = throw Error(msg, thy)
+
+   /**
+    * conservatively extends a theory, trying to reduce the abstract interface
+    * e.g., by adding definitions for symbols that are determined by axioms
+    */
+   def solve(gc: GlobalContext, thy: Theory) = {
+     implicit val cause = thy
+     val thyN = checker.Normalize(gc,thy)
+     // the state during solving
+     var unknowns: List[Unknown] = Nil  // expression symbol we can still solve
+     var knowns: List[Known] = Nil      // expression symbol we have solved
+     var props: List[Property] = Nil    // axioms/theorems we can still use
+     var redundant: List[String] = Nil  // axioms/theorems that we have used and that should be removed from the theory
+     // prepare the solving by collecting the relevant information from the theory
+     thyN.decls foreach {
+       case _: Include =>
+          // include in normalized theory can be ignored
+       case td: TypeDecl =>
+         if (!td.defined) fail("abstract type fields not supported: " + td.name)
+       case thd: Module =>
+         fail("nested theories not supported: " + thd.name)
+       case ed: ExprDecl =>
+         ed.tp match {
+           case ProofType(Equal(l,r)) =>
+             props ::= Property(l,r)
+           case _ =>
+             if (!ed.defined)
+               unknowns ::= Unknown(ed.name, ed.tp)
+             else
+               knowns ::= Known(ed.name, ed.dfO.get, false)
+         }
+     }
+     // the actual solving
+     // TODO
+
+     // return the extended theory by adding definitions and dropping now-redundant properties
+     var changed = false
+     val declsE = thyN.decls flatMap {
+       case ed: ExprDecl =>
+         if (redundant.exists(_ == ed.name))
+           Nil
+         else {
+           knowns.find(k => k.name == ed.name && k.isNew) match {
+             case Some(k) =>
+               changed = true
+               List(ed.copy(dfO = Some(k.df)))
+             case _ =>
+               List(ed)
+           }
+         }
+       case d => List(d)
+     }
+     if (changed) TheoryValue(declsE).copyFrom(thy)
+     else thy
+   }
+}
+
+case class Unknown(name: String, tp: Type)
+
+case class Known(name: String, df: Expression, isNew: Boolean) {
+  val uses = Regionals(df)._1
+}
+
+case class Property(left: Expression, right: Expression) {
+  val occursLeft = Regionals(left)._1
+  val occursRight = Regionals(right)._1
+  def definiendum = left match {
+    case ClosedRef(n) => Some(n)
+    case _ => None
+  }
+}

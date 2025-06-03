@@ -36,3 +36,13 @@ class ErrorCollector extends ErrorHandler {
   def apply(e: SError) = errors ::= e
   def clear = {errors = Nil}
 }
+
+trait ThrowsErrors {
+  val errorHandler: ErrorHandler
+  val operation: String
+  case class Error(cause: SyntaxFragment, msg: String) extends SError(cause.loc, s"$msg while $operation $cause")
+  def reportError(msg: String)(implicit cause: SyntaxFragment) = {
+    val e = Error(cause, msg)
+    errorHandler(e)
+  }
+}

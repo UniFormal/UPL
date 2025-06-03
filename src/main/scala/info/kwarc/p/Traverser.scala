@@ -358,3 +358,43 @@ object FreeVariables {
     fv.names.distinct
   }
 }
+
+private class Regionals(val initGC: GlobalContext) extends StatelessTraverser with TraverseOnlyOriginalRegion {
+  var exps: List[String] = Nil
+  var types: List[String] = Nil
+  var theories: List[String] = Nil
+  private def doObject(o: Object)(implicit gc: GlobalContext) = o match {
+    case ClosedRef(n) if inOriginalRegion => List(n)
+    case _ => Nil
+  }
+  override def apply(exp: Expression)(implicit gc: GlobalContext, a:Unit) = {
+    exps :::= doObject(exp)
+    applyDefault(exp)
+  }
+  override def apply(tp: Type)(implicit gc: GlobalContext, a:Unit) = {
+    types :::= doObject(tp)
+    applyDefault(tp)
+  }
+  override def apply(thy: Theory)(implicit gc: GlobalContext, a:Unit) = {
+    theories :::= doObject(thy)
+    applyDefault(thy)
+  }
+}
+
+object Regionals {
+  /**
+   * returns the regional expression/type/theory identifiers occurring in an object
+   *
+   * limitation: if the object is just a regional identifier, it is treated as an expression
+   */
+  def apply(o: Object) = {
+    val gc = GlobalContext("") // operation is not context-sensitive
+    val tr = new Regionals(gc)
+    o match {
+      case o: Expression => tr(o)(gc,())
+      case o: Type => tr(o)(gc,())
+      case o: Theory => tr(o)(gc,())
+    }
+    (Util.distinct(tr.exps), Util.distinct(tr.types), Util.distinct(tr.theories))
+  }
+}

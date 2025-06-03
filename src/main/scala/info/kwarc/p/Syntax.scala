@@ -199,9 +199,9 @@ sealed trait Theory extends Object {
   def toValue: TheoryValue = TheoryValue(decls)
   def decls: List[Declaration] = List(Include(this))
   def isEmpty = this == Theory.empty
+  /* TODO: Refs to primitive modules should initially be QuasiFlat */
   private[p] var flatness: Theory.Flatness = Theory.NotFlat
   def isFlat = flatness != Theory.NotFlat
-
 }
 object Theory {
   def empty = TheoryValue(Nil)
@@ -217,10 +217,12 @@ object Theory {
   /** theory is a value containing
    *  - all includes (transitively closed)
    *  - all declarations that subsume an included in ways other than just concretizing
-   *  Lookup in a quasi-normal theory can be done efficiently as follows:
+   *  Lookup in a quasi-flat theory can be done efficiently as follows:
    *  1) try local declarations
    *  2) try concrete included declarations
    *  3) try abstract included declarations
+   *  In particular, a theory is quasi-flat if it is an extension of a single Ref to a theory with a normalized definiens.
+   *  See [PhysicalTheory] to match such theories.
    */
   case object QuasiFlat extends Flatness
   /** no invariants guaranteed, default value */
@@ -734,6 +736,12 @@ case class ProofType(formula: Expression) extends Type {
 /** the current instance
   * @param level 1 for 'this' (written as '.'), 2 for surrounding instance (written as '..') and so on
   */
+/*
+  TODO: replace this with object This
+  use Eval(...(Eval(This))...) instead of This(n), parse ..c as Eval(c)
+  checking Eval(_) always pops a frame - no need to substitute
+  Whether Eval is legal and with which type, depends on the region, e.g., always if transparent, only ExprOver if quoted, never if owned
+ */
 case class This(level: Int) extends Expression {
   override def toString = if (level <= 0) "illegal" else Range(0,level).map(_ => '.').mkString("")
   def children = Nil
@@ -1093,6 +1101,10 @@ sealed abstract class Operator(val symbol: String) {
 /** operators with binary infix notation (flexary flag not supported yet) */
 sealed abstract class InfixOperator(s: String, val precedence: Int, val assoc: Associativity = NotAssociative) extends Operator(s) {
   def apply(l: Expression, r: Expression) = makeExpr(List(l, r))
+  def unapply(e: Expression) = e match {
+    case Application(BaseOperator(op,_), List(l,r)) if op == this => Some((l,r))
+    case _ => None
+  }
   def invertible = false
   def rightAssociative = assoc == RightAssociative
   def associative = assoc match {
