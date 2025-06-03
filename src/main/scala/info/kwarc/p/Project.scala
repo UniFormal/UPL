@@ -179,7 +179,10 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
   */
 object Project {
   private val fileEndings = List(".p", ".p.tex")
-  private def pFiles(f: File) = f.descendants.filter(d => fileEndings.exists(d.getName.endsWith))
+  private def pFiles(f: File) = {
+    val candidates = if (f.toJava.isFile) List(f) else f.descendants
+    candidates.filter(d => fileEndings.exists(d.getName.endsWith))
+  }
   def fromFile(projFile: File, main: Option[String] = None): Project = {
     val (paths,mainS) = if (projFile.getExtension contains "pp") {
       val props = File.readPropertiesFromString(File.read(projFile))

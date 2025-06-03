@@ -127,7 +127,7 @@ case class Path(names: List[String]) extends SyntaxFragment {
 object Path {
   import Character._
   val empty = Path(Nil)
-  def apply(n: String): Path = Path(List(n))
+  def apply(ns: String*): Path = Path(ns.toList)
   val isCharClasses = List(CONNECTOR_PUNCTUATION)
   def isIdChar(c: Char) =
     c.isLetter || c.isDigit || isCharClasses.contains(c.getType)

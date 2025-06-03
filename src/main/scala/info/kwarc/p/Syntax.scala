@@ -517,6 +517,7 @@ sealed abstract class BaseType(name: String) extends Type { self =>
 object BaseType {
   val B = BoolType
   val I = IntType
+  val F = FloatType
   val R = RatType
   val S = StringType
   def L(e: Type) = CollectionKind.List(e)
@@ -545,6 +546,11 @@ case object IntType extends BaseType("int") {
 
 /** rationals numbers */
 case object RatType extends BaseType("rat") {
+  def finite = false
+}
+
+/** floating point numbers */
+case object FloatType extends BaseType("float") {
   def finite = false
 }
 
@@ -929,6 +935,18 @@ object IntOrRatValue {
   }
 }
 
+case class FloatValue(v: Double) extends BaseValue(v, FloatType) {
+  override def toString = v.toString
+}
+
+object FloatOrRatValue {
+  def unapply(e: Expression) = e match {
+    case FloatValue(f) => Some(f)
+    case IntOrRatValue(e,d) => Some(e.toDouble/d.toDouble)
+    case _ => None
+  }
+}
+
 /** elements of [[StringType]] */
 case class StringValue(v: String) extends BaseValue(v, StringType) {
   override def toString = "\"" + String.escape(v) + "\""
@@ -1134,7 +1152,7 @@ import BaseType._
 
 /** arithmetic operators */
 sealed trait Arithmetic {
-  val types = List(I <-- (I, I), R <-- (R, R), R <-- (I, R), R <-- (R, I))
+  val types = List(I <-- (I, I), R <-- (R, R), R <-- (I, R), R <-- (R, I), F <-- (F,F))
 }
 
 /** boolean connectives */
@@ -1171,13 +1189,13 @@ case object Plus extends InfixOperator("+", 0, Semigroup) with Arithmetic {
 case object Minus extends InfixOperator("-", 0) with Arithmetic
 case object Times extends InfixOperator("*", 10, Monoid(IntValue(1))) with Arithmetic
 case object Divide extends InfixOperator("/", 10) {
-  val types = List(R<--(I,I), R<--(R,R), R<--(I,R), R<--(R,I))
+  val types = List(R<--(I,I), R<--(R,R), R<--(I,R), R<--(R,I), F<--(F,F))
 }
 case object Minimum extends InfixOperator("min", 10, Semigroup) with Arithmetic
 case object Maximum extends InfixOperator("max", 10, Semigroup) with Arithmetic
 
 case object Power extends InfixOperator("^", 20, RightAssociative) {
-  val types = List(R<--(I,I), R<--(R,R), R<--(I,R), R<--(R,I))
+  val types = List(R<--(I,I), R<--(R,R), R<--(I,R), R<--(R,I), F<--(F,R))
 }
 
 case object In extends InfixOperator("in", -10) {
@@ -1294,6 +1312,11 @@ object Operator {
               case GreaterEq => l || !r
             }
             BoolValue(b)
+          case (Plus, FloatValue(f), FloatValue(g)) => FloatValue(f+g)
+          case (Minus, FloatOrRatValue(f), FloatOrRatValue(g)) => FloatValue(f-g)
+          case (Times, FloatOrRatValue(f), FloatOrRatValue(g)) => FloatValue(f*g)
+          case (Divide, FloatOrRatValue(f), FloatOrRatValue(g)) => FloatValue(f/g)
+          case (Power, FloatOrRatValue(f), FloatOrRatValue(g)) => FloatValue(Math.pow(f,g))
           case (And, BoolValue(l), BoolValue(r)) => BoolValue(l && r)
           case (Or, BoolValue(l), BoolValue(r)) => BoolValue(l || r)
           case (Plus, StringValue(l), StringValue(r)) => StringValue(l + r)

@@ -1,6 +1,6 @@
 package info.kwarc.p
 
-class Solver {
+object Solver {
    val checker = new Checker(ErrorThrower)
    case class Error(msg: String, thy: Theory) extends SError(thy.loc, msg + " while solving " + thy)
    def fail(msg: String)(implicit thy: Theory) = throw Error(msg, thy)
@@ -11,7 +11,8 @@ class Solver {
     */
    def solve(gc: GlobalContext, thy: Theory) = {
      implicit val cause = thy
-     val thyN = checker.Normalize(gc,thy)
+     val thyE = Checker.evaluateTheory(gc, thy)
+     val thyN = checker.Normalize(gc,thyE)
      // the state during solving
      var unknowns: List[Unknown] = Nil  // expression symbol we can still solve
      var knowns: List[Known] = Nil      // expression symbol we have solved
@@ -38,6 +39,8 @@ class Solver {
      }
      // the actual solving
      // TODO
+     // just for temporary testing: add one definition
+     knowns ::= Known("a", IntValue(1), true)
 
      // return the extended theory by adding definitions and dropping now-redundant properties
      var changed = false
@@ -73,5 +76,16 @@ case class Property(left: Expression, right: Expression) {
   def definiendum = left match {
     case ClosedRef(n) => Some(n)
     case _ => None
+  }
+}
+
+object SolverTest {
+  def main(args: Array[String]): Unit = {
+    val path = File(args(0)).canonical
+    val proj = Project.fromFile(path, None)
+    proj.check(true)
+    val gc = proj.makeGlobalContext
+    val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "T")))
+    println(tS)
   }
 }

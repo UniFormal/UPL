@@ -606,8 +606,10 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           index += 1
         }
         val s = input.substring(begin,index)
-        //if (seenDot) FloatLiteral(s.toFloat) else
-        IntValue(s.toInt)
+        if (seenDot)
+          FloatValue(s.toFloat)
+        else
+         IntValue(s.toInt)
       } else if (startsWith("(")) {
         // unit (), bracketed (e), or tuple (e,...,e)
         val es = parseExpressions("(",")")
@@ -857,6 +859,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       //else if (startsWith("float")) {skip("float"); FloatType}
       //else if (startsWith("char")) {skip("char"); CharType}
       else if (startsWithS("rat")) RatType
+      else if (startsWithS("float")) FloatType
       else if (startsWithS("string")) StringType
       else if (startsWithS("bool")) BoolType
       else if (startsWithS("empty")) EmptyType
