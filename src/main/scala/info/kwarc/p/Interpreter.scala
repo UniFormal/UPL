@@ -362,7 +362,7 @@ class Interpreter(vocInit: TheoryValue) {
       case Projection(t,i) =>
         val tI = interpretExpression(t)
         tI match {
-          case Tuple(es) => es(i)
+          case Tuple(es) => es(i-1)
           case _ => fail("owner not a tuple")(tI)
         }
       case CollectionValue(es) =>

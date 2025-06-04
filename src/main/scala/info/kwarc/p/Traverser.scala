@@ -324,7 +324,7 @@ object Simplify extends StatelessTraverser {
         case _ => expR
       }
       case Application(bo: BaseOperator, args) => Operator.simplify(bo, args)
-      case Projection(Tuple(es),i) => es(i)
+      case Projection(Tuple(es),i) => es(i-1)
       case ListElem(CollectionValue(es),IntValue(i)) => es(i.toInt)
       case Application(Lambda(vs,b,false), as) => Substituter(gc, vs.substitute(as), b)
       case e => e
