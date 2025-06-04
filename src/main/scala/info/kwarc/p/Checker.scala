@@ -1,10 +1,8 @@
 package info.kwarc.p
 
 import SyntaxFragment.matchC
-import info.kwarc.p.Checker.evaluateTheory
 
-import java.awt.event.FocusEvent.Cause
-import scala.scalajs.js.|
+import Checker._
 
 // TODO: pure computations during checking (maybe: rewriting as a special case of matching; maybe rewriting on user-declared types)
 
@@ -206,6 +204,7 @@ class Checker(errorHandler: ErrorHandler) {
               case Some(c) => c.actualRealize && !nw.total // composed include is only realization when non-total composed with realize
             }
             // queue the included declarations
+            if (nw.dom.isInstanceOf[TheoryValue]) nw.subsumed = true // no need to keep trivial includes
             val domE = evaluateTheory(gcC, nw.dom)
             todo ::= FlattenInput(domE.decls, false, Some(nw.copy(realize = isRealize)))
           }
@@ -372,7 +371,7 @@ class Checker(errorHandler: ErrorHandler) {
       case Some(abs: SymbolDeclaration) =>
         if (abs.kind != sd.kind) reportError("name is inherited but has kind " + abs.kind)
         // Concrete: error
-        if (abs.dfO.isDefined) reportError("name is inherited and already defined")
+        if (abs.dfO.isDefined && abs.dfO != sd.dfO) reportError("name is inherited and already defined differently")
         // Abstract: inherit type
         val expectedTp = abs.tp
         val tpC = if (!sd.tp.known) {
@@ -445,8 +444,9 @@ class Checker(errorHandler: ErrorHandler) {
           case (rC: Ref,m: Module) =>
             if (!m.closed) fail("module not closed")
             val undef = m.df.undefined
-            if (mustBeConcrete && undef.nonEmpty) fail("theory not concrete, missing definitions for: " + undef.map(_.name).mkString(", "))
             // realizations were already checked when checking r
+            if (mustBeConcrete && undef.nonEmpty) fail("theory not concrete, missing definitions for: " + undef.map(_.name).mkString(", "))
+            rC.flatness = Theory.QuasiFlat // tentatively trying to avoid expanding references
             rC
           case _ => fail("identifier not a module")
         }
@@ -565,7 +565,7 @@ class Checker(errorHandler: ErrorHandler) {
     def notAmong(ds: List[Declaration]) =
       aE.decls.filterNot(c => (skipIncludes && c.isInstanceOf[Include]) || ds.exists(d => c.subsumedBy(d)))
     if (notAmong(bEDecls).isEmpty) return
-    val bN = Normalize(gc, bE)
+    val bN = Normalize(gc, b)
     val missing = notAmong(bN.decls)
     if (missing.isEmpty) return
     def giveUp(msg: String) = {
@@ -737,12 +737,14 @@ class Checker(errorHandler: ErrorHandler) {
       case (FunType(as,o),FunType(bs,p)) =>
         checkSubtypes(gc, bs, as)
         checkSubtype(gc.append(bs),o,p)
-      case (ExprsOver(aT,u),ExprsOver(bT,v)) =>
-        checkSubtheory(gc,aT,bT)
-        checkSubtype(gc.pushQuoted(aT),u,v)
       case (ClassType(aT),ClassType(bT)) =>
         // model of aT or model of bT, i.e., model of intersection
         checkSubtheory(gc,bT,aT) // larger theory = smaller type
+      case (OwnedType(o,d,s),OwnedType(p,_,t)) if o == p =>
+        checkSubtype(gc.push(d,Some(o)), s, t)
+      case (ExprsOver(aT,u),ExprsOver(bT,v)) =>
+        checkSubtheory(gc,aT,bT)
+        checkSubtype(gc.pushQuoted(aT),u,v)
       case _ =>
         val aN = Normalize(gc,a)
         val bN = Normalize(gc,b)
@@ -910,9 +912,6 @@ class Checker(errorHandler: ErrorHandler) {
       val declsF = flattenCheckDeclarations(gc.enterEmpty(),thy.decls,pars)
       Theory(declsF, Some(kf))
     }
-    override def apply(exp: Expression)(implicit gc: GlobalContext, a:Unit) = {
-      exp
-    }
     override def apply(tp: Type)(implicit gc: GlobalContext, a:Unit): Type = {
       matchC(tp) {
         case r: Ref => gc.lookupRef(r) match {
@@ -922,9 +921,10 @@ class Checker(errorHandler: ErrorHandler) {
           }
           case _ => fail("illegal type")(tp) // impossible if tp is checked
         }
-        case OwnedType(own,_,t) =>
+        case OwnedType(own,dom,t) =>
           // we must reinfer the domain because the fields in the cached domain may have acquired definitions
           // when the object was moved into another region
+          // TODO this code should go, and the issues solved elsewhere
           val ownI = inferCheckedExpression(gc,own) match {
             case ct:ClassType => ct
             case t => apply(t)
@@ -1022,7 +1022,7 @@ class Checker(errorHandler: ErrorHandler) {
         val qC = checkExpression(gc.pop(), q, ExprsOver(gc.theory, a))
         Eval(qC)
       case (Application(op: BaseOperator,args),_) if !op.tp.known =>
-        val (argsC,argsI) = args.map(a => inferExpression(gc,a)(true)).unzip
+        val (argsC,argsI) = args.map(a => inferExpressionNorm(gc,a)(true)).unzip
         val opTp = SimpleFunType(argsI,tpN)
         val opC = checkExpression(gc,op,opTp)
         Application(opC,argsC)

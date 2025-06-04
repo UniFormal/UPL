@@ -250,7 +250,7 @@ class Interpreter(vocInit: TheoryValue) {
         val ownI = interpretExpression(own)
         ownI match {
           case inst: Instance if inst.isRuntime =>
-            val fr = RegionalEnvironment(e.toString,Some(inst), parent = None)
+            val fr = RegionalEnvironment(own.toString,Some(inst), parent = None)
             interpretExpressionInFrame(fr,e)
           case _ => fail("owner not a runtime instance")
         }
@@ -410,15 +410,32 @@ class Interpreter(vocInit: TheoryValue) {
 
   private object TypeInterpreter extends StatelessTraverser {
     override def apply(e: Expression)(implicit gc:GlobalContext, a: Unit) = interpretExpression(e)
+    override def apply(tp: Type)(implicit gc:GlobalContext, a: Unit) = tp match {
+      case OwnedType(o,_,t) =>
+        val oI = interpretExpression(o)
+        oI match {
+          case i: Instance if i.isRuntime =>
+            env.inFrame(RegionalEnvironment(o.toStringShort, Some(i))) {
+              apply(t)(gc.push(i.theory,Some(i)),a)
+            }
+          case _ => fail("not an instance")
+        }
+      case r:Ref =>
+        gc.lookupRef(r) match {
+          case Some(td: TypeDecl) =>
+            val df = td.dfO.getOrElse {fail("not a type")}
+            apply(df)
+          case _ => fail("not a type")
+        }
+      case _ => applyDefault(tp)
+    }
     override def apply(t: Theory)(implicit gc:GlobalContext, a: Unit) = t
   }
 
   private def makeIterator(tp: Type): Iterator[Expression] = {
     val gc = GlobalContext(env.voc)
-    val tpI = TypeInterpreter(gc,tp) // replace names with values so that normalization does not have lookup failures
-    val tpIN = new Checker(ErrorThrower).Normalize(gc, tpI) // normalize the type
-    val tpINI = TypeInterpreter(gc,tpIN) // evaluate the expressions introduced by type normalization
-    tpINI match {
+    val tpI = TypeInterpreter(gc,tp)
+    tpI match {
       case EmptyType => Iterator.empty
       case UnitType => Iterator(UnitValue)
       case BoolType => Iterator(BoolValue(true), BoolValue(false))

@@ -129,7 +129,7 @@ module AI {
   }
 
   exampleProblem = () -> SimpleSearchProblem {
-    action = IntBasedType {enum = [0,1,2], complete = ???}
+    action: IntBasedType = §{enum = [0,1,2], complete = ???}
     initials = [0]
     goals = x -> x > 5
     transition = (s,a) -> [s+a]
