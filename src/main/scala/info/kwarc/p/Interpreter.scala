@@ -263,17 +263,21 @@ class Interpreter(vocInit: TheoryValue) {
           ret
         }
       case IfThenElse(c,t,eO) =>
-        val cI = interpretExpression(c)
-        cI match {
-          case b: BoolValue => if (b.v) {
-            interpretExpression(t)
-          } else
-            eO match {
-              case Some(e) => interpretExpression(e)
-              case None => UnitValue
+        val thenBranchResult = frame.inNewBlock {
+          val cI = interpretDynamicBoolean(c)
+          cI match {
+            case b: BoolValue => if (b.v) {
+              Some(interpretExpression(t))
+            } else {
+              None
             }
-          case _ => fail("condition does not evaluate")
+            case _ => fail("condition does not evaluate")
+          }
         }
+        thenBranchResult.getOrElse {eO match {
+          case Some(e) => interpretExpression(e)
+          case None => UnitValue
+        }}
       case While(c,b) =>
         var break = false
         while (!break) {
@@ -340,10 +344,15 @@ class Interpreter(vocInit: TheoryValue) {
         lamC
       case Application(f, as) =>
         val fI = interpretExpression(f)
-        val asI = as map interpretExpression
+        lazy val asI = as map interpretExpression
         fI match {
           case bo: BaseOperator =>
-            Operator.simplify(bo, asI)
+            if (bo.operator.isDynamic) {
+              frame.inNewBlock {
+                interpretDynamicBoolean(exp)
+              }
+            } else
+              Operator.simplify(bo, asI)
           case lam: Lambda =>
             // interpretation of lam has recorded the frame at abstraction time because
             // names in lam.body are relative to that
@@ -406,6 +415,31 @@ class Interpreter(vocInit: TheoryValue) {
         UnitValue
       case u: UndefinedValue => u
     } // end match
+  }
+
+  def interpretDynamicBoolean(b: Expression): Expression = b match {
+    case And(l,r) =>
+      val lI = interpretDynamicBoolean(l)
+      lI match {
+        case BoolValue(true) => interpretDynamicBoolean(r)
+        case BoolValue(false) => BoolValue(false)
+        case _ => And(lI,r)
+      }
+    case Implies(l,r) =>
+      frame.inNewBlock {
+        val lI = interpretDynamicBoolean(l)
+        lI match {
+          case BoolValue(true) => interpretDynamicBoolean(r)
+          case BoolValue(false) => BoolValue(true)
+          case _ => Implies(lI,r)
+        }
+      }
+    case Assign(t,v) =>
+      val vI = interpretExpression(v)
+      val matched = assign(t,vI)(false, globalContext)
+      BoolValue(matched)
+    case _: VarDecl  | _: Assign => interpretExpression(b); BoolValue(true)
+    case _ => interpretExpression(b)
   }
 
   private object TypeInterpreter extends StatelessTraverser {

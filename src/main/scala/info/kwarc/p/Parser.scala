@@ -630,6 +630,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       } else {
         //  symbol/variable/module reference
         val n = parseName
+        if (n.isEmpty) fail("name expected")
         trim
         if (startsWith(":") && !Operator.infixes.exists(o => startsWith(o.symbol))) {
           // variable declaration
@@ -711,10 +712,10 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       trim
       if (!allowWeakPostops) return exp
       val weakPostops = List("=","->","match", "catch")
-      if (startsWithAny(weakPostops:_*) && !startsWith("==")) {
+      if (startsWithAny(weakPostops:_*) && !startsWith("==") && !startsWith("=>")) {
         exp = disambiguateInfixOperators(seen.reverse,exp)
         setRef(exp,allExpBeginAt)
-        val expWP = if (allowS && startsWithS("=")) {
+        val expWP = if (startsWithS("=")) {
           val df = parseExpression
           Assign(exp,df)
         } else if (startsWithS("->")) {

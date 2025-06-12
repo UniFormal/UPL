@@ -1112,8 +1112,10 @@ sealed abstract class Operator(val symbol: String) {
   val length = symbol.length
   def types: List[FunType]
   def polyTypes(u: UnknownType): List[FunType] = Nil
-  def makeExpr(args: List[Expression]) = Application(BaseOperator(this, Type.unknown(null)), args)
+  def uniqueType: Option[Type] = None
+  def makeExpr(args: List[Expression]) = Application(BaseOperator(this, uniqueType.getOrElse(Type.unknown(null))), args)
   def invertible: Boolean
+  def isDynamic = false
 }
 
 /** operators with binary infix notation (flexary flag not supported yet) */
@@ -1159,6 +1161,7 @@ sealed trait Arithmetic {
 sealed trait Connective extends Operator {
   def tp = B <-- (B, B)
   val types = List(tp)
+  override val uniqueType = Some(tp)
   def toBaseOperator = BaseOperator(this,tp)
 }
 
@@ -1221,6 +1224,7 @@ case object And extends InfixOperator("&", -20, Monoid(BoolValue(true))) with Co
     case e :: Nil => e
     case hd :: tl => apply(hd, apply(tl))
   }
+  override def isDynamic = true
 }
 case object Or extends InfixOperator("|", -20, Monoid(BoolValue(false))) with Connective {
   def apply(args: List[Expression]): Expression = args match {
@@ -1228,6 +1232,16 @@ case object Or extends InfixOperator("|", -20, Monoid(BoolValue(false))) with Co
     case e :: Nil => e
     case hd :: tl => apply(hd, apply(tl))
   }
+}
+
+/** implication a => b is the same as comparision a <= b; but we need a separate operator to get the right notation */
+case object Implies extends InfixOperator("=>", -20, RightAssociative) with Connective {
+  def apply(args: List[Expression]): Expression = args match {
+    case Nil      => BoolValue(false)
+    case e :: Nil => e
+    case _ => Implies(And(args.init), args.last)
+  }
+  override def isDynamic = true
 }
 
 case object Less extends InfixOperator("<", -10) with Comparison
@@ -1255,7 +1269,7 @@ object Operator {
   val infixes = List(
     Plus, Minus, Times, Divide, Power,
     Minimum, Maximum,
-    And, Or,
+    And, Or, Implies,
     Less, LessEq, Greater, GreaterEq,
     In, Cons, Snoc,
     Equal, Inequal
@@ -1318,6 +1332,7 @@ object Operator {
           case (Divide, FloatOrRatValue(f), FloatOrRatValue(g)) => FloatValue(f/g)
           case (Power, FloatOrRatValue(f), FloatOrRatValue(g)) => FloatValue(Math.pow(f,g))
           case (And, BoolValue(l), BoolValue(r)) => BoolValue(l && r)
+          case (Implies, BoolValue(l), BoolValue(r)) => BoolValue(if (l) r else true)
           case (Or, BoolValue(l), BoolValue(r)) => BoolValue(l || r)
           case (Plus, StringValue(l), StringValue(r)) => StringValue(l + r)
           case (Plus, CollectionValue(l), CollectionValue(r)) =>

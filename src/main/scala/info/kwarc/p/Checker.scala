@@ -1021,12 +1021,12 @@ class Checker(errorHandler: ErrorHandler) {
       case (Eval(q), a) =>
         val qC = checkExpression(gc.pop(), q, ExprsOver(gc.theory, a))
         Eval(qC)
-      case (Application(op: BaseOperator,args),_) if !op.tp.known =>
+      case (Application(op: BaseOperator,args),_) if !op.tp.known && !op.operator.isDynamic =>
         val (argsC,argsI) = args.map(a => inferExpressionNorm(gc,a)(true)).unzip
         val opTp = SimpleFunType(argsI,tpN)
         val opC = checkExpression(gc,op,opTp)
         Application(opC,argsC)
-      case (BaseOperator(op,opTp),ft:FunType) =>
+      case (BaseOperator(op,opTp),ft:FunType) if !op.isDynamic =>
         opTp.skipUnknown match {
           case u: UnknownType =>
             if (!ft.simple) reportError("operators cannot have dependent type")
@@ -1231,6 +1231,9 @@ class Checker(errorHandler: ErrorHandler) {
         (Lambda(insC,bdC,mr),FunType(insC,bdI))
       case Application(f,as) =>
         f match {
+          case op: BaseOperator if op.operator.isDynamic =>
+            val eC = if (alsoCheck) checkDynamicBoolean(gc, exp)._1 else exp
+            (eC,BoolType)
           case op: BaseOperator if !op.tp.known =>
             // for an operator of unknown type, we need to infer the argument types first
             val (asC,asI) = as.map(a => inferExpression(gc,a)).unzip
@@ -1361,8 +1364,9 @@ class Checker(errorHandler: ErrorHandler) {
         } else exp
         (expC,UnitType)
       case IfThenElse(cond,thn, elsO) =>
-        val condC = if (alsoCheck) checkExpression(gc, cond, BoolType) else cond
-        val (thnC,thnI) = inferExpressionNorm(gc, thn)
+        // condition-bindings are exported to then-branch
+        val (condC,condB) = checkDynamicBoolean(gc, cond)
+        val (thnC,thnI) = inferExpressionNorm(gc.append(condB), thn)
         val (elsOC, eI) = elsO match {
           case Some(els) =>
             val (elsC, elsI) = inferExpressionNorm(gc, els)
@@ -1417,6 +1421,39 @@ class Checker(errorHandler: ErrorHandler) {
     }
     val expCF = if (alsoCheck) expC.copyFrom(exp) else expC
     (expCF,expI)
+  }
+
+  /** checks a Boolean that may export bindings to sibling expressions
+   * parents that want to move bindings from one child to another call this instead of the normal check function
+   */
+  def checkDynamicBoolean(gc: GlobalContext, b: Expression)(implicit alsoCheck: Boolean): (Expression, LocalContext) = recoverWith((b,LocalContext.empty)) {
+    b match {
+      case And(l, r) =>
+        val (List(lC, rC), lc) = checkDynamicBooleans(gc, List(l, r))
+        (And(lC, rC).copyFrom(b), lc)
+      case Implies(l, r) =>
+        val (List(lC, rC), _) = checkDynamicBooleans(gc, List(l, r))
+        (Implies(lC, rC).copyFrom(b), LocalContext.empty)
+      case _: VarDecl | _: Assign =>
+        // treated as True
+        val (bC,_) = inferExpression(gc,b)
+        val bB = LocalContext.collectContext(bC)
+        (bC, bB)
+      case _ =>
+        val bC = if (alsoCheck) checkExpression(gc, b, BoolType) else b
+        val bB = LocalContext.collectContext(bC)
+        (bC, bB)
+    }
+  }
+  /** maps over all arguments, collecting the contexts along the way */
+  def checkDynamicBooleans(gc: GlobalContext, bs: List[Expression])(implicit alsoCheck: Boolean): (List[Expression], LocalContext) = {
+    var lc = LocalContext.empty
+    val bsC = bs.map { b =>
+      val (bC, bB) = checkDynamicBoolean(gc.append(lc), b)
+      lc = lc.append(bB)
+      bC
+    }
+    (bsC, lc)
   }
 
   /** checks if an expression may be used as a pattern */
@@ -1757,7 +1794,7 @@ object Checker {
   }
 }
 
-// TODO: magic functions for operatot applications
+// TODO: magic functions for operator applications
 
 class MagicFunctions(gc: GlobalContext) {
   class MagicFunction(name: String) {
@@ -1788,3 +1825,54 @@ object MagicFunctions {
   /** this when Type expected */
   def typeOf(e: Expression, dom: Theory) = OwnedType(e,dom, ClosedRef(asType))
 }
+
+/*
+/** a monad for tracking a [LocalContext] in addition to a value */
+case class WithBinding[A](result: A, binding: LocalContext) {
+  /** maps a function over the current value */
+  def map[B](f: A => B) = WithBinding(f(result), binding)
+  /** appends the bindings of the map-function to the current bindings */
+  def flatMap[B](f: A => WithBinding[B]) = {
+    val fr = f(result)
+    WithBinding(fr.result, binding.append(fr.binding))
+  }
+  def get(warn: Boolean): A = {
+    if (!binding.empty) throw PError("")
+    result
+  }
+}
+object WithBinding {
+  /** injection into the monad */
+  def apply[A](a: A) = WithBinding(a, LocalContext.empty)
+}
+
+/** statefully tracks bindings that arise during a computation, see [WithBinding] */
+class BindingCollector(gcInit: GlobalContext) {
+  private var gc = gcInit
+  def append(lc: LocalContext): Unit = {
+    gc = gc.append(lc)
+  }
+  /** applies a computation to the bindings collected so far and appends the bindings collected during it */
+  def collect[A](f: GlobalContext => WithBinding[A]) = {
+    val a = f(gc)
+    append(a.binding)
+    a.result
+  }
+  def extract = gc
+}
+object BindingCollector {
+  /** the entry point for collecting bindings
+   *
+   * toplevel initialization: apply(gc,rec) {bc => f(bc)}
+   * collecting inside f: wb.collect(bc) for any wb:WithBinding
+   * extraction at the end: .result and .binding
+   */
+  def apply[A](gc: GlobalContext, recover: A)(f: BindingCollector => WithBinding[A]) = {
+    val bc = new BindingCollector(gc)
+    val res = recoverWith(recover) {
+      f(bc)
+    }
+    WithBinding(r, bc.extract)
+  }
+}
+*/

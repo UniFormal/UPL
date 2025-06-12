@@ -145,6 +145,14 @@ module M {
 
   // Variable declarations can occur inside other expressions, in which case they evaluate to their initial value.
   deepBinding1 = {factorial(factorial(val n = 3)); n+1} == 4
+  dynamicAnd = false & {throw error("not run")}
+  dynamicImply = false => {throw error("not run")}
+  dynamicNames = (x:list[int], expected) -> {
+    val k = if ([val u, val v] = x) u+v else 0
+    val q = ([val u, val v] = x) & (val z = u+v) => z == k
+    k == expected & q
+  }
+  dynamicBinding = deepBinding1 & !dynamicAnd & dynamicImply & dynamicNames([1,2], 3) & dynamicNames([1], 0)
 
   // Closures are taken when lambda-abstractions refer to mutable variables declared outside of the lambda.
   sum = l -> {
@@ -162,7 +170,7 @@ module M {
     M.factorial(3) == 6 &
     M.map2([1,2,3])(x -> x+1) == [2,3,4] &
     divide(5,0) == 0 &
-    deepBinding1 &
+    dynamicBinding &
     ac == ("a","c")
   }
 }
