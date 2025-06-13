@@ -145,10 +145,19 @@ module M {
 
   // Variable declarations can occur inside other expressions, in which case they evaluate to their initial value.
   deepBinding1 = {factorial(factorial(val n = 3)); n+1} == 4
+  // conjunction and implication short-circuit
   dynamicAnd = false & {throw error("not run")}
   dynamicImply = false => {throw error("not run")}
+
+  // Some operators allow dynamic binding: names bound in one argument A of P may be visible in another argument B of P.
+  // Dynamic binding only happens for certain combinations of P and A.
+  // In such a case, a Boolean A may also be a pattern-matching declaration - then A evaluates to 'true' if it matches.
   dynamicNames = (x:list[int], expected) -> {
+    // Dynamic binding happens if P is if-then-else: A is the condition, and B is the then-branch.
+    // Here, if x is of the form [u,v], u and v are visible in the then-branch
     val k = if ([val u, val v] = x) u+v else 0
+    // Dynamic binding also happens if P is a short-circuiting connective: A and B are the left and right argument.
+    // (But if A is an implication, it does not export any bindings, i.e., (true => (val x=1)) & x==1 is illegal.)
     val q = ([val u, val v] = x) & (val z = u+v) => z == k
     k == expected & q
   }
