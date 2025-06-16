@@ -150,7 +150,7 @@ module M {
   dynamicImply = false => {throw error("not run")}
 
   // Some operators allow dynamic binding: names bound in one argument A of P may be visible in another argument B of P.
-  // Dynamic binding only happens for certain combinations of P and A.
+  // Dynamic binding only happens for certain combinations of P, A, and B.
   // In such a case, a Boolean A may also be a pattern-matching declaration - then A evaluates to 'true' if it matches.
   dynamicNames = (x:list[int], expected) -> {
     // Dynamic binding happens if P is if-then-else: A is the condition, and B is the then-branch.

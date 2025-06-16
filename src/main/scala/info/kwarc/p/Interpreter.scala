@@ -555,11 +555,12 @@ class Interpreter(vocInit: TheoryValue) {
       case (Application(r: Ref, es), Application(s: Ref, vs)) if r == s =>
         (es zip vs) forall {case (e,v) => assign(e,v)}
       case (Application(BaseOperator(op,_),args), r) =>
-        val argsE = Operator.invert(op,r).getOrElse {
-          fail("operator cannot be inverted")(target)
+        Operator.invert(op,r) match {
+          case None => assignFail("operator cannot be inverted")
+          case Some(argsE) =>
+            if (argsE.length != args.length) fail("wrong number of arguments")(target)
+            (args zip argsE).forall { case (a, e) => assign(a, e) }
         }
-        if (argsE.length != args.length) fail("wrong number of arguments")(target)
-        (args zip argsE).forall {case (a,e) => assign(a,e)}
       case (Lambda(ei,eb,_), Lambda(vi,vb,_)) if inQuote =>
         // contexts must match up to alpha if types are equal
         val ren = BiContext(ei,vi).renameLeftToRight
