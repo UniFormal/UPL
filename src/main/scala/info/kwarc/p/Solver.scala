@@ -28,7 +28,7 @@ object Solver {
          fail("nested theories not supported: " + thd.name)
        case ed: ExprDecl =>
          ed.tp match {
-           case ProofType(Equal(l,r)) =>
+           case ProofType(Equality(true,_,l,r)) =>
              props ::= Property(l,r)
            case _ =>
              if (!ed.defined)

@@ -79,7 +79,7 @@ case class LocalContext(variables: List[VarDecl]) extends Context[LocalContext] 
   def substitute(es: List[Expression]) = {
     if (variables.length != es.length)
       throw IError("unexpected number of values")
-    val defs = (variables zip es.reverse).map { case (vd, e) =>
+    val defs = (variables zip es.reverse).map {case (vd, e) =>
       VarDecl(vd.name, null, Some(e))
     }
     Substitution(defs)
@@ -102,7 +102,7 @@ object LocalContext {
     case Tuple(es)           => collect(es)
     case Projection(e, _)    => collect(e)
     case Application(f, as)  => collect(f :: as)
-    case CollectionValue(es) => collect(es)
+    case CollectionValue(es,_) => collect(es)
     case ListElem(l, i)      => collect(List(l, i))
     case OwnedExpr(o, _, _)  => collect(o)
     case _                   => Nil
@@ -126,6 +126,7 @@ case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
   def map(f: VarDecl => VarDecl) = Substitution(
     Util.reverseMap(decls)(f).reverse
   )
+  def take(n: Int) = Substitution(decls.drop(decls.length-n))
 
   /** this : G -> target   --->  this, n/e : G, n:_ -> target */
   def append(n: String, e: Expression) =

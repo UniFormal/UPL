@@ -68,7 +68,7 @@ object Compiler {
         "body" -> encodeExpression(bd)
       )
       case Application(f,args) => JObject("elim" -> encodeExpression(f), "application" -> JArray(args map encodeExpression :_*))
-      case CollectionValue(es) => JObject("collection" -> JArray(es map encodeExpression :_*))
+      case CollectionValue(es,_) => JObject("collection" -> JArray(es map encodeExpression :_*))
       case Quantifier(q,vs,bd) => JObject(
         (if (q) "forall" else "exists") -> JArray(vs.mapDecls(vd => JString(vd.name)):_*),
         "body" -> encodeExpression(bd)
@@ -144,7 +144,7 @@ object Compiler {
       case Application(f,as) => JApply(c(f),as map c)
       case Tuple(es) => JArray(es map c :_*)
       case Projection(t,i) => JArrayElem(c(t),JInt(i-1))
-      case CollectionValue(es) => JArray(es map c :_*)
+      case CollectionValue(es,_) => JArray(es map c :_*)
       case ListElem(l,p) => JArrayElem(c(l),c(p))
       case Block(es) => es match {
         case Nil => JObject()

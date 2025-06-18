@@ -291,14 +291,15 @@ class Interpreter(vocInit: TheoryValue) {
       case For(vd,r,b) =>
         val rI = interpretExpression(r)
         rI match {
-          case CollectionValue(vs) =>
+          case cv: CollectionValue =>
+            val vs = cv.normalize.elems
             frame.inNewBlock {
               frame.allocate(vd.name,null) // irrelevant value
               val vsI = vs.map {v =>
                 frame.local.set(vd.name,v)
                 interpretExpression(b)
               }
-              CollectionValue(vsI)
+              CollectionValue(vsI,cv.kind)
             }
           case _ => fail("range not a list")
         }
@@ -374,12 +375,12 @@ class Interpreter(vocInit: TheoryValue) {
           case Tuple(es) => es(i-1)
           case _ => fail("owner not a tuple")(tI)
         }
-      case CollectionValue(es) =>
+      case CollectionValue(es,k) =>
         val esI = es map interpretExpression
-        CollectionValue(esI)
+        CollectionValue(esI,k).normalize
       case ListElem(l, i) =>
         val esI = interpretExpression(l) match {
-          case CollectionValue(es) => es
+          case CollectionValue(es,k) => es
           case _ => fail("owner not a list")
         }
         val iI = interpretExpression(i) match {
@@ -392,6 +393,34 @@ class Interpreter(vocInit: TheoryValue) {
         }
         val n = if (iI < 0) iI + len else iI
         esI(n.toInt)
+      case Equality(p,tp,l,r) =>
+        val lI = interpretExpression(l)
+        val rI = interpretExpression(r)
+        if (lI == rI) BoolValue(p)
+        else if (isPrimitive(lI) && isPrimitive(rI)) BoolValue(!p)
+        else {
+          tp match {
+            case _:BaseType | ExceptionType | _: ExprsOver =>
+              // inequality
+              BoolValue(!p)
+            case _:ProofType =>
+              // proof irrelevance
+              BoolValue(p)
+            case CollectionType(_,k) => (lI,rI) match {
+              case (lc: CollectionValue, rc: CollectionValue) =>
+                if (!k.norep && lc.elems.length != rc.elems.length) {
+                  // definitely inequal
+                  BoolValue(!p)
+                } else {
+                  val lN = lc.copy(kind = k).normalize
+                  val rN = rc.copy(kind = k).normalize
+                  BoolValue(p == (lN == rN))
+                }
+              case _ => Equality(p,tp,lI,rI)
+            }
+            case _ => Equality(p,tp,lI,rI)
+          }
+        }
       case Quantifier(q, ctx, bd) =>
         val vds = ctx.variables
         val its = vds.map {vd => makeIterator(vd.tp)}
@@ -415,6 +444,18 @@ class Interpreter(vocInit: TheoryValue) {
         UnitValue
       case u: UndefinedValue => u
     } // end match
+  }
+
+  /** expressions that are fully evaluated; they evaluate to themselves and are equal iff identical */
+  def isPrimitive(e: Expression): Boolean = e match {
+    case _: BaseValue => true
+    case CollectionValue(elems, _) => elems.forall(isPrimitive)
+    case Tuple(comps) => comps.forall(isPrimitive)
+    case i: Instance if i.isRuntime => true
+    case eo: ExprOver =>
+      EvalTraverser(eo) {_ => return false}
+      true
+    case _ => false
   }
 
   def interpretDynamicBoolean(b: Expression): Expression = b match {
@@ -478,14 +519,14 @@ class Interpreter(vocInit: TheoryValue) {
         val it = new ProductIterator(Enumeration.Integers, Enumeration.Naturals)
         it.filter {case (i,n) => n != 0 && i.gcd(n) == 1}.map {case (i,n) => RatValue(i,n)}
       case p:ProdType if p.simple => Enumeration.product(p.simpleComps map makeIterator).map(es => Tuple(es))
-      case CollectionKind.Option(t) => Iterator(CollectionValue(Nil)) ++ makeIterator(t)
+      case CollectionKind.Option(t) => Iterator(CollectionKind.Option(Nil)) ++ makeIterator(t)
       case CollectionType(t,k) => Enumeration.Naturals flatMap {n =>
         def idemp(es: List[Expression]) = es.distinct.length == es.length // repetition-normal, i.e., no repetitions
         def comm(es: List[Expression]) = es.sortBy(_.hashCode()) == es // order-normal, e.g., ordered by hashcode
         var it = makeIterator(t.power(n.toInt)).map(e => e.asInstanceOf[Tuple].comps)
-        if (k.idemp) it = it.filter(idemp)
+        if (k.norep) it = it.filter(idemp)
         if (k.comm) it = it.filter(comm)
-        it.map(l => CollectionValue(l))
+        it.map(l => CollectionValue(l,k))
       }
       case iv: IntervalType if iv.concrete =>
         val (begin,end,step) = (iv.lower,iv.upper) match {
@@ -545,12 +586,12 @@ class Interpreter(vocInit: TheoryValue) {
           fail("mutable field without owner")(target)
       }
       case (Tuple(es),Tuple(vs)) => (es zip vs).forall {case (e,v) => assign(e,v)}
-      case (CollectionValue(es), CollectionValue(vs)) =>
-        // TODO depends on type
-        if (es.length != vs.length) {
+      case (e:CollectionValue, v:CollectionValue) =>
+        val vA = v.copy(kind=e.kind).normalize
+        if (e.elems.length != vA.elems.length) {
           assignFail("collections have inequal length")
         } else {
-          (es zip vs).forall {case (e,v) => assign(e,v)}
+          (e.elems zip vA.elems).forall {case (e,v) => assign(e,v)}
         }
       case (Application(r: Ref, es), Application(s: Ref, vs)) if r == s =>
         (es zip vs) forall {case (e,v) => assign(e,v)}

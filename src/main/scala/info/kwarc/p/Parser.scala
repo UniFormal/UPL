@@ -87,6 +87,9 @@ object PContext {
 }
 
 object Parser {
+  val weakPostops = List("=","->","==","!=", "match", "catch")
+  val conflictingInfixes = Operator.infixes.map(_.symbol).filter(o => weakPostops.exists(o.startsWith))
+
   def file(f: File,eh: ErrorHandler) = {
     val p = new Parser(f.toSourceOrigin, getFileContent(f), eh)
     TheoryValue(p.parseAll(p.parseDeclarations))
@@ -197,7 +200,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   case class Error(msg: String) extends SError(makeRef(index), msg)
   private case class Abort() extends Exception
   def reportError(msg: String) = {
-    val e = Error(msg + "; found " + input.substring(index))
+    val e = Error(msg + "; found " + input.substring(index,Math.min(index+20,inputLength)))
     eh(e)
   }
   def fail(msg: String) = {
@@ -265,6 +268,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     }
     newlineSeen
   }
+
+  def startsWithInfixOperator = Operator.infixes.exists(o => startsWith(o.symbol))
 
   /** the whitespace before the current index contains a newline */
   def newlineBefore: Boolean = {
@@ -619,9 +624,12 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           case List(e) => e
           case es => Tuple(es)
         }
-      } else if (startsWith("[")) {
-        val es = parseExpressions("[","]")
-        CollectionValue(es)
+      } else if (startsWithAny("[" :: CollectionKind.allKeywords :_*)) {
+          val kindO = if (startsWith("[")) None
+          else CollectionKind.allKinds.find(k => startsWithS(k._1)).map(_._2)
+          val es = parseExpressions("[","]")
+          val k = kindO.getOrElse {if (es.length > 1) CollectionKind.List else CollectionKind.Option}
+          CollectionValue(es,k)
       } else if (startsWithS("`")) {
         if (ctxs.contexts.length <= 1) reportError("eval outside quotation")
         val e = parseExpression(ctxs.pop())
@@ -632,7 +640,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         val n = parseName
         if (n.isEmpty) fail("name expected")
         trim
-        if (startsWith(":") && !Operator.infixes.exists(o => startsWith(o.symbol))) {
+        if (startsWith(":") && !startsWithInfixOperator) {
           // variable declaration
           skip(":")
           val tp = parseType(doNotAllowS)
@@ -711,8 +719,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       } // end while
       trim
       if (!allowWeakPostops) return exp
-      val weakPostops = List("=","->","match", "catch")
-      if (startsWithAny(weakPostops:_*) && !startsWith("==") && !startsWith("=>")) {
+      if (startsWithAny(Parser.weakPostops:_*) && !startsWithAny(Parser.conflictingInfixes:_*)) {
         exp = disambiguateInfixOperators(seen.reverse,exp)
         setRef(exp,allExpBeginAt)
         val expWP = if (startsWithS("=")) {
