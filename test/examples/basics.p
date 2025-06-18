@@ -69,8 +69,9 @@ module M {
   id0 = id(0)
 
   // This style of forward references also enables mutual recursion.
-  odd: _
-  even = x -> x == 0 | if (x>0) odd(x-1) else odd(-x-1)
+  odd: int -> _
+  even: int -> _
+  even = x -> (x == 0) | if (x>0) odd(x-1) else odd(-x-1)
   odd = x -> if (x == 0) false else even(x-1)
 
   // theories work like classes or record types
