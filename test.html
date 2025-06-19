@@ -4,33 +4,58 @@
     <meta charset="UTF-8">
     <title>UPL JS Test</title>
     <style>
-      textarea {width: 300px; height: 200px;}
+      textarea {width: 500px; height: 400px;}
+      textarea[error="true"]{
+        color: red;
+        font-size: larger;
+      }
     </style>
   </head>
   <body>
     <script type="text/javascript" src="./target/scala-2.13/upl-fastopt/main.js"></script>
     <script type="text/javascript">
     var prog = null
-    function check() {
-      var pS = document.getElementById("progIn").value
-      prog = UPL.checkProgram(pS)
-      document.getElementById("progOut").value = UPL.print(prog)
+    function checkUPL() {
+      const pS = document.getElementById("progIn").value
+      const out = document.getElementById("progOut")
+      try {
+        prog = UPL.checkProgram(pS)
+        out.removeAttribute("error")
+        out.value = UPL.print(prog)
+      } catch (error) {
+        out.value = error.name +"\n"+ error.message
+        out.setAttribute("error","true")
+        console.error(error)
+      }
     }
-    function eval() {
-      var eS = document.getElementById("in").value
-      var eI = UPL.runIn(prog, eS)
-      document.getElementById("out").value = UPL.print(eI)
+    function evalUPL() {
+      const eS = document.getElementById("in").value
+      const out = document.getElementById("out")
+      if (prog === null){
+        out.value = "No context to evaluate in, use \"check\" first.\n(Checking an empty program is possible)."
+        out.setAttribute("error","true")
+        return
+      }
+      try {
+        const eI = UPL.runIn(prog, eS)
+        out.removeAttribute("error")
+        out.value = UPL.print(eI)
+      } catch (error) {
+        out.value = error.name +"\n"+ error.message
+        out.setAttribute("error","true")
+        console.error(error)
+      }
     }
     </script>
 
     <div>
       <textarea id="progIn">module M {x = 1}</textarea>
-      <button onclick="check()">Check</button>
+      <button onclick="checkUPL()">Check</button>
       <textarea id="progOut"></textarea>
     </div>
     <div>
       <textarea id="in">M.x</textarea>
-      <button onclick="eval()">Evaluate</button>
+      <button onclick="evalUPL()">Evaluate</button>
       <textarea id="out"></textarea>
     </div> 
   </body>
