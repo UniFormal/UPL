@@ -1236,15 +1236,29 @@ class Checker(errorHandler: ErrorHandler) {
         (Lambda(insC, bdC, mr), FunType(insC, bdI))
       case Application(f, as) =>
         f match {
-          case op: BaseOperator if op.operator.isPseudo =>
-            val pop = op.operator
-            pop match {
+          case BaseOperator(pop: PseudoOperator,_) =>
+            val expE = pop match {
               case Equal | Inequal =>
                 if (as.length != 2) fail("unexpected number of arguments")
-                val expE = Equality(pop == Equal, Type.unknown(gc), as(0), as(1)).copyFrom(exp)
-                return inferExpression(gc, expE)
-              case _ => fail("unknown pseudo-operator: " + op.operator.symbol)
+                Equality(pop == Equal, Type.unknown(gc), as(0), as(1))
+              case pop: PseudoOperator =>
+                if (as.isEmpty) fail("cannot elaborate unapplied magic operator: " + pop.symbol)
+                val (_,aI) = inferExpressionNorm(gc,as.head)(false)
+                val popMagic = new mf.MagicFunction(pop.magicName)
+                aI match {
+                  case popMagic(dom,_) =>
+                    val asE = pop match {
+                      case _:PseudoInfixOperator =>
+                        if (as.length != 2) reportError("single argument expected")
+                        as(1)
+                      case _:PseudoCircumfixOperator =>
+                        CollectionKind.List(as.tail)
+                    }
+                    popMagic.insert(dom, as.head, List(asE))
+                  case _ => fail(s"magic function ${popMagic.name} not found in $aI")
+                }
             }
+            return inferExpression(gc, expE.copyFrom(exp))
           case op: BaseOperator if op.operator.isDynamic =>
             val eC = if (alsoCheck) checkDynamicBoolean(gc, exp)._1 else exp
             (eC, BoolType)
@@ -1823,10 +1837,8 @@ object Checker {
   }
 }
 
-// TODO: magic functions for operator applications
-
 class MagicFunctions(gc: GlobalContext) {
-  class MagicFunction(name: String) {
+  class MagicFunction(val name: String) {
     def insert(dom: Theory, owner: Expression, args: List[Expression]) = Application(owner.field(dom,name),args)
     def unapply(tp: Type) = tp match {
       case ClassType(thy) => gc.push(thy).lookupRegional(name) match {

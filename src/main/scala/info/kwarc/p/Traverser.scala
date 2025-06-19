@@ -256,7 +256,7 @@ class OwnersSubstitutor(val initGC: GlobalContext, numSubs: Int) extends Statele
       val s = gc.regions.length - initGC.regions.length
       if (l <= s) exp
       else if (l <= s+numSubs) {
-        val reg = gc.regions(l).region
+        val reg = gc.regions(l-1).region
         val o = reg.owner.getOrElse {throw IError("no owner")}
         o // TODO substitute higher owner occurring in o
       } else

@@ -1140,7 +1140,8 @@ case class Return(exp: Expression, thrw: Boolean) extends Expression {
   * not by the parser/checker/printer.
   * For the latter to be able to access this information, all operators must be listed in the companion object [[Operator]]
   */
-sealed abstract class Operator(val symbol: String) {
+sealed abstract class Operator {
+  val symbol: String
   val length = symbol.length
   def types: List[FunType]
   def polyTypes(u: UnknownType): List[FunType] = Nil
@@ -1152,14 +1153,9 @@ sealed abstract class Operator(val symbol: String) {
   def isPseudo = false
 }
 
-/** operators with binary infix notation (flexary flag not supported yet) */
-sealed abstract class InfixOperator(s: String, val precedence: Int, val assoc: Associativity = NotAssociative) extends Operator(s) {
-  def apply(l: Expression, r: Expression) = makeExpr(List(l, r))
-  def unapply(e: Expression) = e match {
-    case Application(BaseOperator(op,_), List(l,r)) if op == this => Some((l,r))
-    case _ => None
-  }
-  def invertible = false
+sealed trait InfixParsable extends Operator {
+  def precedence: Int
+  def assoc: Associativity
   def rightAssociative = assoc == RightAssociative
   def associative = assoc match {
     case Semigroup | Monoid(_) => true
@@ -1171,14 +1167,51 @@ sealed abstract class InfixOperator(s: String, val precedence: Int, val assoc: A
   }
 }
 
-abstract class Associativity
+sealed trait CircumfixParsable extends PseudoOperator
+class PseudoCircumfixOperator(val symbol: String) extends PseudoOperator with CircumfixParsable {
+  def open = symbol
+  def close: String = symbol.map(c => Parsable.circumfixClose(c).getOrElse(c)).reverse
+  def magicName = open + "_" + close
+}
+
+object Parsable {
+  val symbols = List(Character.CURRENCY_SYMBOL, Character.MATH_SYMBOL, Character.OTHER_SYMBOL)
+  def isInfixChar(c: Char) = (symbols contains c.getType) || (c.getType == Character.OTHER_PUNCTUATION && !"\"';:,.".contains(c))
+  /** the matching closing bracket, if any
+   *
+   *  '‚' and '„' are open punctuation without corresponding closing punctuation
+   *  some horizontal brackets have partners that are their vertical mirrors
+   *  '[' and '{' have legacy codepoints
+   *  all other open punctuation has the mirror image right afterwards
+   */
+  def circumfixClose(c: Char) = {
+    if (c.getType != Character.START_PUNCTUATION || !c.isMirrored) None
+    else if (c == '[') Some(']')
+    else if (c == '{') Some('}')
+    else Some((c+1).toChar)
+  }
+  def isCircumfixChar(c: Char) = isInfixChar(c) || circumfixClose(c).isDefined
+}
+
+/** operators with binary infix notation (flexary flag not supported yet) */
+sealed abstract class InfixOperator(val symbol: String, val precedence: Int, val assoc: Associativity = NotAssociative)
+  extends InfixParsable {
+  def apply(l: Expression, r: Expression) = makeExpr(List(l, r))
+  def unapply(e: Expression) = e match {
+    case Application(BaseOperator(op,_), List(l,r)) if op == this => Some((l,r))
+    case _ => None
+  }
+  def invertible = false
+}
+
+sealed abstract class Associativity
 case object NotAssociative extends Associativity
 case object Semigroup extends Associativity
 case class Monoid(neut: Expression) extends Associativity
 case object RightAssociative extends Associativity
 
 /** operators with prefix notation */
-sealed abstract class PrefixOperator(s: String) extends Operator(s) {
+sealed abstract class PrefixOperator(val symbol: String) extends Operator {
   def apply(e: Expression) = makeExpr(List(e))
   def invertible = true
 }
@@ -1277,23 +1310,35 @@ case object Not extends PrefixOperator("!") {
   val types = List(B <-- B)
 }
 
-trait PseudoOperator extends Operator {
+sealed trait PseudoOperator extends Operator {
   override def isPseudo = true
+  def magicName: String
   def types = Nil
+  def invertible = false
 }
 
-case object Equal extends InfixOperator("==", -10) with PseudoOperator
-case object Inequal extends InfixOperator("!=", -10) with PseudoOperator
+class PseudoInfixOperator(val symbol: String) extends PseudoOperator with InfixParsable {
+  override def toString = magicName
+  def magicName = "_" + symbol + "_"
+  def precedence = -10
+  def assoc = NotAssociative
+}
+
+/** equality is a language primitive, not an operator,
+ * but parsing is easiest if it is treated as a PseudoOperator and convert it into [Equality] later
+ */
+case object Equal extends PseudoInfixOperator("==")
+case object Inequal extends PseudoInfixOperator("!=")
 
 object Operator {
-    val infixes = List(
+    val infixes: List[InfixParsable] = List(
       Plus, Minus, Times, Divide, Power,
       Minimum, Maximum,
       And, Or, Implies,
       Less, LessEq, Greater, GreaterEq,
       In, Cons, Snoc,
       Equal, Inequal
-    )
+    ).sortBy(-_.length) // longer operators first for parsing
     val prefixes = List(UMinus, Not)
 
     def simplify(bo: BaseOperator, as: List[Expression]): Expression = {
@@ -1364,7 +1409,7 @@ object Operator {
             case (Snoc, CollectionValue(es,k), e) => CollectionValue(es ::: List(e), k.copy(sizeOne=false))
             case _ => throw IError("no case for operator evaluation: " + o.symbol)
           }
-        case _: PseudoOperator => throw IError("unealborated pseudo-operator")
+        case _: PseudoOperator => throw IError("unelaborated pseudo-operator")
       }
     }
 
