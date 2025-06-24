@@ -1148,6 +1148,8 @@ sealed abstract class Operator {
   def uniqueType: Option[Type] = None
   def makeExpr(args: List[Expression]) = Application(BaseOperator(this, uniqueType.getOrElse(Type.unknown(null))), args)
   def invertible: Boolean
+  def isolatableArguments: List[Int] = Nil
+  def isolate(pos: Int, args: List[Expression], result: Expression): Option[(Expression,Expression)] = None
   def isCheckable = !isDynamic && !isPseudo
   def isDynamic = false
   def isPseudo = false
@@ -1221,7 +1223,7 @@ import BaseType._
 
 /** arithmetic operators */
 sealed trait Arithmetic {
-  val types = List(I <-- (I, I), R <-- (R, R), R <-- (I, R), R <-- (R, I), F <-- (F,F))
+  val types = List(I <-- (I, I), R <-- (R, R), R <-- (I, R), R <-- (R, I), F <-- (F,F), F<--(F,R), F<--(R,F), F<--(F,I), F<--(I,F))
 }
 
 /** boolean connectives */
@@ -1242,6 +1244,12 @@ case object Plus extends InfixOperator("+", 0, Semigroup) with Arithmetic {
   override val types = (S<--(S,S)) :: Times.types
   override def polyTypes(u: UnknownType) = List(L(u)<--(L(u),L(u)))
   override def associative = true
+  override def isolatableArguments = List(0,1)
+  override def isolate(pos: Int, args: List[Expression], result: Expression) = {
+    if (pos == 0) Some((args(1), Minus(res, args(0))))
+    else if (pos == 1) Some((args(0), Minus(res, args(1))))
+    else None
+  }
 }
 case object Minus extends InfixOperator("-", 0) with Arithmetic
 case object Times extends InfixOperator("*", 10, Monoid(IntValue(1))) with Arithmetic
@@ -1252,7 +1260,7 @@ case object Minimum extends InfixOperator("min", 10, Semigroup) with Arithmetic
 case object Maximum extends InfixOperator("max", 10, Semigroup) with Arithmetic
 
 case object Power extends InfixOperator("^", 20, RightAssociative) {
-  val types = List(R<--(I,I), R<--(R,R), R<--(I,R), R<--(R,I), F<--(F,R))
+  val types = List(R<--(I,I), R<--(R,R), R<--(I,R), R<--(R,I), F<--(F,R), F<--(F,I))
 }
 
 case object In extends InfixOperator("in", -10) {

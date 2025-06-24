@@ -35,17 +35,15 @@ module SolverTest {
     b: float
     c: float
 
-    // so ??
-    f180 : float = 180.0
-    f2 : float = 2.0
+    pi : float = 3.14
 
     alpha: float
     beta: float
     gamma: float
 
-    //allAngles180 : |- alpha + beta + gamma == f180
+    allAngles180 : |- alpha + beta + gamma == pi
     
-    //cosineLawAlpha : |- a*a == b*b + c*c - f2 * b * c * cos(alpha)
+    cosineLawAlpha : |- a^2 == b^2 + c^2 - 2*b*c*cos(alpha)
     
   }
 

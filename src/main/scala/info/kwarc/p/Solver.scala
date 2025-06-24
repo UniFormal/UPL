@@ -114,6 +114,45 @@ object Solver {
      if (changed) TheoryValue(declsE).copyFrom(thy)
      else thy
    }
+
+  /**
+   * finds all positions which unknowns can be isolated where
+   * @param e current expression to traverse
+   * @param traversed: accumulator of path traversed so far
+   */
+  def findIsolatable(e: Expression, traversed: List[Int]): List[(String,Occurrence)] = e match {
+    case ClosedRef(n) => List((n, Occurrence(traversed.reverse)))
+    case Application(BaseOperator(op,_), as) =>
+      op.isolatableArguments.flatMap(i => findIsolatable(as(i), i::traversed))
+    case Application(OpenRef(p), as) =>
+      Nil
+    case Tuple(es) =>
+      Range(0,es.length).toList.flatMap(i => findIsolatable(es(i), i::traversed))
+    case _ => Nil
+  }
+
+  /**
+   * rearranges a property so that it isolates at an occurrence in the left expression
+   */
+  def isolate(prop: Property, at: Occurrence): Property = {
+    at.path match {
+      case Nil => prop
+      case i :: rest =>
+        val lrO = prop.left match {
+          case Application(BaseOperator(op, _), as) => op.isolate(i, as, prop.right)
+          case _ => None
+        }
+        val (l,r) = lrO.get
+        isolate(Property(l,r),Occurrence(rest))
+    }
+  }
+}
+
+case class Occurrence(path: List[Int]) {
+  def and(i: Int) = copy(i::path)
+}
+object Occurrence {
+  val root = Occurrence(Nil)
 }
 
 case class Unknown(name: String, tp: Type)
@@ -139,9 +178,9 @@ object SolverTest {
   def main(args: Array[String]): Unit = {
     val path = File(args(0)).canonical
     val proj = Project.fromFile(path, None)
-    proj.check(true)
-    val gc = proj.makeGlobalContext
-    val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "T")))
+    val voc = proj.check(true)
+    val gc = GlobalContext(voc)
+    val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "Triangle")))
     println(tS)
   }
 }

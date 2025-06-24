@@ -98,7 +98,7 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
     vocC
   }
 
-  private def checkErrors() = {
+  def checkErrors() = {
     if (hasErrors) {
       println(getErrors.mkString("\n"))
       true
