@@ -651,7 +651,7 @@ object SimpleFunType {
 }
 
 /** dependent sums/tuples
-  * Declarations in ins are given in context-order
+  * Declarations in comps are given in context-order
   */
 case class ProdType(comps: LocalContext) extends Type {
   def label = "(...)"
@@ -687,37 +687,58 @@ case class CollectionType(elem: Type, kind: CollectionKind) extends Type {
   def label =
     CollectionKind.allKinds.find(_._2 == kind).map(_._1).getOrElse("collection")
   def children = List(elem)
-  def finite = kind.idemp && elem.finite
+  def finite = kind.norep && elem.finite
 }
-case class CollectionKind(idemp: Boolean, comm: Boolean, sizeOne: Boolean) {
+
+/**
+ * collections (sets, lists, etc.) are represented using the same data structures; this chooses the kind of collection
+ * @param norep no repetitions, equivalent to idempotent if commutative
+ * @param comm commutative
+ * @param sizeOne size <= 1
+ */
+case class CollectionKind(norep: Boolean, comm: Boolean, sizeOne: Boolean) {
   override def toString = CollectionKind.allKinds.find(_._2 == this).get._1
   def apply(a: Type) = CollectionType(a, this)
+  def apply(es: List[Expression]) = CollectionValue(es, this)
   def unapply(a: Type) = a match {
     case CollectionType(e, k) if k == this => Some(e)
-    case _                                 => None
+    case _ => None
   }
+  def unapply(e: Expression) = e match {
+    case CollectionValue(es,k) if k == this => Some(es)
+    case _ => None
+  }
+  /** subtyping (with quotients as supertypes, i.e., list <: set) */
   def sub(that: CollectionKind) = {
-    this.sizeOne || ((!this.idemp || that.idemp) && (!this.comm || that.comm))
+    this.sizeOne || ((!this.norep || that.norep) && (!this.comm || that.comm))
   }
+  /** union of the corresponding types, e.g., set.union(list) == set */
   def union(that: CollectionKind) = {
     if (this.sizeOne) that
     else if (that.sizeOne) this
     else
-      CollectionKind(this.idemp || that.idemp, this.comm || that.comm, false)
+      CollectionKind(this.norep || that.norep, this.comm || that.comm, false)
   }
+  /** intersection of the corresponding types, e.g., set.inter(list) == list */
   def inter(that: CollectionKind) = {
     if (this.sizeOne || that.sizeOne) CollectionKind.Option
     else
-      CollectionKind(this.idemp && that.idemp, this.comm && that.comm, false)
+      CollectionKind(this.norep && that.norep, this.comm && that.comm, false)
   }
 }
 
+/** defines abbreviations for the supported kinds */
 object CollectionKind {
+  /** repetitions, order */
   val List = CollectionKind(false, false, false)
+  /** no repetitions, no ordered */
   val Set = CollectionKind(true, true, false)
+  /** repetitions, no order */
   val Bag = CollectionKind(false, true, false)
+  /** no repetitions, order */
   val UList = CollectionKind(true, false, false)
-  val Option = CollectionKind(true, true, true)
+  /** size at most 1 (treated as a list to indicate that no normalization is needed even though it is kind of commutative and idempotent) */
+  val Option = CollectionKind(false, false, true)
   val allKinds = scala.List(
     "list" -> this.List,
     "ulist" -> this.UList,
@@ -859,16 +880,16 @@ case class Projection(tuple: Expression, index: Int) extends Expression {
 }
 
 /** collections, introduction form for [[CollectionType]] */
-case class CollectionValue(elems: List[Expression]) extends Expression {
-  override def toString = elems.mkString("[",",","]")
+case class CollectionValue(elems: List[Expression], kind: CollectionKind) extends Expression {
+  override def toString = kind + elems.mkString("[",",","]")
   def label = "collection"
   def children = elems
   /** the elements, normalized according to collection kind */
-  def as(k: CollectionKind) = {
+  def normalize = {
     var es = elems
-    if (k.idemp) es = es.distinct
-    if (k.comm) es = es.sortBy(_.hashCode())
-    es
+    if (kind.norep) es = es.distinct
+    if (kind.comm) es = es.sortBy(_.hashCode())
+    if (es == elems) this else CollectionValue(es,kind)
   }
 }
 
@@ -886,6 +907,17 @@ case class Quantifier(univ: Boolean, vars: LocalContext, body: Expression) exten
   override def toString = s"($label $vars.$body)"
   def children = vars.children ::: List(body)
   override def childrenInContext = vars.childrenInContext ::: List((None,Some(vars),body))
+}
+
+/** typed equality, possibly negated */
+case class Equality(positive: Boolean, tp: Type, left: Expression, right: Expression) extends Expression {
+  def label = if (positive) "equal" else "inequal"
+  def op = if (positive) "==" else "!="
+  override def toString = s"$left $op $right"
+  def children = List(tp,left,right)
+}
+object Equality {
+  def reduce(pos: Boolean): Connective = if (pos) And else Or
 }
 
 case class Assert(formula: Expression) extends Expression {
@@ -1108,24 +1140,22 @@ case class Return(exp: Expression, thrw: Boolean) extends Expression {
   * not by the parser/checker/printer.
   * For the latter to be able to access this information, all operators must be listed in the companion object [[Operator]]
   */
-sealed abstract class Operator(val symbol: String) {
+sealed abstract class Operator {
+  val symbol: String
   val length = symbol.length
   def types: List[FunType]
   def polyTypes(u: UnknownType): List[FunType] = Nil
   def uniqueType: Option[Type] = None
   def makeExpr(args: List[Expression]) = Application(BaseOperator(this, uniqueType.getOrElse(Type.unknown(null))), args)
   def invertible: Boolean
+  def isCheckable = !isDynamic && !isPseudo
   def isDynamic = false
+  def isPseudo = false
 }
 
-/** operators with binary infix notation (flexary flag not supported yet) */
-sealed abstract class InfixOperator(s: String, val precedence: Int, val assoc: Associativity = NotAssociative) extends Operator(s) {
-  def apply(l: Expression, r: Expression) = makeExpr(List(l, r))
-  def unapply(e: Expression) = e match {
-    case Application(BaseOperator(op,_), List(l,r)) if op == this => Some((l,r))
-    case _ => None
-  }
-  def invertible = false
+sealed trait InfixParsable extends Operator {
+  def precedence: Int
+  def assoc: Associativity
   def rightAssociative = assoc == RightAssociative
   def associative = assoc match {
     case Semigroup | Monoid(_) => true
@@ -1137,14 +1167,51 @@ sealed abstract class InfixOperator(s: String, val precedence: Int, val assoc: A
   }
 }
 
-abstract class Associativity
+sealed trait CircumfixParsable extends PseudoOperator
+class PseudoCircumfixOperator(val symbol: String) extends PseudoOperator with CircumfixParsable {
+  def open = symbol
+  def close: String = symbol.map(c => Parsable.circumfixClose(c).getOrElse(c)).reverse
+  def magicName = open + "_" + close
+}
+
+object Parsable {
+  val symbols = List(Character.CURRENCY_SYMBOL, Character.MATH_SYMBOL, Character.OTHER_SYMBOL)
+  def isInfixChar(c: Char) = (symbols contains c.getType) || (c.getType == Character.OTHER_PUNCTUATION && !"\"';:,.".contains(c))
+  /** the matching closing bracket, if any
+   *
+   *  '‚' and '„' are open punctuation without corresponding closing punctuation
+   *  some horizontal brackets have partners that are their vertical mirrors
+   *  '[' and '{' have legacy codepoints
+   *  all other open punctuation has the mirror image right afterwards
+   */
+  def circumfixClose(c: Char) = {
+    if (c.getType != Character.START_PUNCTUATION || !c.isMirrored) None
+    else if (c == '[') Some(']')
+    else if (c == '{') Some('}')
+    else Some((c+1).toChar)
+  }
+  def isCircumfixChar(c: Char) = isInfixChar(c) || circumfixClose(c).isDefined
+}
+
+/** operators with binary infix notation (flexary flag not supported yet) */
+sealed abstract class InfixOperator(val symbol: String, val precedence: Int, val assoc: Associativity = NotAssociative)
+  extends InfixParsable {
+  def apply(l: Expression, r: Expression) = makeExpr(List(l, r))
+  def unapply(e: Expression) = e match {
+    case Application(BaseOperator(op,_), List(l,r)) if op == this => Some((l,r))
+    case _ => None
+  }
+  def invertible = false
+}
+
+sealed abstract class Associativity
 case object NotAssociative extends Associativity
 case object Semigroup extends Associativity
 case class Monoid(neut: Expression) extends Associativity
 case object RightAssociative extends Associativity
 
 /** operators with prefix notation */
-sealed abstract class PrefixOperator(s: String) extends Operator(s) {
+sealed abstract class PrefixOperator(val symbol: String) extends Operator {
   def apply(e: Expression) = makeExpr(List(e))
   def invertible = true
 }
@@ -1159,6 +1226,7 @@ sealed trait Arithmetic {
 
 /** boolean connectives */
 sealed trait Connective extends Operator {
+  def apply(args: List[Expression]): Expression
   def tp = B <-- (B, B)
   val types = List(tp)
   override val uniqueType = Some(tp)
@@ -1168,20 +1236,6 @@ sealed trait Connective extends Operator {
 /** comparison operators for base values */
 sealed trait Comparison {
   val types = List(B <-- (I, I), B <-- (R, R), B <-- (I, R), B <-- (R, I), B <-- (S, S), B <-- (B, B))
-}
-
-/** polymorphic (in)equality at any type */
-sealed trait Equality extends Operator {
-  def types = Nil
-  def polyType(a: Type) = B<--(a,a)
-  override def polyTypes(u: UnknownType) = List(polyType(u))
-  def toBaseOperator(a: Type) = BaseOperator(this, polyType(a))
-  def apply(a: Type, l: Expression, r: Expression) = Application(toBaseOperator(a), List(l, r))
-
-  /** the operator to reduce after applying this operator on a list of pairs */
-  def reduce: Connective
-  /** this == Equal */
-  def positive: Boolean
 }
 
 case object Plus extends InfixOperator("+", 0, Semigroup) with Arithmetic {
@@ -1203,7 +1257,7 @@ case object Power extends InfixOperator("^", 20, RightAssociative) {
 
 case object In extends InfixOperator("in", -10) {
   val types = Nil
-  override def polyTypes(u: UnknownType) = List(BoolType <-- (u, CollectionKind.Set(u)))
+  override def polyTypes(u: UnknownType) = List(BoolType <-- (u, CollectionKind.Set(u)), BoolType <-- (u, CollectionKind.List(u)))
 }
 
 case object Cons extends InfixOperator("-:", -10, RightAssociative) {
@@ -1249,15 +1303,6 @@ case object LessEq extends InfixOperator("<=", -10) with Comparison
 case object Greater extends InfixOperator(">", -10) with Comparison
 case object GreaterEq extends InfixOperator(">=", -10) with Comparison
 
-case object Equal extends InfixOperator("==", -10) with Equality {
-  val positive = true
-  val reduce = And
-}
-case object Inequal extends InfixOperator("!=", -10) with Equality {
-  val positive = false
-  val reduce = Or
-}
-
 case object UMinus extends PrefixOperator("-") {
   val types = List(I <-- I, R <-- R)
 }
@@ -1265,144 +1310,128 @@ case object Not extends PrefixOperator("!") {
   val types = List(B <-- B)
 }
 
+sealed trait PseudoOperator extends Operator {
+  override def isPseudo = true
+  def magicName: String
+  def types = Nil
+  def invertible = false
+}
+
+class PseudoInfixOperator(val symbol: String) extends PseudoOperator with InfixParsable {
+  override def toString = magicName
+  def magicName = "_" + symbol + "_"
+  def precedence = -10
+  def assoc = NotAssociative
+}
+
+/** equality is a language primitive, not an operator,
+ * but parsing is easiest if it is treated as a PseudoOperator and convert it into [Equality] later
+ */
+case object Equal extends PseudoInfixOperator("==")
+case object Inequal extends PseudoInfixOperator("!=")
+
 object Operator {
-  val infixes = List(
-    Plus, Minus, Times, Divide, Power,
-    Minimum, Maximum,
-    And, Or, Implies,
-    Less, LessEq, Greater, GreaterEq,
-    In, Cons, Snoc,
-    Equal, Inequal
-  )
-  val prefixes = List(UMinus, Not)
+    val infixes: List[InfixParsable] = List(
+      Plus, Minus, Times, Divide, Power,
+      Minimum, Maximum,
+      And, Or, Implies,
+      Less, LessEq, Greater, GreaterEq,
+      In, Cons, Snoc,
+      Equal, Inequal
+    ).sortBy(-_.length) // longer operators first for parsing
+    val prefixes = List(UMinus, Not)
 
-  def simplify(bo: BaseOperator, as: List[Expression]): Expression = {
-    val o = bo.operator
-    val numArgs = as.length
-    def failNumArgs = throw IError(o + " applied to " + numArgs + " arguments")
-    o match {
-      case pf: PrefixOperator =>
-        if (numArgs != 1) failNumArgs
-        ((pf, as.head)) match {
-          case (UMinus, (IntOrRatValue(x, y))) => IntOrRatValue(-x, y)
-          case (Not, BoolValue(b)) => BoolValue(!b)
-          case _ => throw IError("missing case for " + pf)
-        }
-      case inf: InfixOperator =>
-        if (numArgs != 2) {
-          if (inf.associative) {
-            if (numArgs == 0) inf.neutral getOrElse failNumArgs
-            else if (numArgs == 1) as(0)
-            else simplify(bo, List(as.head, simplify(bo,as.tail)))
-          } else {
-            failNumArgs
+    def simplify(bo: BaseOperator, as: List[Expression]): Expression = {
+      val o = bo.operator
+      val numArgs = as.length
+      def failNumArgs = throw IError(o + " applied to " + numArgs + " arguments")
+      o match {
+        case pf: PrefixOperator =>
+          if (numArgs != 1) failNumArgs
+          ((pf, as.head)) match {
+            case (UMinus, (IntOrRatValue(x, y))) => IntOrRatValue(-x, y)
+            case (Not, BoolValue(b)) => BoolValue(!b)
+            case _ => throw IError("missing case for " + pf)
           }
-        } else (inf, as(0), as(1)) match {
-          case (Plus, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
-            IntOrRatValue(u * y + v * x, v * y)
-          case (Minus, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
-            IntOrRatValue(u * y - v * x, v * y)
-          case (Times, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
-            IntOrRatValue(u * x, v * y)
-          case (Minimum, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
-            IntOrRatValue((u * y) min (v * x), v * y)
-          case (Maximum, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
-            IntOrRatValue((u * y) max (v * x), v * y)
-          case (Divide, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
-            if (x == 0) throw ASTError("division by 0")
-            else IntOrRatValue(u * y, v * x)
-          case (c: Comparison, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
-            val d = u * y - v * x
-            val s = if (d > 0) 1 else if (d < 0) -1 else 0
-            (s, c) match {
-              case (-1, Less | LessEq) | (1, Greater | GreaterEq) | (0, LessEq | GreaterEq) => BoolValue(true)
-              case _ => BoolValue(false)
+        case inf: InfixOperator =>
+          if (numArgs != 2) {
+            if (inf.associative) {
+              if (numArgs == 0) inf.neutral getOrElse failNumArgs
+              else if (numArgs == 1) as(0)
+              else simplify(bo, List(as.head, simplify(bo,as.tail)))
+            } else {
+              failNumArgs
             }
-          case (c: Comparison, BoolValue(l), BoolValue(r)) =>
-            val b = c match {
-              case Less => !l && r
-              case LessEq => !l || r
-              case Greater => l && !r
-              case GreaterEq => l || !r
-            }
-            BoolValue(b)
-          case (Plus, FloatValue(f), FloatValue(g)) => FloatValue(f+g)
-          case (Minus, FloatOrRatValue(f), FloatOrRatValue(g)) => FloatValue(f-g)
-          case (Times, FloatOrRatValue(f), FloatOrRatValue(g)) => FloatValue(f*g)
-          case (Divide, FloatOrRatValue(f), FloatOrRatValue(g)) => FloatValue(f/g)
-          case (Power, FloatOrRatValue(f), FloatOrRatValue(g)) => FloatValue(Math.pow(f,g))
-          case (And, BoolValue(l), BoolValue(r)) => BoolValue(l && r)
-          case (Implies, BoolValue(l), BoolValue(r)) => BoolValue(if (l) r else true)
-          case (Or, BoolValue(l), BoolValue(r)) => BoolValue(l || r)
-          case (Plus, StringValue(l), StringValue(r)) => StringValue(l + r)
-          case (Plus, CollectionValue(l), CollectionValue(r)) =>
-            CollectionValue(l ::: r)
-          case (e: Equality, l, r) =>
-            lazy val inTypes = bo.tp match {
-              case SimpleFunType(ins, _) => ins
-              case _ => throw IError("equality operator needs type")
-            }
-            (l, r) match {
-              case (l: BaseValue, r: BaseValue) =>
-                val b = ((e == Equal) == (l.value == r.value))
-                BoolValue(b)
-              case (Tuple(ls), Tuple(rs)) =>
-                if (ls.length != rs.length) BoolValue(!e.positive)
-                else {
-                  val tps = inTypes.head.skipUnknown match {
-                    case ProdType(c) => Util.reverseMap(c.decls)(_.tp)
-                    case _ => throw IError("unexpected type")
-                  }
-                  val lrs = (ls zip rs).zip(tps).map { case ((l, r), a) => simplify(e.toBaseOperator(a), List(l, r)) }
-                  simplify(e.reduce.toBaseOperator, lrs)
-                }
-              case (l: CollectionValue, r: CollectionValue) =>
-                val CollectionType(a, k) = inTypes.head
-                val ls = l.as(k)
-                val rs = r.as(k)
-                if (ls.length != rs.length) BoolValue(!e.positive)
-                else {
-                  val ea = e.toBaseOperator(a)
-                  val lrs = (ls zip rs).map { case (l, r) => simplify(ea, List(l, r)) }
-                  simplify(e.reduce.toBaseOperator, lrs)
-                }
-              case (ExprOver(_, exp1), ExprOver(_, exp2)) =>
-                // theories are irrelevant for well-typed expressions
-                BoolValue((exp1 == exp2) == e.positive)
-              case _ if inTypes.head.isInstanceOf[ProofType] =>
-                // proof-irrelevance
-                BoolValue(e.positive)
-              case _ => throw IError("no case for equality: " + inTypes.head)
-            }
-          case (In, e, CollectionValue(es)) =>
-            val b = es.contains(e)
-            BoolValue(b)
-          case (Cons, e, CollectionValue(es)) => CollectionValue(e :: es)
-          case (Snoc, CollectionValue(es), e) => CollectionValue(es ::: List(e))
-          case _ => throw IError("no case for operator evaluation: " + o.symbol)
-        }
+          } else (inf, as(0), as(1)) match {
+            case (Plus, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
+              IntOrRatValue(u * y + v * x, v * y)
+            case (Minus, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
+              IntOrRatValue(u * y - v * x, v * y)
+            case (Times, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
+              IntOrRatValue(u * x, v * y)
+            case (Minimum, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
+              IntOrRatValue((u * y) min (v * x), v * y)
+            case (Maximum, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
+              IntOrRatValue((u * y) max (v * x), v * y)
+            case (Divide, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
+              if (x == 0) throw ASTError("division by 0")
+              else IntOrRatValue(u * y, v * x)
+            case (c: Comparison, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
+              val d = u * y - v * x
+              val s = if (d > 0) 1 else if (d < 0) -1 else 0
+              (s, c) match {
+                case (-1, Less | LessEq) | (1, Greater | GreaterEq) | (0, LessEq | GreaterEq) => BoolValue(true)
+                case _ => BoolValue(false)
+              }
+            case (c: Comparison, BoolValue(l), BoolValue(r)) =>
+              val b = c match {
+                case Less => !l && r
+                case LessEq => !l || r
+                case Greater => l && !r
+                case GreaterEq => l || !r
+              }
+              BoolValue(b)
+            case (Plus, FloatValue(f), FloatValue(g)) => FloatValue(f+g)
+            case (Minus, FloatOrRatValue(f), FloatOrRatValue(g)) => FloatValue(f-g)
+            case (Times, FloatOrRatValue(f), FloatOrRatValue(g)) => FloatValue(f*g)
+            case (Divide, FloatOrRatValue(f), FloatOrRatValue(g)) => FloatValue(f/g)
+            case (Power, FloatOrRatValue(f), FloatOrRatValue(g)) => FloatValue(Math.pow(f,g))
+            case (And, BoolValue(l), BoolValue(r)) => BoolValue(l && r)
+            case (Implies, BoolValue(l), BoolValue(r)) => BoolValue(if (l) r else true)
+            case (Or, BoolValue(l), BoolValue(r)) => BoolValue(l || r)
+            case (Plus, StringValue(l), StringValue(r)) => StringValue(l + r)
+            case (Plus, CollectionValue(l,lk), CollectionValue(r,rk)) =>
+              CollectionValue(l ::: r, lk.union(rk))
+            case (In, e, CollectionValue(es,_)) =>
+              val b = es.contains(e)
+              BoolValue(b)
+            case (Cons, e, CollectionValue(es,k)) => CollectionValue(e :: es, k.copy(sizeOne=false))
+            case (Snoc, CollectionValue(es,k), e) => CollectionValue(es ::: List(e), k.copy(sizeOne=false))
+            case _ => throw IError("no case for operator evaluation: " + o.symbol)
+          }
+        case _: PseudoOperator => throw IError("unelaborated pseudo-operator")
+      }
     }
-  }
 
-  /** partial inverse, for pattern-matching */
-  def invert(o: Operator, res: Expression): Option[List[Expression]] = {
-    o match {
-      case pf: PrefixOperator =>
-        ((pf, res)) match {
-          case (UMinus, (IntOrRatValue(x, y))) =>
-            Some(List(IntOrRatValue(-x, y)))
-          case (Not, BoolValue(b)) => Some(List(BoolValue(!b)))
-          case _                   => throw IError("operator not invertible: " + pf)
-        }
-      case inf: InfixOperator =>
-        // TODO: only legal for certain collection kinds
-        (inf, res) match {
-          case (Cons, CollectionValue(e :: es)) =>
-            Some(List(e, CollectionValue(es)))
-          case (Snoc, CollectionValue(es)) if es.nonEmpty =>
-            Some(List(CollectionValue(es.init), es.last))
-          case _ => None
-        }
+    /** partial inverse, for pattern-matching */
+    def invert(o: Operator, res: Expression): Option[List[Expression]] = {
+      o match {
+        case pf: PrefixOperator =>
+          ((pf, res)) match {
+            case (UMinus, (IntOrRatValue(x, y))) =>
+              Some(List(IntOrRatValue(-x, y)))
+            case (Not, BoolValue(b)) => Some(List(BoolValue(!b)))
+            case _ => throw IError("operator not invertible: " + pf)
+          }
+        case inf: InfixOperator =>
+          (inf, res) match {
+            case (Cons, CollectionValue(e :: es, k)) if !k.comm =>
+              Some(List(e, CollectionValue(es, k)))
+            case (Snoc, CollectionValue(es, k)) if es.nonEmpty && !k.comm =>
+              Some(List(CollectionValue(es.init, k), es.last))
+            case _ => None
+          }
+        case _: PseudoOperator => None
+      }
     }
-  }
 }

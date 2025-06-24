@@ -682,7 +682,9 @@ class Checker(errorHandler: ErrorHandler) {
         if (u.known) {
           checkType(gc,u.skipUnknown)
         } else {
-          if (u.originalContext != null || u.sub != null) {
+          if (u.originalContext != null && u.sub != null) {
+            u // introduced during checking
+          } else if (u.originalContext != null || u.sub != null) {
             throw IError("unexpected context in unknown type") // never happens anyway
           } else {
             UnknownType(gc,u.container,gc.visibleLocals.identity) // set up for later inference
@@ -975,10 +977,11 @@ class Checker(errorHandler: ErrorHandler) {
             checkSubtype(gc,iI,tpN)
         }
         iC
-      case (CollectionValue(es), CollectionType(t,kind)) =>
-        if (kind.sizeOne && es.length > 1) reportError("option type must have at most one element")
+      case (CollectionValue(es,vk), CollectionType(t,tk)) =>
+        if (!vk.sub(tk)) reportError(s"a $vk cannot be seen as a $tk")
+        if (vk.sizeOne && es.length > 1) reportError("option value must have at most one element")
         val esC = es.map(e => checkExpression(gc,e,t))
-        CollectionValue(esC)
+        CollectionValue(esC, tk)
       case (Tuple(es),ProdType(ts)) =>
         if (es.length != ts.length) reportError("wrong number of components in tuple")
         val esC = checkSubstitution(gc, ts.substitute(es), ts)
@@ -1021,22 +1024,22 @@ class Checker(errorHandler: ErrorHandler) {
       case (Eval(q), a) =>
         val qC = checkExpression(gc.pop(), q, ExprsOver(gc.theory, a))
         Eval(qC)
-      case (Application(op: BaseOperator,args),_) if !op.tp.known && !op.operator.isDynamic =>
+      case (Application(op: BaseOperator,args),_) if !op.tp.known && op.operator.isCheckable =>
         val (argsC,argsI) = args.map(a => inferExpressionNorm(gc,a)(true)).unzip
         val opTp = SimpleFunType(argsI,tpN)
         val opC = checkExpression(gc,op,opTp)
         Application(opC,argsC)
-      case (BaseOperator(op,opTp),ft:FunType) if !op.isDynamic =>
-        opTp.skipUnknown match {
-          case u: UnknownType =>
-            if (!ft.simple) reportError("operators cannot have dependent type")
-            if (u.originalContext != null || u.sub != null) throw IError("unexpected context in unknown operator type")
-            val outI = inferOperator(gc,op,ft.simpleInputs)
-            checkSubtype(gc,outI,ft.out)
-            u.set(ft) // just in case this unknown was referenced elsewhere
-          case _ =>
-            checkSubtype(gc,opTp,ft)
-        }
+      case (BaseOperator(op,opTp),ft:FunType) if op.isCheckable =>
+          opTp.skipUnknown match {
+            case u: UnknownType =>
+              if (!ft.simple) reportError("operators cannot have dependent type")
+              if (u.originalContext != null || u.sub != null) throw IError("unexpected context in unknown operator type")
+              val outI = inferOperator(gc, op, ft.simpleInputs)
+              checkSubtype(gc, outI, ft.out)
+              u.set(ft) // just in case this unknown was referenced elsewhere
+            case _ =>
+              checkSubtype(gc, opTp, ft)
+          }
         BaseOperator(op,ft)
       case (Block(es), _) =>
         var gcL = gc // local environment, includes variables seen in the block so far
@@ -1147,26 +1150,26 @@ class Checker(errorHandler: ErrorHandler) {
       disambiguateOwnedObject(gc, exp).foreach {corrected => return inferExpression(gc, corrected)}
     // check exp and infer its type
     val (expC,expI): (Expression,Type) = exp match {
-      case e: BaseValue => (e,e.tp)
+      case e: BaseValue => (e, e.tp)
       case op: BaseOperator =>
         if (!op.tp.known) {
           reportError("cannot infer type of operator")
         }
-        val ft = Normalize(gc,op.tp) match {
+        val ft = Normalize(gc, op.tp) match {
           case ft: FunType if ft.simple => ft
           case _ => fail("operator type not a simple function")
         }
-        val out = inferOperator(gc,op.operator,ft.simpleInputs)
+        val out = inferOperator(gc, op.operator, ft.simpleInputs)
         if (alsoCheck)
-          checkSubtype(gc,out,ft.out)(exp)
-        (BaseOperator(op.operator,ft),op.tp)
+          checkSubtype(gc, out, ft.out)(exp)
+        (BaseOperator(op.operator, ft), op.tp)
       case r: OpenRef =>
-        val (rC,rd) = sdCached match {
+        val (rC, rd) = sdCached match {
           case Some(d) => (r, d)
-          case _ => checkOpenRef(gc,r)
+          case _ => checkOpenRef(gc, r)
         }
         rd match {
-          case ed: ExprDecl => (rC,ed.tp)
+          case ed: ExprDecl => (rC, ed.tp)
           case _ => fail(s"$rC is not an expression")
         }
       case ClosedRef(n) =>
@@ -1175,9 +1178,9 @@ class Checker(errorHandler: ErrorHandler) {
           case _ => fail("not an expression")
         }
       case This(l) =>
-        if (l<=0) fail("illegal level")
+        if (l <= 0) fail("illegal level")
         if (gc.regions.length < l) fail("level does not exist")
-        val (skipped,rest) = gc.regions.splitAt(l-1)
+        val (skipped, rest) = gc.regions.splitAt(l - 1)
         val reg = rest.head
         if (skipped.exists(!_.transparent))
           fail("level is not accessible")
@@ -1185,8 +1188,8 @@ class Checker(errorHandler: ErrorHandler) {
           case Some(false) => fail("parent is not a closed theory")
           case _ =>
             val thy = reg.region.theory
-            val thyS = OwnersSubstitutor.applyTheory(gc, reg.region.theory, -(l-1))
-            (exp,ClassType(thyS))
+            val thyS = OwnersSubstitutor.applyTheory(gc, reg.region.theory, -(l - 1))
+            (exp, ClassType(thyS))
         }
       case OwnedExpr(owner, dom, e) =>
         val (ownerC, ownerI) = if (alsoCheck) inferExpressionNorm(gc, owner) else (owner, ClassType(dom))
@@ -1194,61 +1197,86 @@ class Checker(errorHandler: ErrorHandler) {
           case ClassType(domC) =>
             if (alsoCheck)
               if (dom != null && dom != domC) fail("unexpected given theory")
-            val envO = gc.push(domC,Some(ownerC))
+            val envO = gc.push(domC, Some(ownerC))
             val (eC, eI) = inferExpression(envO, e)
             (OwnedExpr(ownerC, domC, eC), OwnedType(ownerC, domC, eI))
           case _ => fail("owner must be an instance")
         }
       case VarRef(n) =>
-        val vd = gc.lookupLocal(n).getOrElse {fail("undeclared variables")}
-        (exp,vd.tp)
+        val vd = gc.lookupLocal(n).getOrElse {
+          fail("undeclared variables")
+        }
+        (exp, vd.tp)
       case Instance(thy) =>
-        val thyC = if (!alsoCheck) thy else checkTheory(gc,thy,true)
-        (Instance(thyC),ClassType(thyC))
-      case ExprOver(sc,q) =>
-        val scC = if (alsoCheck) checkTheory(gc,sc) else sc
-        val (qC,qI) = inferExpression(gc.pushQuoted(scC),q)
-        (ExprOver(scC,qC),ExprsOver(scC,qI))
+        val thyC = if (!alsoCheck) thy else checkTheory(gc, thy, true)
+        (Instance(thyC), ClassType(thyC))
+      case ExprOver(sc, q) =>
+        val scC = if (alsoCheck) checkTheory(gc, sc) else sc
+        val (qC, qI) = inferExpression(gc.pushQuoted(scC), q)
+        (ExprOver(scC, qC), ExprsOver(scC, qI))
       case Eval(e) =>
         if (alsoCheck)
           if (gc.regions.isEmpty) fail("eval outside quotation")
-        val (eC,eI) = inferExpressionNorm(gc.pop(),e)
+        val (eC, eI) = inferExpressionNorm(gc.pop(), e)
         eI match {
-          case ExprsOver(eT,q) =>
+          case ExprsOver(eT, q) =>
             if (alsoCheck) {
               checkSubtheory(gc, eT, gc.theory)
             }
-            (Eval(eC),q)
-          case mf.evaluation(dom,a) =>
-            (mf.evaluation.insert(dom,eC, Nil), a)
+            (Eval(eC), q)
+          case mf.evaluation(dom, a) =>
+            (mf.evaluation.insert(dom, eC, Nil), a)
           case _ => fail("not a quoted expression")
         }
       case MatchCase(ctx, p, b) =>
         fail("match case outside of match")
-      case Lambda(ins,bd,mr) =>
-        val insC = if (alsoCheck) checkLocal(gc,ins,false,false) else ins
-        val (bdC,bdI) = inferExpression(gc.append(insC),bd)
-        (Lambda(insC,bdC,mr),FunType(insC,bdI))
-      case Application(f,as) =>
+      case Lambda(ins, bd, mr) =>
+        val insC = if (alsoCheck) checkLocal(gc, ins, false, false) else ins
+        val (bdC, bdI) = inferExpression(gc.append(insC), bd)
+        (Lambda(insC, bdC, mr), FunType(insC, bdI))
+      case Application(f, as) =>
         f match {
+          case BaseOperator(pop: PseudoOperator,_) =>
+            val expE = pop match {
+              case Equal | Inequal =>
+                if (as.length != 2) fail("unexpected number of arguments")
+                Equality(pop == Equal, Type.unknown(gc), as(0), as(1))
+              case pop: PseudoOperator =>
+                if (as.isEmpty) fail("cannot elaborate unapplied magic operator: " + pop.symbol)
+                val (_,aI) = inferExpressionNorm(gc,as.head)(false)
+                val popMagic = new mf.MagicFunction(pop.magicName)
+                aI match {
+                  case popMagic(dom,_) =>
+                    val asE = pop match {
+                      case _:PseudoInfixOperator =>
+                        if (as.length != 2) reportError("single argument expected")
+                        as(1)
+                      case _:PseudoCircumfixOperator =>
+                        CollectionKind.List(as.tail)
+                    }
+                    popMagic.insert(dom, as.head, List(asE))
+                  case _ => fail(s"magic function ${popMagic.name} not found in $aI")
+                }
+            }
+            return inferExpression(gc, expE.copyFrom(exp))
           case op: BaseOperator if op.operator.isDynamic =>
             val eC = if (alsoCheck) checkDynamicBoolean(gc, exp)._1 else exp
-            (eC,BoolType)
+            (eC, BoolType)
           case op: BaseOperator if !op.tp.known =>
             // for an operator of unknown type, we need to infer the argument types first
-            val (asC,asI) = as.map(a => inferExpression(gc,a)).unzip
-            val out = inferOperator(gc,op.operator,asI)
-            val opC = op.copy(tp = SimpleFunType(asI,out))
-            (Application(opC,asC),out)
+            val (asC, asI) = as.map(a => inferExpression(gc, a)).unzip
+            val out = inferOperator(gc, op.operator, asI)
+            val opC = op.copy(tp = SimpleFunType(asI, out))
+            (Application(opC, asC), out)
           case f =>
-            val (fC,fI) = inferExpressionNorm(gc,f)
-            val (fM,ins,out) = fI match {
-              case FunType(i,o) => (fC,i,o)
+            val (fC, fI) = inferExpressionNorm(gc, f)
+            val (fM, ins, out) = fI match {
+              case FunType(i, o) => (fC, i, o)
               case ProdType(ys) =>
                 as match {
                   case List(IntValue(i)) =>
                     // projections are parsed as applications
-                    return inferExpression(gc, Projection(f,i.toInt).copyFrom(exp))
+                    return inferExpression(gc, Projection(f, i.toInt).copyFrom(exp))
                   case _ => fail("not a function")
                 }
               case ExprsOver(thy, _) =>
@@ -1259,63 +1287,77 @@ class Checker(errorHandler: ErrorHandler) {
                 var uis = LocalContext.empty
                 var gcI = u.originalContext
                 val n = gcI.freshName
-                Range(0,as.length).foreach {i =>
+                Range(0, as.length).foreach { i =>
                   val vd = VarDecl(n + "_" + i.toString, Type.unknown(gcI))
                   uis = uis append vd
                   gcI = gc append vd
                 }
                 val uo = Type.unknown(gcI)
-                u.set(FunType(uis,uo))
-                (fC,uis,uo)
-              case mf.application(dom,FunType(i,o)) => (mf.application.insert(dom,fC,as),i,o)
+                u.set(FunType(uis, uo))
+                (fC, uis, uo)
+              case mf.application(dom, FunType(i, o)) => (mf.application.insert(dom, fC, as), i, o)
               case _ => fail("not a function")(f)
             }
             if (ins.length != as.length) fail("wrong number of arguments")
             val sub = ins.substitute(as)
             val asC = if (alsoCheck) {
-              checkSubstitution(gc,sub,ins)
+              checkSubstitution(gc, sub, ins)
             } else sub
-            val outS = Substituter(gc,asC,out)
-            (Application(fM,asC.exprs),outS)
+            val outS = Substituter(gc, asC, out)
+            (Application(fM, asC.exprs), outS)
         }
       case Tuple(es) =>
-        val (esC,esI) = es.map(e => inferExpression(gc,e)).unzip
-        (Tuple(esC),ProdType.simple(esI))
+        val (esC, esI) = es.map(e => inferExpression(gc, e)).unzip
+        (Tuple(esC), ProdType.simple(esI))
       case Projection(tup, p) =>
         val mfp = new mf.projection(p)
-        val (tupC,tupI) = inferExpressionNorm(gc,tup)
+        val (tupC, tupI) = inferExpressionNorm(gc, tup)
         tupI match {
           case ProdType(ts) =>
             if (alsoCheck) {
               if (p <= 0) fail("non-positive index")
               if (p > ts.length) fail("index out of bounds")
             }
-            val componentType = ts(p-1).tp // -1 because components start at 1 but declarations at 0
-            val precedingCompDecls = ts.take(p-1)
-            val precedingProjs = Range(1,p).toList.map(i => Projection(tup, i))
+            val componentType = ts(p - 1).tp // -1 because components start at 1 but declarations at 0
+            val precedingCompDecls = ts.take(p - 1)
+            val precedingProjs = Range(1, p).toList.map(i => Projection(tup, i))
             val sub = precedingCompDecls.substitute(precedingProjs)
-            val projI = Substituter(gc,sub,componentType)
-            (Projection(tupC,p), projI)
-          case mfp(dom,a) =>
-            (mfp.insert(dom,tupC, List(IntValue(p))), a)
+            val projI = Substituter(gc, sub, componentType)
+            (Projection(tupC, p), projI)
+          case mfp(dom, a) =>
+            (mfp.insert(dom, tupC, List(IntValue(p))), a)
           case _ => fail("not a tuple")
         }
-      case CollectionValue(es) =>
-        val (esC,esI) = es.map(e => inferExpression(gc,e)).unzip
-        val eI = typeUnion(gc,esI)
-        val kind = if (es.length <= 1) CollectionKind.Option else CollectionKind.List // smallest applicable subquotient of List
-        (CollectionValue(esC),CollectionType(eI, kind))
+      case CollectionValue(es, k) =>
+        val (esC, esI) = es.map(e => inferExpression(gc, e)).unzip
+        val eI = typeUnion(gc, esI)
+        if (k.sizeOne && es.length > 1) reportError("option value can have at most one element")
+        (CollectionValue(esC, k), CollectionType(eI, k))
       case ListElem(l, p) =>
         if (alsoCheck) {
           val u = Type.unknown(gc)
-          val lC = checkExpression(gc,l,CollectionType(u,CollectionKind.UList))
-          val pC = checkExpression(gc,p,IntType)
+          val lC = checkExpression(gc, l, CollectionType(u, CollectionKind.UList))
+          val pC = checkExpression(gc, p, IntType)
           // index bounds not checked
-          (ListElem(lC,pC),u)
+          (ListElem(lC, pC), u)
         } else {
-          val (_,CollectionType(a,_)) = inferExpression(gc,l)
-          (exp,a)
+          val (_, CollectionType(a, _)) = inferExpression(gc, l)
+          (exp, a)
         }
+      case Equality(pos, tp, l, r) =>
+        val tpC = if (alsoCheck) checkType(gc, tp) else tp
+        val (lC, rC) = if (!alsoCheck) (l, r) else tpC match {
+          case u: UnknownType =>
+            val (lC, lI) = inferExpression (gc, l)
+            val (rC, rI) = inferExpression (gc, r)
+            val tpC = typeUnion(gc, lI, rI)
+            if (tpC == AnyType) reportError (s"ill-typed equality: $lI, $rI")
+            u.set(tpC)
+            (lC, rC)
+          case _ =>
+            (checkExpression(gc, l, tpC), checkExpression(gc, r, tpC))
+        }
+        (Equality(pos,tpC,lC,rC),BoolType)
       case Quantifier(q,vars,bd) =>
         val eC = if (alsoCheck) {
           val varsC = checkLocal(gc,vars,false,false)
@@ -1539,7 +1581,8 @@ class Checker(errorHandler: ErrorHandler) {
         case _ => fail("not an assignable field")
       }
       case Tuple(es) => es flatMap check
-      case CollectionValue(es) => es flatMap check // TODO depends on kind
+      case CollectionValue(es,k) if !k.comm && !k.norep =>
+        es flatMap check
       case OwnedExpr(o,d,e) =>
         o match {
           case _: Ref | _: VarRef =>
@@ -1644,7 +1687,7 @@ class Checker(errorHandler: ErrorHandler) {
         if (u == AnyType) fail("incompatible operator arguments")
         List((param, u))
       }
-    // better take union than fail because of equality and operations on collections
+    // better take union than fail because of operations on collections
     assignAsMatched(paramAssignment:::otherAssignments)
     out
   }
@@ -1661,7 +1704,7 @@ class Checker(errorHandler: ErrorHandler) {
     val aK = a.skipUnknown
     val bK = b.skipUnknown
     (aK,bK) match {
-      case (_:ClosedRef | _:OpenRef | _: BaseType | _: ClassType | _: ExprsOver, _) if aK == bK =>
+      case (_:ClosedRef | _:OpenRef | _: BaseType | ExceptionType | _: ClassType | _: ExprsOver, _) if aK == bK =>
         // trivial cases first for speed
         Some(Nil)
       case (u: UnknownType, v: UnknownType) if u.container == v.container =>
@@ -1794,10 +1837,8 @@ object Checker {
   }
 }
 
-// TODO: magic functions for operator applications
-
 class MagicFunctions(gc: GlobalContext) {
-  class MagicFunction(name: String) {
+  class MagicFunction(val name: String) {
     def insert(dom: Theory, owner: Expression, args: List[Expression]) = Application(owner.field(dom,name),args)
     def unapply(tp: Type) = tp match {
       case ClassType(thy) => gc.push(thy).lookupRegional(name) match {

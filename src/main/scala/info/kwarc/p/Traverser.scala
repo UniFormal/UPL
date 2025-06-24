@@ -140,8 +140,9 @@ abstract class Traverser[A] {
     case Application(f,as) => Application(apply(f), as map apply)
     case Tuple(es) => Tuple(es map apply)
     case Projection(e,i) => Projection(apply(e), i)
-    case CollectionValue(es) => CollectionValue(es map apply)
+    case CollectionValue(es,k) => CollectionValue(es map apply,k)
     case ListElem(l,p) => ListElem(apply(l), apply(p))
+    case Equality(p,t,l,r) => Equality(p, apply(t), apply(l), apply(r))
     case Quantifier(q,vs,b) =>
       val (vsT,aT) = apply(vs)
       Quantifier(q, vsT, apply(b)(gc.append(vs),aT))
@@ -255,7 +256,7 @@ class OwnersSubstitutor(val initGC: GlobalContext, numSubs: Int) extends Statele
       val s = gc.regions.length - initGC.regions.length
       if (l <= s) exp
       else if (l <= s+numSubs) {
-        val reg = gc.regions(l).region
+        val reg = gc.regions(l-1).region
         val o = reg.owner.getOrElse {throw IError("no owner")}
         o // TODO substitute higher owner occurring in o
       } else
@@ -325,8 +326,27 @@ object Simplify extends StatelessTraverser {
       }
       case Application(bo: BaseOperator, args) => Operator.simplify(bo, args)
       case Projection(Tuple(es),i) => es(i-1)
-      case ListElem(CollectionValue(es),IntValue(i)) => es(i.toInt)
+      case ListElem(CollectionValue(es,k),IntValue(i)) => es(i.toInt)
       case Application(Lambda(vs,b,false), as) => Substituter(gc, vs.substitute(as), b)
+      case Equality(p,_:BaseType,l,r) => BoolValue(p == (l == r))
+      case Equality(p,_:ProofType,_,_) => BoolValue(p)
+      case Equality(p, tp:ProdType, Tuple(ls), Tuple(rs)) =>
+        val sub = tp.comps.substitute(ls)
+        val tpsS = tp.decls.zipWithIndex.map {case (vd,i) => Substituter(gc,sub.take(i),vd.tp)}
+        val lrs = (ls zip rs).zip(tpsS).map {case ((l, r), t) => Equality(p,t,l,r)}
+        Equality.reduce(p)(lrs)
+      case Equality(p, CollectionType(a,k), lc: CollectionValue, rc: CollectionValue) =>
+        val ls = lc.copy(kind = k).normalize.elems // convert to k, e.g., to compare lists as sets
+        val rs = rc.copy(kind = k).normalize.elems
+        if (ls.length != rs.length) BoolValue(!p)
+        else {
+          val lrs = (ls zip rs).map {case (l, r) => Equality(p,a,l,r)}
+          Equality.reduce(p)(lrs)
+        }
+      /*case Equality(p, ExprsOver(_,a), ExprOver(_, exp1), ExprOver(_, exp2)) =>
+        // theories are irrelevant for well-typed expressions
+        if (exp1 == exp2)
+        if (BoolValue(p == (exp1 == exp2))*/
       case e => e
     }
   }

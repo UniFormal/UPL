@@ -87,6 +87,9 @@ object PContext {
 }
 
 object Parser {
+  val weakPostops = List("=","->","==","!=", "match", "catch")
+  val conflictingInfixes = Operator.infixes.map(_.symbol).filter(o => weakPostops.exists(o.startsWith))
+
   def file(f: File,eh: ErrorHandler) = {
     val p = new Parser(f.toSourceOrigin, getFileContent(f), eh)
     TheoryValue(p.parseAll(p.parseDeclarations))
@@ -197,7 +200,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   case class Error(msg: String) extends SError(makeRef(index), msg)
   private case class Abort() extends Exception
   def reportError(msg: String) = {
-    val e = Error(msg + "; found " + input.substring(index))
+    val e = Error(msg + "; found " + input.substring(index,Math.min(index+20,inputLength)))
     eh(e)
   }
   def fail(msg: String) = {
@@ -228,13 +231,15 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   // next character to parse
   def next = input(index)
 
+  // n character lookahead
+  def nextAfter(n: Int) = if (index+n < inputLength) Some(input(index+n)) else None
 
   // string s occurs at the current index in the input
-  // if s is only letters, we additionally check that no id char follows
+  // if s is only letters, we additionally check that no name char follows
   def startsWith(s: String): Boolean = {
     val isKeyword = s.nonEmpty && s.forall(_.isLetter)
     val b = index+s.length <= input.length && input.substring(index, index+s.length) == s
-    if (b && isKeyword) (index+s.length == input.length || !Path.isIdChar(input(index+s.length)))
+    if (b && isKeyword) index+s.length == inputLength || !isNameChar(input(index+s.length))
     else b
   }
   /** test for some strings, and if found, skip and trim */
@@ -265,6 +270,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     }
     newlineSeen
   }
+
+  def startsWithInfixOperator = Operator.infixes.exists(o => startsWith(o.symbol))
 
   /** the whitespace before the current index contains a newline */
   def newlineBefore: Boolean = {
@@ -327,14 +334,15 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     as.reverse
   }
 
+  def parseWhile(p: Char => Boolean) = {
+    val start = index
+    while (!atEnd && p(next)) index += 1
+    input.substring(start,index)
+  }
+
   def isNameChar(c: Char) = c.isLetterOrDigit || c == '_'
 
-  def parseName: String = {
-    trim
-    val begin = index
-    while (!atEnd && isNameChar(next)) index += 1
-    input.substring(begin,index)
-  }
+  def parseName = {trim; parseWhile(isNameChar)}
 
   def parsePath: Path = addRef {
     val ns = parseList(parseName, ".", " ")
@@ -369,6 +377,12 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     else if (startsWithAny(include,totalInclude)) parseInclude
     else if (startsWithS(typeDecl)) parseTypeDecl
     else if (startsWithS(mutableExprDecl)) parseExprDecl(true)
+    else if (startsWithS(exprDecl)) {
+      trim
+      val n = parseWhile(c => !c.isWhitespace)
+      if (n.isEmpty) fail("name expected")
+      parseExprDecl(false, Some(n))
+    }
     else if (startsWithDeclaration) parseExprDecl(false)
     else fail("declaration expected")
   }
@@ -423,8 +437,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     case _ => fail("expected theory, found expression")
   }
 
-  def parseExprDecl(mutable: Boolean): ExprDecl = {
-    val name = parseName
+  def parseExprDecl(mutable: Boolean, nameAlreadyParsed: Option[String] = None): ExprDecl = {
+    val name = nameAlreadyParsed getOrElse parseName
     trim
     val tp = if (startsWithS(":")) {
       parseType(PContext.empty)
@@ -495,7 +509,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     val allowS = ctxs.allowStatement
     val doAllowS = ctxs.setAllowStatement(true)
     val doNotAllowS = ctxs.setAllowStatement(false)
-    var seen: List[(Expression,InfixOperator,Location)] = Nil
+    var seen: List[(Expression,InfixParsable,Location)] = Nil
     val allExpBeginAt = index
     while (true) {
       trim
@@ -579,11 +593,9 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         val e = parseExpression
         Application(BaseOperator(o,Type.unknown()),List(e))
       } else if (startsWithS("\"")) {
-        val begin = index
-        while (!atEnd && next != '"') index += 1
-        val end = index
+        val s = parseWhile(_ != '"')
         skip("\"")
-        StringValue(input.substring(begin,end))
+        StringValue(s)
         /*    } else if (startsWith("'")) {
         skip("'")
         val c = next
@@ -619,20 +631,29 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           case List(e) => e
           case es => Tuple(es)
         }
-      } else if (startsWith("[")) {
-        val es = parseExpressions("[","]")
-        CollectionValue(es)
+      } else if (startsWithAny("[" :: CollectionKind.allKeywords :_*)) {
+          val kindO = if (startsWith("[")) None
+          else CollectionKind.allKinds.find(k => startsWithS(k._1)).map(_._2)
+          val es = parseExpressions("[","]")
+          val k = kindO.getOrElse {if (es.length > 1) CollectionKind.List else CollectionKind.Option}
+          CollectionValue(es,k)
       } else if (startsWithS("`")) {
         if (ctxs.contexts.length <= 1) reportError("eval outside quotation")
         val e = parseExpression(ctxs.pop())
         skip("`")
         Eval(e)
+      } else if (!atEnd && Parsable.circumfixClose(next).isDefined) {
+        val open = parseWhile(Parsable.isCircumfixChar)
+        val op = new PseudoCircumfixOperator(open)
+        val bo = BaseOperator(op,Type.unknown())
+        val es = parseExpressions("", op.close)
+        Application(bo, es)
       } else {
         //  symbol/variable/module reference
         val n = parseName
         if (n.isEmpty) fail("name expected")
         trim
-        if (startsWith(":") && !Operator.infixes.exists(o => startsWith(o.symbol))) {
+        if (startsWith(":") && !startsWithInfixOperator) {
           // variable declaration
           skip(":")
           val tp = parseType(doNotAllowS)
@@ -711,8 +732,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       } // end while
       trim
       if (!allowWeakPostops) return exp
-      val weakPostops = List("=","->","match", "catch")
-      if (startsWithAny(weakPostops:_*) && !startsWith("==") && !startsWith("=>")) {
+      if (startsWithAny(Parser.weakPostops:_*) && !startsWithAny(Parser.conflictingInfixes:_*)) {
         exp = disambiguateInfixOperators(seen.reverse,exp)
         setRef(exp,allExpBeginAt)
         val expWP = if (startsWithS("=")) {
@@ -755,7 +775,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       } else {
         setRef(exp, expBeginAt)
         val opBegin = index
-        parseOperatorO(Operator.infixes) match {
+        parseInfixO(Operator.infixes) match {
           case None =>
             return disambiguateInfixOperators(seen.reverse,exp)
           case Some(o) =>
@@ -781,20 +801,26 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     }
   }
 
-  def parseOperatorO[O<:Operator](os: List[O]): Option[O] = {
-    var found: Option[O] = None
-    os.foreach {o =>
-      if (startsWith(o.symbol) && !found.exists(f => f.length > o.length))
-        found = Some(o)
+  def parseInfixO(os: List[InfixParsable]): Option[InfixParsable] = {
+    val found = os.find {o => startsWith(o.symbol) && nextAfter(o.length).forall(!Parsable.isInfixChar(_))}
+    found match {
+      case Some(f) =>
+        skip(f.symbol)
+        found
+      case None =>
+        val op = parseWhile(Parsable.isInfixChar)
+        if (op.nonEmpty) {
+          Some(new PseudoInfixOperator(op))
+        } else {
+          None
+        }
     }
-    found.foreach {f => skip(f.symbol)}
-    found
   }
 
   // a shift-reduce parser of e1 o1 ... en on last
-  def disambiguateInfixOperators(eos: List[(Expression,InfixOperator,Location)], lastExp: Expression): Expression = {
+  def disambiguateInfixOperators(eos: List[(Expression,InfixParsable,Location)], lastExp: Expression): Expression = {
     // invariant: eos last = shifted rest last
-    var shifted: List[(Expression, InfixOperator,Location)] = Nil
+    var shifted: List[(Expression, InfixParsable, Location)] = Nil
     var rest = eos
     var last = lastExp
     // shift: shifted.reverse | hd tl last ---> shifted hd | tl last
@@ -942,6 +968,7 @@ object Keywords {
   val closedModule = "theory"
   val include = "include"
   val totalInclude = "realize"
+  val exprDecl = "val"
   val mutableExprDecl = "mutable"
   val typeDecl = "type"
   val allDeclKeywords = List(openModule,closedModule,include,totalInclude,mutableExprDecl,typeDecl)
