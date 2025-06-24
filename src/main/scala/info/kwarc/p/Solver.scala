@@ -18,6 +18,7 @@ object Solver {
      var knowns: List[Known] = Nil      // expression symbol we have solved
      var props: List[Property] = Nil    // axioms/theorems we can still use
      var redundant: List[String] = Nil  // axioms/theorems that we have used and that should be removed from the theory
+     var redundantP: List[Property] = Nil
      // prepare the solving by collecting the relevant information from the theory
      thyN.decls foreach {
        case _: Include =>
@@ -36,11 +37,60 @@ object Solver {
              else
                knowns ::= Known(ed.name, ed.dfO.get, false)
          }
+
      }
+
+
+
      // the actual solving
      // TODO
+
+     println(thyN.decls.filter(d => !d.defined))
+     println(thyN.decls.filter(d => d.defined))
+
+
+     // TODO remove redundant axioms
+     props.foreach(p => {
+       if (p.occursRight.appendedAll(p.occursLeft).forall(s => knowns.exists(k => k.name == s))) {
+          redundantP ::= p
+         // TODO check axiom eval true ??
+       }
+     })
+
+     // TODO #unknowns in axiom/thy = 1
+     props.filter(p => !redundantP.contains(p)).foreach(p => {
+       val us = unknowns.filter(u => (p.occursRight:::p.occursLeft).contains(u.name))
+       println(p, us, us.length)
+       if (us.length == 1) {
+         // unknown == f(knowns)
+         // TODO check dass die unbekannte nur auf der einen seite
+         p.definiendum match {
+           case None =>
+           case Some(s) => knowns ::= Known(s, p.right, true)
+         }
+         // f(knowns) == unknown
+         p.reverseDefinendum match {
+           case None =>
+           case Some(s) => knowns ::= Known(s, p.left, true)
+         }
+         // other forms
+         // TODO umformungen
+       }
+     })
+     // TODO #unknowns in axiom/thy > 1
+
+
+     println("---------")
+     println("U:", unknowns)
+     println("K:", knowns)
+     println("R:", redundantP)
+     println("P:", props)
+
+
+
+
      // just for temporary testing: add one definition
-     knowns ::= Known("a", IntValue(1), true)
+     //knowns ::= Known("a", IntValue(1), true)
 
      // return the extended theory by adding definitions and dropping now-redundant properties
      var changed = false
@@ -48,6 +98,8 @@ object Solver {
        case ed: ExprDecl =>
          if (redundant.exists(_ == ed.name))
            Nil
+
+
          else {
            knowns.find(k => k.name == ed.name && k.isNew) match {
              case Some(k) =>
@@ -74,6 +126,10 @@ case class Property(left: Expression, right: Expression) {
   val occursLeft = Regionals(left)._1
   val occursRight = Regionals(right)._1
   def definiendum = left match {
+    case ClosedRef(n) => Some(n)
+    case _ => None
+  }
+  def reverseDefinendum = right match {
     case ClosedRef(n) => Some(n)
     case _ => None
   }
