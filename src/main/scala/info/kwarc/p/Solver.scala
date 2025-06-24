@@ -116,7 +116,7 @@ object Solver {
    }
 
   /**
-   * finds all positions which unknowns can be isolated where
+   * finds all possibilities which unknowns can be isolated where
    * @param e current expression to traverse
    * @param traversed: accumulator of path traversed so far
    */
