@@ -116,7 +116,7 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
       val (eC,_) = ch.checkAndInferExpression(GlobalContext(voc), e)
       val prog = Program(voc,eC)
       val (ip,r) = Interpreter.run(prog)
-      if (r != UnitValue) println(r)
+      println(r)
       Some(ip)
     } catch {
       case e: PError =>
