@@ -28,23 +28,30 @@
         console.error(error)
       }
     }
+    
     function evalUPL() {
-      const eS = document.getElementById("in").value
+      // an empty line can be used to separate multiple expressions
+      const eS = document.getElementById("in").value.split("\n\n")
       const out = document.getElementById("out")
       if (prog === null){
         out.value = "No context to evaluate in, use \"check\" first.\n(Checking an empty program is possible)."
         out.setAttribute("error","true")
         return
       }
-      try {
-        const eI = UPL.runIn(prog, eS)
-        out.removeAttribute("error")
-        out.value = UPL.print(eI)
-      } catch (error) {
-        out.value = error.name +"\n"+ error.message
-        out.setAttribute("error","true")
-        console.error(error)
-      }
+      out.removeAttribute("error")
+      out.value = ""
+      eS.forEach(expr => {
+        try {
+            out.value += UPL.print(UPL.runIn(prog, expr)) + "\n\n"
+          
+        } catch (error) {
+          out.value = error.name +" : "+ error.message + "\n\n"
+          out.setAttribute("error","true")
+          console.error(error)
+        }
+      });
+      // remove the unnecessary linebreaks at the end
+      out.value = out.value.trim()
     }
     </script>
 
