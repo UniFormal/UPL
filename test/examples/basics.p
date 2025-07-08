@@ -57,8 +57,8 @@ module M {
 
   // Repeated declarations of the same name are merged, e.g., to refine the type or to supply a definition.
   // Combined with _ for an omitted type, that can be used to obtain recursion.
-  factorial2: _
-  factorial2 = (x:int) -> {
+  factorial2: int -> int
+  factorial2 = x -> {
     if (x <= 0) return 1
     x * factorial2(x-1)
   }

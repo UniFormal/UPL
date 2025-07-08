@@ -199,6 +199,7 @@ sealed trait Theory extends Object {
   def toValue: TheoryValue = TheoryValue(decls)
   def decls: List[Declaration] = List(Include(this))
   def isEmpty = this == Theory.empty
+  def sub(that: Theory) = this.decls.forall(that.decls.contains)
   /* TODO: Refs to primitive modules should initially be QuasiFlat */
   private[p] var flatness: Theory.Flatness = Theory.NotFlat
   def isFlat = flatness != Theory.NotFlat
@@ -1100,7 +1101,7 @@ case class Rat(enum: BigInt, denom: BigInt) extends Real {
     val n = normalize
     if (n.integer) n.enum.toString else s"${n.enum}/${n.denom}"
   }
-  def tp = NumberType(negative, !integer, false, false, infinite)
+  def tp = NumberType(true, !integer, false, false, infinite) // TODO inferring Nat is often too narrow and breaks type inference later
   def approx = ApproxReal(enum.toDouble/denom.toDouble)
   val valid = denom > 0
   private[p] var _normal = false
@@ -1118,7 +1119,7 @@ case class Rat(enum: BigInt, denom: BigInt) extends Real {
   def negate = Rat(-enum,denom)
   def invert = Rat(denom,enum)
   def plus(r: Real) = r match {
-    case r: Rat => Rat(enum * r.denom + r.enum * denom, enum * denom)
+    case r: Rat => Rat(enum * r.denom + r.enum * denom, denom * r.denom)
     case _ => approx plus r
   }
   def times(r: Real) = r match {
@@ -1319,7 +1320,7 @@ sealed abstract class Operator {
    * It just disambiguates what the operator type should be.
    * The type checker then uses the disambiguated type to type-check the arguments, and that may also solve unknowns.
    */
-  def typeFor(ins: List[Type], union: List[Type] => Type): Option[FunType] = uniqueType
+  def typeFor(ins: List[Type], out: Type, cbs: InferenceCallbacks): Option[FunType] = uniqueType
   def makeExpr(args: List[Expression]) = Application(BaseOperator(this, uniqueType.getOrElse(Type.unknown(null))), args)
   def invertible: Boolean
   def isolatableArguments: List[Int] = Nil
@@ -1327,6 +1328,11 @@ sealed abstract class Operator {
   def isCheckable = !isDynamic && !isPseudo
   def isDynamic = false
   def isPseudo = false
+}
+
+abstract class InferenceCallbacks {
+  def union(ts: List[Type]): Type
+  def unknown(): Type
 }
 
 sealed trait InfixParsable extends Operator {
@@ -1404,14 +1410,16 @@ sealed trait NumberOperator extends Operator {
   /** the output type is the union of all number types among the arguments unless that is adjusted here */
   def specialOutputCase(o: NumberType): BaseType = o
   /** finds all known number types among the arguments and assumes all unknown input types and the return type are their union */
-  override def typeFor(ins: List[Type], union: List[Type] => Type): Option[FunType] = {
+  override def typeFor(ins: List[Type], out: Type, cbs: InferenceCallbacks): Option[FunType] = {
     specialInputCases.foreach {case (c, t) =>
       if (ins.contains(c)) return Some(t)
     }
     val ns = ins.collect {
       case n: NumberType => n
     }
-    if (ns.isEmpty) None else {
+    if (ns.isEmpty)
+      None
+    else {
       val nsU = ns.tail.fold(ns.head)(_ union _)
       val insS = ins.map {
         case n: NumberType => n
@@ -1428,6 +1436,7 @@ sealed trait Arithmetic extends NumberOperator
 /** comparison operators for number values and other types */
 sealed trait Comparison extends NumberOperator {
   override val specialInputCases = List((B, B<--(B,B)), (S, B<--(S,S)))
+  override def specialOutputCase(o: NumberType) = B
 }
 
 /** boolean connectives */
@@ -1497,7 +1506,7 @@ case object Divide extends InfixOperator("/", 10) with Arithmetic  {
   override def specialOutputCase(o: NumberType) = o.copy(fractional = true)
   override def isolatableArguments = List(0, 1)
   override def isolate(pos: Int, args: List[Expression], result: Expression) = {
-    if(pos == 0) Some((args(0), Times(result, args(1))))
+    if (pos == 0) Some((args(0), Times(result, args(1))))
     else if (pos == 1) Some((args(1), Divide(args(0), result)))
     else None
   }
@@ -1506,7 +1515,7 @@ case object Minimum extends InfixOperator("min", 10, Semigroup) with Arithmetic
 case object Maximum extends InfixOperator("max", 10, Semigroup) with Arithmetic
 
 case object Power extends InfixOperator("^", 20, RightAssociative) {
-  override def typeFor(ins: List[Type], union: List[Type] => Type) = {
+  override def typeFor(ins: List[Type], out: Type, cbs: InferenceCallbacks) = {
     val baseType = ins(0) match {
       case n: NumberType if !n.imaginary => n
       case _ => R
@@ -1548,21 +1557,35 @@ sealed trait CollectionOperator extends Operator {
   /** the inputs are assumed to be either elements or collections over elements; this gives the positions of the former */
   val elemIndices: List[Int]
   /** computes the type of the operators by taking the union of all element types */
-  override def typeFor(ins: List[Type], union: List[Type] => Type) = {
+  override def typeFor(ins: List[Type], out: Type, cbs: InferenceCallbacks) = {
     var elemTypes: List[Type] = Nil
     var kds: List[CollectionKind] = Nil
     val insW = ins.zipWithIndex
     insW.foreach {
       case (a, i) if a.known && elemIndices.contains(i) =>
         elemTypes ::= a
-      case (c: CollectionType, i) if c.elem.known =>
-        elemTypes ::= c.elem
+      case (c: CollectionType, _) =>
         kds ::= c.kind
+        if (c.elem.known) elemTypes ::= c.elem
       case _ =>
     }
-    if (kds.isEmpty) None else {
-      val kdsU = kds.tail.fold(kds.head)(_ union _)
-      val elemU = union(elemTypes)
+    out match {
+      case c: CollectionType =>
+        kds ::= c.kind
+        if (c.elem.known) elemTypes ::= c.elem
+      case _ =>
+    }
+    if (kds.isEmpty && elemTypes.isEmpty) {
+      val a = cbs.unknown()
+      val insS = insW.map {case (_,i) =>
+        if (elemIndices.contains(i)) a else CollectionKind.List(a)
+      }
+      val outS = specialOutputCase(CollectionKind.List(a))
+      val ft = SimpleFunType(insS, outS)
+      Some(ft)
+    } else {
+      val kdsU = kds.fold(CollectionKind.List)(_ union _)
+      val elemU = cbs.union(elemTypes)
       val coll = CollectionType(elemU,kdsU)
       val insS = insW.map {
         case (_,i) if elemIndices.contains(i) => elemU
@@ -1675,7 +1698,7 @@ object Operator {
             case (Implies, BoolValue(l), BoolValue(r)) => BoolValue(if (l) r else true)
             case (Or, BoolValue(l), BoolValue(r)) => BoolValue(l || r)
             case (Plus, StringValue(l), StringValue(r)) => StringValue(l + r)
-            case (Plus, CollectionValue(l,lk), CollectionValue(r,rk)) =>
+            case (Concat, CollectionValue(l,lk), CollectionValue(r,rk)) =>
               CollectionValue(l ::: r, lk.union(rk))
             case (In, e, CollectionValue(es,_)) =>
               val b = es.contains(e)

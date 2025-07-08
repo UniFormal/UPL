@@ -940,7 +940,7 @@ class Checker(errorHandler: ErrorHandler) {
           if (tpN != tp) apply(tpN) else tpN
         case IntervalType(l,u) =>
           applyDefault(tp) match {
-            case (IntervalType(Some(m:NumberValue),Some(n:NumberValue))) if !(m eq n) && (m lessEq n) => EmptyType
+            case (IntervalType(Some(m:NumberValue),Some(n:NumberValue))) if !(m eq n) && (n lessEq m) => EmptyType
             case IntervalType(None,None) => NumberType.Int
             case tpN => tpN
           }
@@ -1033,8 +1033,8 @@ class Checker(errorHandler: ErrorHandler) {
             case u: UnknownType =>
               if (!ft.simple) reportError("operators cannot have dependent type")
               if (u.originalContext != null || u.sub != null) throw IError("unexpected context in unknown operator type")
-              val outI = inferOperator(gc, op, ft.simpleInputs)
-              checkSubtype(gc, outI, ft.out)
+              val opI = inferOperator(gc, op, ft.simpleInputs, Some(ft.out))
+              checkSubtype(gc, opI.out, ft.out)
               u.set(ft) // just in case this unknown was referenced elsewhere
             case _ =>
               checkSubtype(gc, opTp, ft)
@@ -1158,9 +1158,9 @@ class Checker(errorHandler: ErrorHandler) {
           case ft: FunType if ft.simple => ft
           case _ => fail("operator type not a simple function")
         }
-        val out = inferOperator(gc, op.operator, ft.simpleInputs)
+        val opI = inferOperator(gc, op.operator, ft.simpleInputs, Some(ft.out))
         if (alsoCheck)
-          checkSubtype(gc, out, ft.out)(exp)
+          checkSubtype(gc, opI.out, ft.out)(exp)
         (BaseOperator(op.operator, ft), op.tp)
       case r: OpenRef =>
         val (rC, rd) = sdCached match {
@@ -1264,9 +1264,9 @@ class Checker(errorHandler: ErrorHandler) {
           case op: BaseOperator if !op.tp.known =>
             // for an operator of unknown type, we need to infer the argument types first
             val (asC, asI) = as.map(a => inferExpression(gc, a)).unzip
-            val out = inferOperator(gc, op.operator, asI)
-            val opC = op.copy(tp = SimpleFunType(asI, out))
-            (Application(opC, asC), out)
+            val opI = inferOperator(gc, op.operator, asI, None)
+            val opC = op.copy(tp = opI)
+            (Application(opC, asC), opI.out)
           case f =>
             val (fC, fI) = inferExpressionNorm(gc, f)
             val (fM, ins, out) = fI match {
@@ -1662,17 +1662,25 @@ class Checker(errorHandler: ErrorHandler) {
     case _ => None
   }
 
-  def inferOperator(gc: GlobalContext,op: Operator,ins: List[Type])(implicit cause: Expression): Type = {
-    op.arity.foreach {a => if (ins.length != a) fail("wrong number of arguments")}
+  def inferOperator(gc: GlobalContext,op: Operator, ins: List[Type], out: Option[Type])(implicit cause: Expression): FunType = {
+    op.arity.foreach {a =>
+      if (ins.length != a)
+        fail("wrong number of arguments")}
     val insS = ins.map(_.skipUnknown)
-    val ft = op.typeFor(insS, typeUnion(gc,_)).getOrElse {
+    val outS = out.map(_.skipUnknown).getOrElse(Type.unknown(gc))
+    val cbs = new infCBs(gc)
+    val ft = op.typeFor(insS, outS, cbs).getOrElse {
       fail("no matching type for operator")
     }
-    val assignments = matchTypes(ProdType.simple(insS), ProdType(ft.ins), BiContext(Nil))(gc, Some(true)).getOrElse {
+    val assignments = matchTypes(SimpleFunType(insS,outS), ft, BiContext(Nil))(gc, Some(false)).getOrElse {
       fail("ill-typed operator")
     }
     assignAsMatched(assignments)
-    ft.out
+    ft
+  }
+  private class infCBs(gc: GlobalContext) extends InferenceCallbacks {
+    def union(ins: List[Type]) = typeUnion(gc, ins)
+    def unknown() = Type.unknown(gc)
   }
 /*    val param = Type.unknown(gc)
     val possibleTypes = op.types:::op.polyTypes(param)
@@ -1743,6 +1751,11 @@ class Checker(errorHandler: ErrorHandler) {
           matchTypes(c,d,cons)
         else
           None
+      case (ClassType(k),ClassType(l)) =>
+         if (k == l || (subTypeDirection.contains(true) && (k sub l)) || (subTypeDirection.contains(false) && (l sub k)))
+           Some(Nil)
+         else
+           None
       case _ =>
         if (aK == bK.substitute(cons.renameRightToLeft)) Some(Nil) else None
     }
