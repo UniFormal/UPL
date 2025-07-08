@@ -1246,21 +1246,47 @@ case object Plus extends InfixOperator("+", 0, Semigroup) with Arithmetic {
   override def associative = true
   override def isolatableArguments = List(0,1)
   override def isolate(pos: Int, args: List[Expression], result: Expression) = {
-    if (pos == 0) Some((args(1), Minus(res, args(0))))
-    else if (pos == 1) Some((args(0), Minus(res, args(1))))
+    if (pos == 0) Some((args(0), Minus(result, args(1))))
+    else if (pos == 1) Some((args(1), Minus(result, args(0))))
     else None
   }
 }
-case object Minus extends InfixOperator("-", 0) with Arithmetic
-case object Times extends InfixOperator("*", 10, Monoid(IntValue(1))) with Arithmetic
+case object Minus extends InfixOperator("-", 0) with Arithmetic {
+  override def isolatableArguments = List(0, 1)
+  override def isolate(pos: Int, args: List[Expression], result: Expression) = {
+    if (pos == 0) Some((args(0), Plus(result, args(1))))
+    else if (pos == 1) Some((args(1), UMinus(Minus(result, args(0)))))
+    else None
+  }
+}
+case object Times extends InfixOperator("*", 10, Monoid(IntValue(1))) with Arithmetic {
+  override def isolatableArguments = List(0, 1)
+  override def isolate(pos: Int, args: List[Expression], result: Expression) = {
+    if (pos == 0) Some((args(0), Divide(result, args(1))))// TODO args(1) != 0 check??
+    else if (pos == 1) Some((args(1), Divide(result, args(0)))) // TODO args(0) != 0 check??
+    else None
+  }
+}
 case object Divide extends InfixOperator("/", 10) {
   val types = List(R<--(I,I), R<--(R,R), R<--(I,R), R<--(R,I), F<--(F,F))
+  override def isolatableArguments = List(0, 1)
+  override def isolate(pos: Int, args: List[Expression], result: Expression) = {
+    if(pos == 0) Some((args(0), Times(result, args(1))))
+    else if (pos == 1) Some((args(1), Divide(args(0), result)))
+    else None
+  }
 }
 case object Minimum extends InfixOperator("min", 10, Semigroup) with Arithmetic
 case object Maximum extends InfixOperator("max", 10, Semigroup) with Arithmetic
 
 case object Power extends InfixOperator("^", 20, RightAssociative) {
   val types = List(R<--(I,I), R<--(R,R), R<--(I,R), R<--(R,I), F<--(F,R), F<--(F,I))
+  override def isolatableArguments = List(0, 1)
+  override def isolate(pos: Int, args: List[Expression], result: Expression) = {
+    if (pos == 0) Some((args(0), Power(result, Divide(IntValue(1), args(1))))) // TODO args(1) != 0, result >= 0
+    //if (pos == 1) Some((args(1), )) // TODO Some((args(1), log(result, args(1))))
+    else None
+  }
 }
 
 case object In extends InfixOperator("in", -10) {
@@ -1313,6 +1339,11 @@ case object GreaterEq extends InfixOperator(">=", -10) with Comparison
 
 case object UMinus extends PrefixOperator("-") {
   val types = List(I <-- I, R <-- R)
+  override def isolatableArguments = List(0)
+  override def isolate(pos: Int, args: List[Expression], result: Expression) = {
+    if (pos == 0) Some((args(0), UMinus(result)))
+    else None
+  }
 }
 case object Not extends PrefixOperator("!") {
   val types = List(B <-- B)

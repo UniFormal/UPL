@@ -60,21 +60,36 @@ object Solver {
      // TODO #unknowns in axiom/thy = 1
      props.filter(p => !redundantP.contains(p)).foreach(p => {
        val us = unknowns.filter(u => (p.occursRight:::p.occursLeft).contains(u.name))
-       println(p, us, us.length)
-       if (us.length == 1) {
+       println(p, us, us.length, us.flatMap(u => List((u.name, (p.occursRight:::p.occursLeft).count(s => s == u.name)))))
+
+       if (us.length == 1 && (p.occursRight:::p.occursLeft).iterator.count(s => s == us.head.name) == 1) {
+         val u = us.head
          // unknown == f(knowns)
-         // TODO check dass die unbekannte nur auf der einen seite
          p.definiendum match {
-           case None =>
-           case Some(s) => knowns ::= Known(s, p.right, true)
+           case Some(u.name) => {
+             knowns ::= Known(u.name, p.right, true)
+             redundantP = p::redundantP
+           }
+           // f(knowns) == unknown
+           case Some(_) | None => p.reverseDefinendum match {
+             case Some(u.name) =>  {
+               knowns ::= Known(u.name, p.left, true)
+               redundantP = p::redundantP
+             }
+             // other forms
+             // TODO umformungen
+             case Some(_) | None => {
+               val iso = findIsolatable(p.left, Occurrence.root.path).filter(n => n._1 == u.name)
+               val newProp = isolate(p, iso(0)._2)
+               props ::= newProp
+               knowns ::= Known(u.name, newProp.right, true)
+             }
+           }
          }
-         // f(knowns) == unknown
-         p.reverseDefinendum match {
-           case None =>
-           case Some(s) => knowns ::= Known(s, p.left, true)
-         }
-         // other forms
-         // TODO umformungen
+
+
+
+
        }
      })
      // TODO #unknowns in axiom/thy > 1
@@ -111,6 +126,7 @@ object Solver {
          }
        case d => List(d)
      }
+     println(changed)
      if (changed) TheoryValue(declsE).copyFrom(thy)
      else thy
    }
@@ -174,13 +190,30 @@ case class Property(left: Expression, right: Expression) {
   }
 }
 
+object InverseMethods {
+  var table : List[(String, String)] = Nil
+  table ::= ("sin", "asin")
+  table ::= ("cos", "acos")
+  table ::= ("tan", "atan")
+
+  table ::= ("asin", "sin")
+  table ::= ("acos", "cos")
+  table ::= ("atan", "tan")
+
+  table ::= ("exp", "ln")
+
+  table ::= ("sqrt", "pow2")
+  table ::= ("pow2", "sqrt")
+
+}
+
 object SolverTest {
   def main(args: Array[String]): Unit = {
     val path = File(args(0)).canonical
     val proj = Project.fromFile(path, None)
     val voc = proj.check(true)
     val gc = GlobalContext(voc)
-    val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "Triangle")))
+    val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "EqualSidedTriangle")))
     println(tS)
   }
 }
