@@ -509,58 +509,51 @@ case class ExprsOver(scope: Theory, tp: Type) extends Type with ObjectOver {
 }
 
 /** atomic built-in base types */
-sealed abstract class BaseType(name: String) extends Type { self =>
+sealed abstract class BaseType extends Type {
+  def name: String
   override def toString = name
   def label = name
   def children = Nil
 }
+
 object BaseType {
   val B = BoolType
-  val I = IntType
-  val F = FloatType
-  val R = RatType
+  val N = NumberType.Nat
+  val I = NumberType.Int
+  val R = NumberType.Rat
+  val F = NumberType.Float
   val S = StringType
   def L(e: Type) = CollectionKind.List(e)
   def O(e: Type) = CollectionKind.Option(e)
 }
 
 /** 0 elements */
-case object EmptyType extends BaseType("empty") {
+case object EmptyType extends BaseType {
+  val name = "empty"
   def finite = true
 }
 
 /** 1 element */
-case object UnitType extends BaseType("unit") {
+case object UnitType extends BaseType {
+  val name = "unit"
   def finite = true
 }
 
 /** 2 elements */
-case object BoolType extends BaseType("bool") {
+case object BoolType extends BaseType {
+  val name = "bool"
   def finite = true
 }
 
-/** integer numbers */
-case object IntType extends BaseType("int") {
-  def finite = false
-}
-
-/** rationals numbers */
-case object RatType extends BaseType("rat") {
-  def finite = false
-}
-
-/** floating point numbers */
-case object FloatType extends BaseType("float") {
-  def finite = false
-}
-
 /** strings (exactly as implemented by Scala) */
-case object StringType extends BaseType("string") {
+case object StringType extends BaseType {
+  val name = "string"
   def finite = false
 }
 
 /** universal type of all expressions */
-case object AnyType extends BaseType("any") {
+case object AnyType extends BaseType {
+  val name = "any"
   def finite = false
 }
 
@@ -572,55 +565,99 @@ case object ExceptionType extends Type {
   def children = Nil
 }
 
+/**
+ * all numbers are represented in the same way using subtypes for specific number kinds
+ * @param negative negative numbers allowed
+ * @param fractional fractions, i.e., non-one denominator, allowed
+ * @param imaginary imaginary numbers, i.e., non-zero imaginary part, allowed
+ * @param approximate approximate values (represented as double precision floating point) allowed
+ * @param infinite real or (if allowed) imaginary part may positive or (if allowed) negative infinity
+ */
+case class NumberType(negative: Boolean, fractional: Boolean, imaginary: Boolean, approximate: Boolean, infinite: Boolean)
+  extends BaseType {
+  def name = {
+    NumberType.parseTable.find(_._2 == this) match {
+      case Some((s,_)) => s
+      case _ =>
+        var num = NumberType.parseTable.find(_._2 == NumberType(negative,fractional,false,false,false)).get._1
+        if (imaginary) num += "C"
+        if (approximate) num += "F"
+        if (infinite) num += "I"
+        num
+    }
+  }
+  def finite = false
+  def flagMap(that: NumberType)(f: (Boolean,Boolean) => Boolean) = (
+    f(negative, that.negative), f(fractional, that.fractional), f(imaginary, that.imaginary),
+    f(approximate, that.approximate), f(infinite,that.infinite)
+  )
+  def sub(that: NumberType): Boolean = {
+    flagMap(that)({case (x,y) => !x || y}).productIterator.forall(_ == true)
+  }
+  def union(that: NumberType) = {
+    val fs = flagMap(that)(_ || _)
+    NumberType(fs._1, fs._2, fs._3, fs._4, fs._5)
+  }
+  def inter(that: NumberType) = {
+    val fs = flagMap(that)(_ && _)
+    NumberType(fs._1, fs._2, fs._3, fs._4, fs._5)
+  }
+}
+object NumberType {
+  def apply(n: Boolean, f: Boolean, im: Boolean): NumberType = NumberType(n,f,im,false,false)
+  /** N */
+  val Nat = NumberType(false,false,false)
+  /** Z */
+  val Int = NumberType(true,false,false)
+  /** positive rationals (including 0) */
+  val PRat = NumberType(false,true,false)
+  /** Q */
+  val Rat = NumberType(true,true,false)
+  /** N+Ni */
+  val NatComp = NumberType(false,false,true)
+  /** Z+Zi */
+  val IntComp = NumberType(true,false,true)
+  /** real and imaginary part are positive and rational (including 0) */
+  val PRatComp = NumberType(false,true,true)
+  /** C, actually Q+Qi */
+  val RatComp = NumberType(true,true,true)
+  /** floats, i.e., approximate real numbers with infinity */
+  val Float = NumberType(true,true,false,true,true)
+
+  /** all types with special string rendering */
+  val parseTable = List("nat" -> Nat, "int" -> Int, "rat" -> Rat, "prat" -> PRat, "comp" -> RatComp, "float" -> Float)
+  val all = parseTable.map(_._1)
+}
+
 /** interval of integers, unbounded if bounds absent, including lower and upper bound if present */
 case class IntervalType(lower: Option[Expression], upper: Option[Expression])
-    extends Type {
+  extends Type {
   private def boundString(e: Option[Expression]) =
     e.map(_.toString).getOrElse("")
   override def toString = s"int[${boundString(lower)};${boundString(upper)}]"
   def label = "int"
   def children = lower.toList ::: upper.toList
   def finite = lower.isDefined && upper.isDefined
-  def concrete = lower.forall(_.isInstanceOf[IntValue]) && upper.forall(
-    _.isInstanceOf[IntValue]
+  def concrete = lower.forall(_.isInstanceOf[NumberValue]) && upper.forall(
+    _.isInstanceOf[NumberValue]
   )
 }
 
-// TODO merge all number types into NumberType(kind: NumberKind), add shortcut for Nat
-// remove redundant operator types; use first matching type when infering operator types
-
-case class NumberKind(lower: Option[Expression], upper: Option[Expression], fractions: Boolean) {
-  def sub(that: NumberKind): Option[Boolean] = {
-    if (this.fractions && !that.fractions) return Some(false)
-    val l = NumberType.lessEq(that.lower, this.lower, false).getOrElse(return None)
-    val r = NumberType.lessEq(this.upper, that.upper, true).getOrElse(return None)
-    Some(l && r)
-  }
-}
-
-object NumberType {
-  def apply(nk: NumberKind) = {
-    if (nk.lower.isEmpty && nk.upper.isEmpty) {
-      if (nk.fractions) RatType else IntType
-    } else {
-      if (nk.fractions) throw IError("rational interval")
-      else IntervalType(nk.lower, nk.upper)
-    }
-  }
-  def unapply(y: Type) = y match {
-    case IntType => Some(NumberKind(None, None, false))
-    case RatType => Some(NumberKind(None, None, true))
-    case IntervalType(lower, upper) => Some(NumberKind(lower, upper, false))
-    case _ => None
+object IntervalType {
+  //, boundMerge(lower,that.lower, true, true), boundMerge(upper,that.upper, false, true)
+  //, boundMerge(lower,that.lower, true, false), boundMerge(upper,that.upper, false, false)
+  def boundMerge(l: Option[Expression], r: Option[Expression], lower: Boolean, union: Boolean) = (l,r) match {
+    case (None,_) | (_,None) => if (union) None else l orElse r
+    case (Some(i),Some(j)) => if (lower) Some(Minimum(i,j)) else Some(Maximum(i,j))
   }
 
-  /** compares integer values, using None for sign*infinity */
+  /** compares integer expressions, using None for sign*infinity */
   def lessEq(e: Option[Expression], f: Option[Expression], sign: Boolean) = {
     (e, f) match {
       case (None, None)  => Some(true)
       case (None, Some(_)) => Some(!sign)
       case (Some(_), None) => Some(sign)
-      case (Some(IntValue(m)), Some(IntValue(n))) => Some(m <= n)
+      case (Some(m:NumberValue), Some(n:NumberValue)) => Some(m lessEq n)
       case _  => None
     }
   }
@@ -876,7 +913,7 @@ case class Tuple(comps: List[Expression]) extends Expression {
 case class Projection(tuple: Expression, index: Int) extends Expression {
   override def toString = s"$tuple.$index"
   def label = "proj"
-  def children = List(tuple, IntValue(index))
+  def children = List(tuple, NumberValue(index))
 }
 
 /** collections, introduction form for [[CollectionType]] */
@@ -942,41 +979,168 @@ case class BoolValue(v: Boolean) extends BaseValue(v, BoolType) {
   override def toString = value.toString
 }
 
-/** elements of [[IntType]] */
-case class IntValue(v: BigInt) extends BaseValue(v, IntType) {
-  override def toString = value.toString
-}
-
-/** elements of [[RatType]] */
-case class RatValue(enumer: BigInt, denom: BigInt) extends BaseValue(enumer / denom, RatType) {
-  override def toString = enumer.toString + "/" + denom.toString
-}
-
-/** helper object to construct/pattern-match numbers such that [[IntType]] is a subtype of [[RatType]] */
-object IntOrRatValue {
-  def apply(e: BigInt, d: BigInt): BaseValue = {
-    val g = e gcd d
-    val eg = e / g
-    val dg = d / g
-    if (dg == 1) IntValue(eg) else RatValue(eg, dg)
+case class NumberValue(override val tp: NumberType, re: Real, im: Real) extends BaseValue((re,im), tp) {
+  override def toString = {
+    val n = normalize
+    if (real) re.toString else s"$re+i$im"
   }
-  def unapply(e: Expression) = e match {
-    case IntValue(i)    => Some((i, BigInt(1)))
-    case RatValue(i, j) => Some((i, j))
-    case _              => None
+  def valid = re.valid && im.valid
+  def normal = re.normal && im.normal
+  def normalize = if (normal) this else NumberValue(tp, re.normalize, im.normalize)
+  def zero = re.zero && im.zero
+  def positive = re.positive && im.positive
+  def integer = re.integer && im.integer
+  def real = im.zero
+  def negate = NumberValue(tp.copy(negative = true), re.negate, im.negate)
+  def conjugate = NumberValue(tp.copy(negative = true), re, im.negate)
+  def invert = (this times conjugate) scale ((re times re) plus (im times im)).invert
+  def plus(z: NumberValue) = NumberValue(tp union z.tp, re plus z.re, im plus z.im)
+  def minus(z: NumberValue) = plus(z.negate)
+  def times(z: NumberValue) = NumberValue(tp union z.tp, (re times z.re) minus (im times z.im), (re times z.im) plus (im times z.re))
+  def scale(r: Real) = NumberValue(tp union r.tp, re times r, im times r)
+  def divide(z: NumberValue) = times(z.invert)
+  def lessEq(z: NumberValue) = (re lessEq z.re) && (im lessEq z.im)
+  def min(z: NumberValue) = NumberValue(tp union z.tp, re min z.re, im min z.im)
+  def max(z: NumberValue) = NumberValue(tp union z.tp, re max z.re, im max z.im)
+}
+
+object NumberValue {
+  def apply(i: BigInt, j: BigInt = Real.b1): NumberValue = {
+    val r = Rat(i,j)
+    NumberValue(r.tp, r, Real.zero)
   }
+  def zero = NumberValue(NumberType.Nat, Real.zero, Real.zero)
+  def one = NumberValue(NumberType.Nat, Real.one, Real.zero)
 }
 
-case class FloatValue(v: Double) extends BaseValue(v, FloatType) {
-  override def toString = v.toString
-}
-
-object FloatOrRatValue {
+// (un)apply for common special cases
+object RealValue {
+  def apply(r: Real) = NumberValue(r.tp, r, Real.zero)
   def unapply(e: Expression) = e match {
-    case FloatValue(f) => Some(f)
-    case IntOrRatValue(e,d) => Some(e.toDouble/d.toDouble)
+    case NumberValue(_,r,s) if s == Real.zero => Some(r)
     case _ => None
   }
+}
+object RatValue {
+  def apply(i: BigInt, j: BigInt) = RealValue(Rat(i,j))
+  def unapply(e: Expression) = e match {
+    case RealValue(Rat(i,j)) => Some((i,j))
+    case _ => None
+  }
+}
+object IntValue {
+  def apply(i: BigInt) = RatValue(i,1)
+  def unapply(e: Expression) = e match {
+    case RatValue(i,j) if i % j == 0 => Some(i/j)
+    case _ => None
+  }
+}
+object FloatValue {
+  def apply(f: Double) = RealValue(ApproxReal(f))
+  def unapply(e: Expression) = e match {
+    case RealValue(ApproxReal(f)) => Some(f)
+    case _ => None
+  }
+}
+
+
+sealed abstract class Real {
+  def tp: NumberType
+  def normal: Boolean
+  def valid: Boolean
+  def normalize: Real
+  def approx: ApproxReal
+  def negate: Real
+  def invert: Real
+  def plus(r: Real): Real
+  def minus(r: Real) = plus(r.negate)
+  def times(r: Real): Real
+  def div(r: Real) = times(r.invert)
+  def power(z: Real): Real
+  def eq(r: Real): Boolean
+  def lessEq(r: Real) = eq(r) || minus(r).negative
+  def min(r: Real) = if (lessEq(r)) this else r
+  def max(r: Real) = if (lessEq(r)) r else this
+
+  def infinite: Boolean
+  def zero: Boolean
+  def negative: Boolean
+  def positive = !zero && !negative
+  def integer: Boolean
+  def natural: Boolean
+}
+object Real {
+  val b0 = BigInt(0)
+  val b1 = BigInt(1)
+  val zero = Rat(b0,b1)
+  val one = Rat(b1,b1)
+}
+case class ApproxReal(value: Double) extends Real {
+  override def toString = value.toString
+  def tp = NumberType.Float
+  def valid = true
+  def normal = true
+  def normalize = this
+  def approx = this
+  def negate = ApproxReal(-value)
+  def invert = ApproxReal(1/value)
+  def plus(r: Real) = ApproxReal(value + approx.value)
+  def times(r: Real) = ApproxReal(value * approx.value)
+  def power(r: Real) = ApproxReal(Math.pow(value, approx.value))
+  def eq(r: Real) = value == approx.value
+
+  def zero = value == 0.0
+  def infinite = value.isInfinite
+  def negative = value < 0
+  def integer = false
+  def natural = false
+}
+case class Rat(enum: BigInt, denom: BigInt) extends Real {
+  override def toString = {
+    val n = normalize
+    if (n.integer) n.enum.toString else s"${n.enum}/${n.denom}"
+  }
+  def tp = NumberType(negative, !integer, false, false, infinite)
+  def approx = ApproxReal(enum.toDouble/denom.toDouble)
+  val valid = denom > 0
+  private[p] var _normal = false
+  def normal = _normal
+  def normalize: Rat = {
+    if (denom == 0) return Rat(enum.sign,0)
+    if (normal) return this
+    val g = enum gcd denom
+    val eg = enum / g
+    val dg = denom / g
+    val r = if (dg < 0) Rat(-eg, -dg) else Rat(eg, dg)
+    r._normal = true
+    r
+  }
+  def negate = Rat(-enum,denom)
+  def invert = Rat(denom,enum)
+  def plus(r: Real) = r match {
+    case r: Rat => Rat(enum * r.denom + r.enum * denom, enum * denom)
+    case _ => approx plus r
+  }
+  def times(r: Real) = r match {
+    case r: Rat => Rat(enum * r.enum, denom * r.denom)
+    case _ => approx times r
+  }
+  def power(r: Real) = r match {
+    case r: Rat if r.integer =>
+      val n = r.normalize.enum.abs
+      val p = Rat(enum ^ n, denom ^ n)
+      if (n < 0) p.invert else p
+    case _ => approx power r
+  }
+  def eq(r: Real) = r match {
+    case r: Rat => enum * r.denom == r.enum * denom
+    case _ => approx eq r
+  }
+  def zero = enum == 0 && denom != 0
+  def infinite = denom == 0
+  def negative = (enum > 0 && denom < 0) || (enum < 0 && denom > 0)
+  def integer = normalize.denom == 1
+  def natural = integer && !negative
 }
 
 /** elements of [[StringType]] */
@@ -1143,9 +1307,19 @@ case class Return(exp: Expression, thrw: Boolean) extends Expression {
 sealed abstract class Operator {
   val symbol: String
   val length = symbol.length
-  def types: List[FunType]
-  def polyTypes(u: UnknownType): List[FunType] = Nil
-  def uniqueType: Option[Type] = None
+  /** if this is overridden, type-checking first checks the number of arguments */
+  def arity: Option[Int] = None
+  /** if the operator has exactly one type, this should be overridden for easy type inference */
+  def uniqueType: Option[FunType] = None
+  /** if the operator is ad hoc polymorphic, this should be overridden to infer the operator type
+   * @param ins the argument types
+   * @param union: a callback to compute the union of some types
+   * @return the operator type if unique inference possible
+   * This function itself does not type-check or solve any unknowns.
+   * It just disambiguates what the operator type should be.
+   * The type checker then uses the disambiguated type to type-check the arguments, and that may also solve unknowns.
+   */
+  def typeFor(ins: List[Type], union: List[Type] => Type): Option[FunType] = uniqueType
   def makeExpr(args: List[Expression]) = Application(BaseOperator(this, uniqueType.getOrElse(Type.unknown(null))), args)
   def invertible: Boolean
   def isolatableArguments: List[Int] = Nil
@@ -1156,6 +1330,7 @@ sealed abstract class Operator {
 }
 
 sealed trait InfixParsable extends Operator {
+  override def arity = Some(2)
   def precedence: Int
   def assoc: Associativity
   def rightAssociative = assoc == RightAssociative
@@ -1215,95 +1390,50 @@ case object RightAssociative extends Associativity
 /** operators with prefix notation */
 sealed abstract class PrefixOperator(val symbol: String) extends Operator {
   def apply(e: Expression) = makeExpr(List(e))
+  override def arity = Some(1)
   def invertible = true
 }
 
 // for type abbreviations
 import BaseType._
 
-/** arithmetic operators */
-sealed trait Arithmetic {
-  val types = List(I <-- (I, I), R <-- (R, R), R <-- (I, R), R <-- (R, I), F <-- (F,F), F<--(F,R), F<--(R,F), F<--(F,I), F<--(I,F))
+/** generic code for operators that can act on numbers */
+sealed trait NumberOperator extends Operator {
+  /** pairs (A,F) such that if any input has type A, the operator has type F */
+  val specialInputCases: List[(BaseType,FunType)] = Nil
+  /** the output type is the union of all number types among the arguments unless that is adjusted here */
+  def specialOutputCase(o: NumberType): BaseType = o
+  /** finds all known number types among the arguments and assumes all unknown input types and the return type are their union */
+  override def typeFor(ins: List[Type], union: List[Type] => Type): Option[FunType] = {
+    specialInputCases.foreach {case (c, t) =>
+      if (ins.contains(c)) return Some(t)
+    }
+    val ns = ins.collect {
+      case n: NumberType => n
+    }
+    if (ns.isEmpty) None else {
+      val nsU = ns.tail.fold(ns.head)(_ union _)
+      val insS = ins.map {
+        case n: NumberType => n
+        case _ => nsU
+      }
+      val ft = SimpleFunType(insS, specialOutputCase(nsU))
+      Some(ft)
+    }
+  }
+}
+
+/** arithmetic operators for number values */
+sealed trait Arithmetic extends NumberOperator
+/** comparison operators for number values and other types */
+sealed trait Comparison extends NumberOperator {
+  override val specialInputCases = List((B, B<--(B,B)), (S, B<--(S,S)))
 }
 
 /** boolean connectives */
 sealed trait Connective extends Operator {
   def apply(args: List[Expression]): Expression
-  def tp = B <-- (B, B)
-  val types = List(tp)
-  override val uniqueType = Some(tp)
-  def toBaseOperator = BaseOperator(this,tp)
-}
-
-/** comparison operators for base values */
-sealed trait Comparison {
-  val types = List(B <-- (I, I), B <-- (R, R), B <-- (I, R), B <-- (R, I), B <-- (S, S), B <-- (B, B))
-}
-
-case object Plus extends InfixOperator("+", 0, Semigroup) with Arithmetic {
-  override val types = (S<--(S,S)) :: Times.types
-  override def polyTypes(u: UnknownType) = List(L(u)<--(L(u),L(u)))
-  override def associative = true
-  override def isolatableArguments = List(0,1)
-  override def isolate(pos: Int, args: List[Expression], result: Expression) = {
-    if (pos == 0) Some((args(0), Minus(result, args(1))))
-    else if (pos == 1) Some((args(1), Minus(result, args(0))))
-    else None
-  }
-}
-case object Minus extends InfixOperator("-", 0) with Arithmetic {
-  override def isolatableArguments = List(0, 1)
-  override def isolate(pos: Int, args: List[Expression], result: Expression) = {
-    if (pos == 0) Some((args(0), Plus(result, args(1))))
-    else if (pos == 1) Some((args(1), UMinus(Minus(result, args(0)))))
-    else None
-  }
-}
-case object Times extends InfixOperator("*", 10, Monoid(IntValue(1))) with Arithmetic {
-  override def isolatableArguments = List(0, 1)
-  override def isolate(pos: Int, args: List[Expression], result: Expression) = {
-    if (pos == 0) Some((args(0), Divide(result, args(1))))// TODO args(1) != 0 check??
-    else if (pos == 1) Some((args(1), Divide(result, args(0)))) // TODO args(0) != 0 check??
-    else None
-  }
-}
-case object Divide extends InfixOperator("/", 10) {
-  val types = List(R<--(I,I), R<--(R,R), R<--(I,R), R<--(R,I), F<--(F,F))
-  override def isolatableArguments = List(0, 1)
-  override def isolate(pos: Int, args: List[Expression], result: Expression) = {
-    if(pos == 0) Some((args(0), Times(result, args(1))))
-    else if (pos == 1) Some((args(1), Divide(args(0), result)))
-    else None
-  }
-}
-case object Minimum extends InfixOperator("min", 10, Semigroup) with Arithmetic
-case object Maximum extends InfixOperator("max", 10, Semigroup) with Arithmetic
-
-case object Power extends InfixOperator("^", 20, RightAssociative) {
-  val types = List(R<--(I,I), R<--(R,R), R<--(I,R), R<--(R,I), F<--(F,R), F<--(F,I))
-  override def isolatableArguments = List(0, 1)
-  override def isolate(pos: Int, args: List[Expression], result: Expression) = {
-    if (pos == 0) Some((args(0), Power(result, Divide(IntValue(1), args(1))))) // TODO args(1) != 0, result >= 0
-    //if (pos == 1) Some((args(1), )) // TODO Some((args(1), log(result, args(1))))
-    else None
-  }
-}
-
-case object In extends InfixOperator("in", -10) {
-  val types = Nil
-  override def polyTypes(u: UnknownType) = List(BoolType <-- (u, CollectionKind.Set(u)), BoolType <-- (u, CollectionKind.List(u)))
-}
-
-case object Cons extends InfixOperator("-:", -10, RightAssociative) {
-  val types = Nil
-  override def polyTypes(u: UnknownType) = List(L(u) <-- (u, L(u)))
-  override def invertible = true
-}
-
-case object Snoc extends InfixOperator(":-", -10) {
-  val types = Nil
-  override def polyTypes(u: UnknownType) = List(L(u) <-- (L(u), u))
-  override def invertible = true
+  override val uniqueType = Some(B<--(B,B))
 }
 
 case object And extends InfixOperator("&", -20, Monoid(BoolValue(true))) with Connective {
@@ -1322,6 +1452,10 @@ case object Or extends InfixOperator("|", -20, Monoid(BoolValue(false))) with Co
   }
 }
 
+case object Not extends PrefixOperator("!") {
+  override val uniqueType = Some(B <-- B)
+}
+
 /** implication a => b is the same as comparision a <= b; but we need a separate operator to get the right notation */
 case object Implies extends InfixOperator("=>", -20, RightAssociative) with Connective {
   def apply(args: List[Expression]): Expression = args match {
@@ -1332,21 +1466,133 @@ case object Implies extends InfixOperator("=>", -20, RightAssociative) with Conn
   override def isDynamic = true
 }
 
-case object Less extends InfixOperator("<", -10) with Comparison
-case object LessEq extends InfixOperator("<=", -10) with Comparison
-case object Greater extends InfixOperator(">", -10) with Comparison
-case object GreaterEq extends InfixOperator(">=", -10) with Comparison
+case object Plus extends InfixOperator("+", 0, Semigroup) with Arithmetic {
+  override val specialInputCases = List((S, S<--(S,S)))
+  override def associative = true
+  override def isolatableArguments = List(0,1)
+  override def isolate(pos: Int, args: List[Expression], result: Expression) = {
+    if (pos == 0) Some((args(0), Minus(result, args(1))))
+    else if (pos == 1) Some((args(1), Minus(result, args(0))))
+    else None
+  }
+}
+case object Minus extends InfixOperator("-", 0) with Arithmetic {
+  override def specialOutputCase(o: NumberType) = o.copy(negative = true)
+  override def isolatableArguments = List(0, 1)
+  override def isolate(pos: Int, args: List[Expression], result: Expression) = {
+    if (pos == 0) Some((args(0), Plus(result, args(1))))
+    else if (pos == 1) Some((args(1), UMinus(Minus(result, args(0)))))
+    else None
+  }
+}
+case object Times extends InfixOperator("*", 10, Monoid(NumberValue(1))) with Arithmetic {
+  override def isolatableArguments = List(0, 1)
+  override def isolate(pos: Int, args: List[Expression], result: Expression) = {
+    if (pos == 0) Some((args(0), Divide(result, args(1))))// TODO args(1) != 0 check??
+    else if (pos == 1) Some((args(1), Divide(result, args(0)))) // TODO args(0) != 0 check??
+    else None
+  }
+}
+case object Divide extends InfixOperator("/", 10) with Arithmetic  {
+  override def specialOutputCase(o: NumberType) = o.copy(fractional = true)
+  override def isolatableArguments = List(0, 1)
+  override def isolate(pos: Int, args: List[Expression], result: Expression) = {
+    if(pos == 0) Some((args(0), Times(result, args(1))))
+    else if (pos == 1) Some((args(1), Divide(args(0), result)))
+    else None
+  }
+}
+case object Minimum extends InfixOperator("min", 10, Semigroup) with Arithmetic
+case object Maximum extends InfixOperator("max", 10, Semigroup) with Arithmetic
 
-case object UMinus extends PrefixOperator("-") {
-  val types = List(I <-- I, R <-- R)
+case object Power extends InfixOperator("^", 20, RightAssociative) {
+  override def typeFor(ins: List[Type], union: List[Type] => Type) = {
+    val baseType = ins(0) match {
+      case n: NumberType if !n.imaginary => n
+      case _ => R
+    }
+    val expType = ins(1) match {
+      case n: NumberType => n
+      case _ => N
+    }
+    var ret = baseType
+    if (baseType.negative) ret = ret.copy(imaginary = true)
+    if (expType.negative) ret = ret.copy(fractional = true)
+    if (expType.fractional) ret = ret.copy(approximate = true)
+    Some(SimpleFunType(List(baseType, expType), ret))
+  }
+  override def isolatableArguments = List(0, 1)
+  override def isolate(pos: Int, args: List[Expression], result: Expression) = {
+    if (pos == 0) Some((args(0), Power(result, Divide(IntValue(1), args(1))))) // TODO args(1) != 0, result >= 0
+    //if (pos == 1) Some((args(1), )) // TODO Some((args(1), log(result, args(1))))
+    else None
+  }
+}
+
+case object UMinus extends PrefixOperator("-") with Arithmetic {
+  override def specialOutputCase(o: NumberType) = o.copy(negative = true)
   override def isolatableArguments = List(0)
   override def isolate(pos: Int, args: List[Expression], result: Expression) = {
     if (pos == 0) Some((args(0), UMinus(result)))
     else None
   }
 }
-case object Not extends PrefixOperator("!") {
-  val types = List(B <-- B)
+
+case object Less extends InfixOperator("<", -10) with Comparison
+case object LessEq extends InfixOperator("<=", -10) with Comparison
+case object Greater extends InfixOperator(">", -10) with Comparison
+case object GreaterEq extends InfixOperator(">=", -10) with Comparison
+
+/** generic code for operators on collections */
+sealed trait CollectionOperator extends Operator {
+  /** the inputs are assumed to be either elements or collections over elements; this gives the positions of the former */
+  val elemIndices: List[Int]
+  /** computes the type of the operators by taking the union of all element types */
+  override def typeFor(ins: List[Type], union: List[Type] => Type) = {
+    var elemTypes: List[Type] = Nil
+    var kds: List[CollectionKind] = Nil
+    val insW = ins.zipWithIndex
+    insW.foreach {
+      case (a, i) if a.known && elemIndices.contains(i) =>
+        elemTypes ::= a
+      case (c: CollectionType, i) if c.elem.known =>
+        elemTypes ::= c.elem
+        kds ::= c.kind
+      case _ =>
+    }
+    if (kds.isEmpty) None else {
+      val kdsU = kds.tail.fold(kds.head)(_ union _)
+      val elemU = union(elemTypes)
+      val coll = CollectionType(elemU,kdsU)
+      val insS = insW.map {
+        case (_,i) if elemIndices.contains(i) => elemU
+        case _ => coll
+      }
+      val ft = SimpleFunType(insS, specialOutputCase(coll))
+      Some(ft)
+    }
+  }
+  /** the result type is the union of all collection types unless that is changed here */
+  def specialOutputCase(c: CollectionType): Type = c
+}
+
+case object Concat extends InfixOperator(":::", -10, Monoid(CollectionKind.List(Nil))) with CollectionOperator {
+  val elemIndices = Nil
+}
+
+case object In extends InfixOperator("in", -10) with CollectionOperator {
+  val elemIndices = List(0)
+  override def specialOutputCase(c: CollectionType) = BoolType
+}
+
+case object Cons extends InfixOperator("-:", -10, RightAssociative) with CollectionOperator {
+  val elemIndices = List(0)
+  override def invertible = true
+}
+
+case object Snoc extends InfixOperator(":-", -10) with CollectionOperator {
+  val elemIndices = List(1)
+  override def invertible = true
 }
 
 sealed trait PseudoOperator extends Operator {
@@ -1375,7 +1621,7 @@ object Operator {
       Minimum, Maximum,
       And, Or, Implies,
       Less, LessEq, Greater, GreaterEq,
-      In, Cons, Snoc,
+      Concat, In, Cons, Snoc,
       Equal, Inequal
     ).sortBy(-_.length) // longer operators first for parsing
     val prefixes = List(UMinus, Not)
@@ -1388,7 +1634,7 @@ object Operator {
         case pf: PrefixOperator =>
           if (numArgs != 1) failNumArgs
           ((pf, as.head)) match {
-            case (UMinus, (IntOrRatValue(x, y))) => IntOrRatValue(-x, y)
+            case (UMinus, x: NumberValue) => x.negate
             case (Not, BoolValue(b)) => BoolValue(!b)
             case _ => throw IError("missing case for " + pf)
           }
@@ -1402,22 +1648,17 @@ object Operator {
               failNumArgs
             }
           } else (inf, as(0), as(1)) match {
-            case (Plus, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
-              IntOrRatValue(u * y + v * x, v * y)
-            case (Minus, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
-              IntOrRatValue(u * y - v * x, v * y)
-            case (Times, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
-              IntOrRatValue(u * x, v * y)
-            case (Minimum, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
-              IntOrRatValue((u * y) min (v * x), v * y)
-            case (Maximum, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
-              IntOrRatValue((u * y) max (v * x), v * y)
-            case (Divide, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
-              if (x == 0) throw ASTError("division by 0")
-              else IntOrRatValue(u * y, v * x)
-            case (c: Comparison, IntOrRatValue(u, v), IntOrRatValue(x, y)) =>
-              val d = u * y - v * x
-              val s = if (d > 0) 1 else if (d < 0) -1 else 0
+            case (Plus, x:NumberValue, y:NumberValue) => x plus y
+            case (Minus, x:NumberValue, y:NumberValue) => x plus y
+            case (Times, x:NumberValue, y:NumberValue) => x times y
+            case (Divide, x:NumberValue, y:NumberValue) =>
+              if (!y.tp.approximate && y.zero) throw ASTError("division by 0")
+              else x divide y
+            case (Power, RealValue(x), RealValue(y)) => RealValue(x power y)
+            case (Minimum, x:NumberValue, y:NumberValue) => x min y
+            case (Maximum, x:NumberValue, y:NumberValue) => x max y
+            case (c: Comparison, x:NumberValue, y:NumberValue) =>
+              val s = if (x eq y) 0 else if (x lessEq y) -1 else 1
               (s, c) match {
                 case (-1, Less | LessEq) | (1, Greater | GreaterEq) | (0, LessEq | GreaterEq) => BoolValue(true)
                 case _ => BoolValue(false)
@@ -1430,11 +1671,6 @@ object Operator {
                 case GreaterEq => l || !r
               }
               BoolValue(b)
-            case (Plus, FloatValue(f), FloatValue(g)) => FloatValue(f+g)
-            case (Minus, FloatOrRatValue(f), FloatOrRatValue(g)) => FloatValue(f-g)
-            case (Times, FloatOrRatValue(f), FloatOrRatValue(g)) => FloatValue(f*g)
-            case (Divide, FloatOrRatValue(f), FloatOrRatValue(g)) => FloatValue(f/g)
-            case (Power, FloatOrRatValue(f), FloatOrRatValue(g)) => FloatValue(Math.pow(f,g))
             case (And, BoolValue(l), BoolValue(r)) => BoolValue(l && r)
             case (Implies, BoolValue(l), BoolValue(r)) => BoolValue(if (l) r else true)
             case (Or, BoolValue(l), BoolValue(r)) => BoolValue(l || r)
@@ -1457,8 +1693,8 @@ object Operator {
       o match {
         case pf: PrefixOperator =>
           ((pf, res)) match {
-            case (UMinus, (IntOrRatValue(x, y))) =>
-              Some(List(IntOrRatValue(-x, y)))
+            case (UMinus, x:NumberValue) =>
+              Some(List(x.negate))
             case (Not, BoolValue(b)) => Some(List(BoolValue(!b)))
             case _ => throw IError("operator not invertible: " + pf)
           }

@@ -514,10 +514,12 @@ class Interpreter(vocInit: TheoryValue) {
       case EmptyType => Iterator.empty
       case UnitType => Iterator(UnitValue)
       case BoolType => Iterator(BoolValue(true), BoolValue(false))
-      case IntType => Enumeration.Integers.map(i => IntValue(i))
-      case RatType =>
-        val it = new ProductIterator(Enumeration.Integers, Enumeration.Naturals)
-        it.filter {case (i,n) => n != 0 && i.gcd(n) == 1}.map {case (i,n) => RatValue(i,n)}
+      case NumberType.Nat => Enumeration.Naturals.map(i => IntValue(i))
+      case NumberType.Int => Enumeration.Integers.map(i => IntValue(i))
+      case NumberType.Rat => Enumeration.Rationals.map(r => RealValue(r))
+      case NumberType.RatComp =>
+        val it = new ProductIterator(Enumeration.Rationals, Enumeration.Rationals)
+        it.map {case (r,i) => NumberValue(NumberType.RatComp, r, i)}
       case p:ProdType if p.simple => Enumeration.product(p.simpleComps map makeIterator).map(es => Tuple(es))
       case CollectionKind.Option(t) => Iterator(CollectionKind.Option(Nil)) ++ makeIterator(t)
       case CollectionType(t,k) => Enumeration.Naturals flatMap {n =>
@@ -693,7 +695,7 @@ object Enumeration {
     }
   }
 
-  object Naturals extends Iterator[BigInt] {
+  class NatIterator extends Iterator[BigInt] {
     private var current = -1
     def hasNext = true
     def next() = {
@@ -701,5 +703,10 @@ object Enumeration {
       current
     }
   }
-  val Integers: Iterator[BigInt] = Iterator(BigInt(0)) ++ Naturals.flatMap(n => Iterator(n,-n))
+  def Naturals = new NatIterator
+  val Integers: Iterator[BigInt] = Naturals.flatMap(n => Iterator(n,-n)).drop(1)
+  val Rationals: Iterator[Rat] = {
+    val it = new ProductIterator(Integers, Naturals)
+    it.filter { case (i, n) => n != 0 && i.gcd(n) == 1 }.map {case (i, n) => Rat(i, n)}
+  }
 }

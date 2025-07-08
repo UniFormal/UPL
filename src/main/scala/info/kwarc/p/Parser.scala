@@ -881,12 +881,14 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           skip("]")
           IntervalType(l,u)
         } else
-          IntType
+          NumberType.Int
       }
       //else if (startsWith("float")) {skip("float"); FloatType}
       //else if (startsWith("char")) {skip("char"); CharType}
-      else if (startsWithS("rat")) RatType
-      else if (startsWithS("float")) FloatType
+      else if (startsWithS("nat")) NumberType.Nat
+      else if (startsWithS("rat")) NumberType.Rat
+      else if (startsWithS("comp")) NumberType.RatComp
+      else if (startsWithS("float")) NumberType.Float
       else if (startsWithS("string")) StringType
       else if (startsWithS("bool")) BoolType
       else if (startsWithS("empty")) EmptyType

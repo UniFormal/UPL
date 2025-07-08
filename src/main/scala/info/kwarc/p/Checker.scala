@@ -659,8 +659,8 @@ class Checker(errorHandler: ErrorHandler) {
         }
       case _: BaseType | ExceptionType => tp
       case IntervalType(l,u) =>
-        val lC = l map {e => checkExpressionPure(gc,e,IntType)}
-        val uC = u map {e => checkExpressionPure(gc,e,IntType)}
+        val lC = l map {e => checkExpressionPure(gc,e,NumberType.Int)}
+        val uC = u map {e => checkExpressionPure(gc,e,NumberType.Int)}
         IntervalType(lC,uC)
       case CollectionType(a,k) => CollectionType(r(a),k)
       case ProdType(as) => ProdType(checkLocal(gc,as,false,false))
@@ -710,8 +710,7 @@ class Checker(errorHandler: ErrorHandler) {
     (a,b) match {
       case (_,AnyType) => AnyType
       case (EmptyType,_) =>
-      case (_:IntervalType,(IntType|RatType)) =>
-      case (IntType,RatType) =>
+      case (m: NumberType, n: NumberType) => m sub n
       case (a: IntervalType, b: IntervalType) =>
         (a.lower,b.lower) match {
           case (_,None) =>
@@ -781,9 +780,9 @@ class Checker(errorHandler: ErrorHandler) {
       case (AnyType,_) | (_,AnyType) => AnyType
       case (EmptyType,t) => t
       case (t,EmptyType) => t
-      case (IntType,RatType) | (RatType,IntType) => RatType
-      case (_: IntervalType, t@(IntType|RatType)) => t
-      case (t@(IntType|RatType), _: IntervalType) => t
+      case (m: NumberType, n: NumberType) => m union n
+      case (_: IntervalType, n: NumberType) => n.copy(negative = true)
+      case (n: NumberType, _: IntervalType) => n.copy(negative = true)
       case (a: IntervalType, b: IntervalType) =>
         val l = (a.lower,b.lower) match {
           case (Some(i),Some(j)) => Some(Minimum(i,j))
@@ -838,9 +837,9 @@ class Checker(errorHandler: ErrorHandler) {
       case (AnyType,t) => t
       case (t,AnyType) => t
       case (EmptyType,_) | (_,EmptyType) => EmptyType
-      case (IntType,RatType) | (RatType,IntType) => IntType
-      case (t: IntervalType, (IntType|RatType)) => t
-      case ((IntType|RatType), t: IntervalType) => t
+      case (m: NumberType, n: NumberType) => m inter n
+      case (t: IntervalType, n: NumberType) => t // TODO negative bounds
+      case (n: NumberType, t: IntervalType) => t
       case (a: IntervalType, b: IntervalType) =>
         val l = (a.lower,b.lower) match {
           case (Some(i),Some(j)) => Some(Maximum(i,j))
@@ -941,8 +940,8 @@ class Checker(errorHandler: ErrorHandler) {
           if (tpN != tp) apply(tpN) else tpN
         case IntervalType(l,u) =>
           applyDefault(tp) match {
-            case (IntervalType(Some(IntValue(l)),Some(IntValue(u)))) if l > u => EmptyType
-            case IntervalType(None,None) => IntType
+            case (IntervalType(Some(m:NumberValue),Some(n:NumberValue))) if !(m eq n) && (m lessEq n) => EmptyType
+            case IntervalType(None,None) => NumberType.Int
             case tpN => tpN
           }
         case _ => applyDefault(tp)
@@ -964,7 +963,7 @@ class Checker(errorHandler: ErrorHandler) {
       case (i, IntervalType(l,u)) =>
         val (iC,iI) = inferExpressionNorm(gc,i)(true)
         iI match {
-          case IntType =>
+          case NumberType(_,false,false,false,false) =>
             // inference of values return Int, so we need to see if we can downcast
             val lCond = l map {b => LessEq(b,iC)} getOrElse BoolValue(true)
             val uCond = u map {b => LessEq(iC,b)} getOrElse BoolValue(true)
@@ -1325,7 +1324,7 @@ class Checker(errorHandler: ErrorHandler) {
             val projI = Substituter(gc, sub, componentType)
             (Projection(tupC, p), projI)
           case mfp(dom, a) =>
-            (mfp.insert(dom, tupC, List(IntValue(p))), a)
+            (mfp.insert(dom, tupC, List(NumberValue(p))), a)
           case _ => fail("not a tuple")
         }
       case CollectionValue(es, k) =>
@@ -1337,7 +1336,7 @@ class Checker(errorHandler: ErrorHandler) {
         if (alsoCheck) {
           val u = Type.unknown(gc)
           val lC = checkExpression(gc, l, CollectionType(u, CollectionKind.UList))
-          val pC = checkExpression(gc, p, IntType)
+          val pC = checkExpression(gc, p, NumberType.Int)
           // index bounds not checked
           (ListElem(lC, pC), u)
         } else {
@@ -1664,7 +1663,18 @@ class Checker(errorHandler: ErrorHandler) {
   }
 
   def inferOperator(gc: GlobalContext,op: Operator,ins: List[Type])(implicit cause: Expression): Type = {
-    val param = Type.unknown(gc)
+    op.arity.foreach {a => if (ins.length != a) fail("wrong number of arguments")}
+    val insS = ins.map(_.skipUnknown)
+    val ft = op.typeFor(insS, typeUnion(gc,_)).getOrElse {
+      fail("no matching type for operator")
+    }
+    val assignments = matchTypes(ProdType.simple(insS), ProdType(ft.ins), BiContext(Nil))(gc, Some(true)).getOrElse {
+      fail("ill-typed operator")
+    }
+    assignAsMatched(assignments)
+    ft.out
+  }
+/*    val param = Type.unknown(gc)
     val possibleTypes = op.types:::op.polyTypes(param)
     val matchResults = possibleTypes.map {f =>
       matchTypes(ProdType.simple(ins), ProdType.simple(f.simpleInputs), BiContext(Nil))(gc,Some(true)).map((f,_))
@@ -1689,8 +1699,7 @@ class Checker(errorHandler: ErrorHandler) {
       }
     // better take union than fail because of operations on collections
     assignAsMatched(paramAssignment:::otherAssignments)
-    out
-  }
+    out*/
 
   private type TypeAssignments = List[(UnknownType,Type)]
   /** checks if two types can be made equal by assigning to unknowns, returns those assignments
@@ -1718,18 +1727,17 @@ class Checker(errorHandler: ErrorHandler) {
       case (k, u: UnknownType) if k.known && u.isSolvable =>
         solveType(gc,cons,u,k,false)
       // recursive cases
-      /** case (NumberType(k), NumberType(l)) =>
-        if (k == l ||
-          (subTypeDirection.contains(true)  && (k sub l).contains(true)) ||
-          (subTypeDirection.contains(false) && (l sub k).contains(true))
-        ) Some(List())
-        else None */
       case _ if aK.getClass != bK.getClass => None // fail quickly
       case (ProdType(as), ProdType(bs)) => matchTypeLists(as,bs,cons,false)
       case (FunType(as,c), FunType(bs,d)) =>
         val asc = as.append(VarDecl.anonymous(c))
         val bsd = bs.append(VarDecl.anonymous(d))
         matchTypeLists(asc,bsd,cons,true)
+      case (k: NumberType, l: NumberType) =>
+        if (k == l || (subTypeDirection.contains(true) && (k sub l)) || (subTypeDirection.contains(false) && (l sub k)))
+          Some(Nil)
+        else
+          None
       case (CollectionType(c,k), CollectionType(d,l)) =>
         if (k == l || (subTypeDirection.contains(true) && (k sub l)) || (subTypeDirection.contains(false) && (l sub k)))
           matchTypes(c,d,cons)
