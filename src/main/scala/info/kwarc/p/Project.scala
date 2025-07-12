@@ -137,13 +137,13 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
       val ch = new Checker(ec)
       val (eC,eI) = ch.checkAndInferExpression(GlobalContext(ip.voc),e)
       val ed = ExprDecl("res" + id.toString,eI,Some(eC),false)
-      result = ed.toString
+      result = ed.toString + "\n"
       if (ec.hasErrors) {
         result += ec
       } else {
         try {
           val edI = ip.interpretDeclaration(ed)
-          result += edI
+          result = edI.dfO.getOrElse("").toString
         } catch {
           case e: PError =>
             result += e.toString
@@ -155,7 +155,9 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
 
   def repl(ip: Interpreter): Unit = {
     var i = 0
+    println("Welcome to the UPL REPL\ntype 'exit' to leave")
     while (true) {
+      print("> ")
       val s = scala.io.StdIn.readLine()
       if (s == "exit") return
       i += 1
