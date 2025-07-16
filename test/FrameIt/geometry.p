@@ -29,7 +29,7 @@ module geometry{
     = a -> b -> c -> {
       val ba = vectorFromTo(b)(a)
       val bc = vectorFromTo(b)(c)
-      acos( scalarProd(ba)(bc) / (length(ba) * lenght(bc)) )
+      acos( scalarProd(ba)(bc) / (length(ba) * length(bc)) )
     }
 
   rightangle: point -> point -> point -> bool
