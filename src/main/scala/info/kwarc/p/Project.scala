@@ -21,11 +21,13 @@ class ProjectEntry(val source: SourceOrigin) {
 
 /**
   * A project stores interrelated toplevel source snippets.
-  * @param entries the sources
-  * @param main the main call to run this project
   */
-class Project(private var entries: List[ProjectEntry], main: Option[Expression] = None) {
-  override def toString = entries.map(_.source.toString).mkString(", ") + ": " + main.getOrElse("(no main)")
+class MultiFileProject() {
+
+
+  /** the main call to run this project */
+  var main: Option[Expression] = None
+  protected var entries: List[ProjectEntry] = Nil
   override def toString: String = entries.map(_.source.toString).mkString(", ") + ": " + main.getOrElse("(no main)")
   def verboseToString: String = entries.map(_.toString).mkString("\n") + "\nmain: " + main.getOrElse("()")
 
@@ -177,21 +179,22 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
   }
 }
 
-/**
-  * @param projFile either a .pp file containing a project description or a source file/folder
-  * @param main the expression to run
-  *
-  * A .pp file is of the form (key:value)^* where the keys are
-  * - source: a list of source files/folders (may occur multiple times)
-  * - main: the main expression
-  */
-object Project {
+object MultiFileProject {
   private val fileEndings = List(".p", ".p.tex")
   private def pFiles(f: File) = {
     val candidates = if (f.toJava.isFile) List(f) else f.descendants
     candidates.filter(d => fileEndings.exists(d.getName.endsWith))
   }
-  def fromFile(projFile: File, main: Option[String] = None): Project = {
+
+  /**
+    * @param projFile either a .pp file containing a project description or a source file/folder
+    * @param main     the expression to run
+    *
+    * @note           A .pp file is of the form (key:value)^*^ where the keys are
+    *                 - source: a list of source files/folders (may occur multiple times)
+    *                 - main: the main expression
+    */
+  def fromFile(projFile: File, main: Option[String] = None): MultiFileProject = {
     val (paths,mainS) = if (projFile.getExtension contains "pp") {
       val props = File.readPropertiesFromString(File.read(projFile))
       val src = props.getOrElse("source", "").split("\\s")
@@ -204,12 +207,13 @@ object Project {
     } else {
       (pFiles(projFile), main)
     }
-    val mainE = mainS.map(s => Parser.expression(projFile.toSourceOrigin, s, ErrorThrower))
-    val es = paths.map {p =>
-      new ProjectEntry(p.toSourceOrigin)
+    val p = new MultiFileProject()
+    p.main = mainS.map(s => Parser.expression(projFile.toSourceOrigin, s, ErrorThrower))
+    for (file <- paths) {
+      p.update(file.toSourceOrigin, Parser.getFileContent(file))
+      // new ProjectEntry(file.toSourceOrigin)
     }
-    val p = new Project(es,mainE)
-    p.entries.foreach {e => p.update(e.source, Parser.getFileContent(File(e.source.toString)))}
+    // p.entries.foreach {e => p.update(e.source, Parser.getFileContent(File(e.source.toString)))}
     p
   }
 

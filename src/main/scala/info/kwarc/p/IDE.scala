@@ -82,7 +82,7 @@ trait Uri extends js.Object {
 class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
   import vs._
 
-  val proj = new Project(Nil,None)
+  val proj = new MultiFileProject()
 
   private def makeOrigin(d: TextDocument) = {
     if (d.uri.scheme == "vscode-notebook-cell") {
