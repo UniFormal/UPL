@@ -13,6 +13,9 @@ class ProjectEntry(val source: SourceOrigin) {
   var checkedIsDirty = false
   var result = Theory.empty
   var errors = new ErrorCollector
+
+  override def toString = s"$source:$getVocabulary"
+
   def getVocabulary = if (checkedIsDirty) parsed else checked
 }
 
@@ -23,14 +26,17 @@ class ProjectEntry(val source: SourceOrigin) {
   */
 class Project(private var entries: List[ProjectEntry], main: Option[Expression] = None) {
   override def toString = entries.map(_.source.toString).mkString(", ") + ": " + main.getOrElse("(no main)")
-  def get(so: SourceOrigin) = entries.find(_.source == so).getOrElse {
+  override def toString: String = entries.map(_.source.toString).mkString(", ") + ": " + main.getOrElse("(no main)")
+  def verboseToString: String = entries.map(_.toString).mkString("\n") + "\nmain: " + main.getOrElse("()")
+
+  def get(so: SourceOrigin): ProjectEntry = entries.find(_.source == so).getOrElse {
     val e = new ProjectEntry(so)
     entries = entries ::: List(e)
     e
   }
 
-  def hasErrors = entries.exists(_.errors.hasErrors)
-  def getErrors = entries.flatMap(_.errors.getErrors)
+  def hasErrors: Boolean = entries.exists(_.errors.hasErrors)
+  def getErrors: List[SError] = entries.flatMap(_.errors.getErrors)
 
   def fragmentAt(loc: Location)= {
     val gc = makeGlobalContext()
@@ -48,19 +54,19 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
     (TheoryValue(gs:::lesC),TheoryValue(gs:::lesR))
   }
   /** all global entries concatenated */
-  def makeGlobalContext() = {
+  def makeGlobalContext(): GlobalContext = {
     val ds = entries.filter(_.global).flatMap(_.getVocabulary.decls)
     GlobalContext(TheoryValue(ds))
   }
 
-  def update(so: SourceOrigin, src: String) = {
+  def update(so: SourceOrigin, src: String): Unit = {
     val le = get(so)
     le.errors.clear
     le.parsed = Parser.text(so, src, le.errors)
     le.checkedIsDirty = true
   }
 
-  def check(so: SourceOrigin, alsoRun: Boolean): TheoryValue = {
+  def check(so: SourceOrigin, alsoRun: Boolean = false): TheoryValue = {
     val le = get(so)
     val (vocC,vocR) = makeGlobalContext(so)
     if (le.checkedIsDirty) {
@@ -73,7 +79,7 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
     if (alsoRun) {
       if (le.errors.hasErrors) return le.checked
       val ip = new Interpreter(vocR)
-      val leR = le.checked.decls.map(ip.interpretDeclaration(_))
+      val leR = le.checked.decls.map(ip.interpretDeclaration)
       le.result = TheoryValue(leR)
       le.result
     } else {
@@ -81,7 +87,7 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
     }
   }
 
-  def check(stopOnError: Boolean) = {
+  def check(stopOnError: Boolean): TheoryValue = {
     val ds = entries.flatMap(_.parsed.decls)
     val voc = TheoryValue(ds)
     val ec = if (stopOnError) ErrorThrower else new ErrorCollector
@@ -98,7 +104,7 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
     vocC
   }
 
-  def checkErrors() = {
+  def checkErrors(): Boolean = {
     if (hasErrors) {
       println(getErrors.mkString("\n"))
       true
