@@ -99,7 +99,6 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
     val txt = doc.getText()
     val txtU = if (doc.fileName.endsWith(".tex")) Tex.detexify(txt) else txt
     proj.update(so,txtU)
-    proj.check(so,false)
     val pe = proj.get(so)
     val diags = pe.errors.getErrors.map {e =>
       val rg = range(doc,e.loc)
@@ -230,9 +229,14 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
   def interpretCell(doc: TextDocument) = {
     val so = makeOrigin(doc)
     try {
-      proj.check(so,true).toString
+      proj.checkAndRun(so).toString
     } catch {
       case e: PError => e.getMessage
+    }
+    proj.checkAndRun(so) match {
+      case Left(e :: Nil) => e.getMessage
+      case Left(errs) => errs.mkString("Multiple errors occurred:\n","\n ","")
+      case Right(theoryValue) => theoryValue.toString
     }
   }
 

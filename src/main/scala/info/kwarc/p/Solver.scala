@@ -211,9 +211,10 @@ object SolverTest {
   def main(args: Array[String]): Unit = {
     val path = File(args(0)).canonical
     val proj = MultiFileProject.fromFile(path, None)
-    val voc = proj.check(true)
-    val gc = GlobalContext(voc)
-    val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "EqualSidedTriangle")))
-    println(tS)
+    proj.checkProject().foreach{ voc =>
+      val gc = GlobalContext(voc)
+      val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "EqualSidedTriangle")))
+      println(tS)
+    }
   }
 }
