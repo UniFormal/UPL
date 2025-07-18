@@ -1,13 +1,88 @@
 package info.kwarc.p
 
 /**
+  * An abstraction of source files
+  *  - avoids dependency on java.io.File
+  *  - allows representation of non-file sources, like
+  *   - notebook cells
+  *   - REPL inputs
+  *   - the FrameIT SituationTheory
+  */
+sealed trait SourceOrigin{
+  /**
+    * Toplevel declarations of a global source are in the context for all other sources
+    * Non global sources may override [[inContextFor]] to give visibility conditions
+    */
+  def global: Boolean
+  /** Are the toplevel declarations in this source visible from the other Source? */
+  def inContextFor(other: SourceOrigin): Boolean = global
+}
+/** An independent Source; toplevel declarations are globally visible
+  * @example Files
+  * @param source an identifier of this source, such as a file path or URL
+  */
+case class StandaloneSource(source: String) extends SourceOrigin {
+  def global: Boolean = true
+  override def toString: String = source
+}
+/** A small code fragment; toplevel declarations are visible only for other fragments of the same source
+  * @example Cells of a notebook-file
+  * @param source an identifier shared by all fragments of the same source, such as a file path or URL
+  * @param fragment an identifier of the fragment
+  */
+case class SourceFragment(source: String, fragment: String) extends SourceOrigin {
+  def global: Boolean = false
+  override def toString: String = source + "#" + fragment
+
+  override def inContextFor(other: SourceOrigin): Boolean = other match {
+    case SourceFragment(otherSource, otherFragment)
+      if otherSource == source && otherFragment != fragment => true
+    case _ => false
+  }
+}
+/** An anonymous source, behaves like a [[StandaloneSource]], but is guaranteed to always be unique.
+  * @example inputs to an interactive Interpreter
+  */
+final case class AnonymousSource private (id: Int) extends SourceOrigin {
+  def global: Boolean = true
+  override def toString: String = s"??$id"
+}
+object AnonymousSource{
+  def global: Boolean = false
+  private var counter = -1
+  /**  */
+  private def apply(id: Int): AnonymousSource = {
+    counter += 1
+    new AnonymousSource(counter)
+  }
+
+  def getNew(): AnonymousSource = {
+    counter += 1
+    new AnonymousSource(counter)
+  }
+}
+/** TmpSource is a volatile Source, that (semantically) is not actually stored.
+  * Its declarations are not visible to any other Source, and a [[ProjectEntry]]([[TmpSource]])
+  * can be overwritten without consequences.
+  * @example - parse/check/evaluate some input, without affecting the project
+  *          - REPL lines
+  */
+case object TmpSource extends SourceOrigin{
+  def global: Boolean = false
+  override def inContextFor(other: SourceOrigin): Boolean = false
+}
+
+/**
   * a part in a project with mutable fields maintained by the project
   */
 class ProjectEntry(val source: SourceOrigin) {
-  /** A source part may be split into fragments, e.g., for notebook cells.
-    * Such documents can see the global ones but not each other.
+  /**
+    * Global entries are visible to all others
     */
-  def global = source.fragment == null
+  def global: Boolean = source.global
+
+  /** Are the toplevel declarations in this entry in the context for the other Source? */
+  def inContextFor(so: SourceOrigin): Boolean = source.inContextFor(so)
   var parsed = Theory.empty
   var checked = Theory.empty
   var checkedIsDirty = false
@@ -23,8 +98,6 @@ class ProjectEntry(val source: SourceOrigin) {
   * A project stores interrelated toplevel source snippets.
   */
 class MultiFileProject() {
-
-
   /** the main call to run this project */
   var main: Option[Expression] = None
   protected var entries: List[ProjectEntry] = Nil
@@ -55,6 +128,7 @@ class MultiFileProject() {
     val lesR = les.flatMap(_.result.decls)
     (TheoryValue(gs:::lesC),TheoryValue(gs:::lesR))
   }
+
   /** all global entries concatenated */
   def makeGlobalContext(): GlobalContext = {
     val ds = entries.filter(_.global).flatMap(_.getVocabulary.decls)
@@ -136,7 +210,7 @@ class MultiFileProject() {
   def replLine(ip: Interpreter, id: Int, input: String): String = {
     val so = SourceOrigin("shell")
     val ec = new ErrorCollector
-    val e = Parser.expression(so,input,ec)
+    val e = Parser.expression(TmpSource, input, ec)
     if (ec.hasErrors) {
       ec.getErrors.mkString("\n")
     } else {

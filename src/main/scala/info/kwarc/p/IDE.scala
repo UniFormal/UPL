@@ -86,9 +86,9 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
 
   private def makeOrigin(d: TextDocument) = {
     if (d.uri.scheme == "vscode-notebook-cell") {
-      SourceOrigin(d.fileName, d.uri.fragment)
+      SourceFragment(d.fileName, d.uri.fragment)
     } else {
-      SourceOrigin(d.fileName)
+      StandaloneSource(d.fileName)
     }
   }
 
