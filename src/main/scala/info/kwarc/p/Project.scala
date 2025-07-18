@@ -71,6 +71,7 @@ case object TmpSource extends SourceOrigin{
   def global: Boolean = false
   override def inContextFor(other: SourceOrigin): Boolean = false
 }
+//</editor-fold>
 
 /**
   * a part in a project with mutable fields maintained by the project
@@ -98,44 +99,50 @@ class ProjectEntry(val source: SourceOrigin) {
   }
 }
 
-/**
-  * A project stores interrelated toplevel source snippets.
-  */
-class MultiFileProject() {
+trait Project {
   /** the main call to run this project */
   var main: Option[Expression] = None
   protected var entries: List[ProjectEntry] = Nil
-  override def toString: String = entries.map(_.source.toString).mkString(", ") + ": " + main.getOrElse("(no main)")
-  def verboseToString: String = entries.map(_.toString).mkString("\n") + "\nmain: " + main.getOrElse("()")
 
-  def get(so: SourceOrigin): ProjectEntry = entries.find(_.source == so).getOrElse {
-    val e = new ProjectEntry(so)
-    entries = entries ::: List(e)
-    e
-  }
+  override def toString: String =
+    entries.map(_.source.toString).mkString(", ") + ": " + main.getOrElse(
+      "(no main)"
+    )
+
+  def verboseToString: String =
+    entries.map(_.toString).mkString("\n") + "\nmain: " + main.getOrElse("()")
+
+  def get(so: SourceOrigin): ProjectEntry =
+    entries.find(_.source == so).getOrElse {
+      val e = new ProjectEntry(so)
+      entries = entries ::: List(e)
+      e
+    }
 
   def hasErrors: Boolean = entries.exists(_.errors.hasErrors)
+
   def getErrors: List[SError] = entries.flatMap(_.errors.getErrors)
 
-  def fragmentAt(loc: Location)= {
+  def fragmentAt(loc: Location) = {
     val gc = makeGlobalContext()
     val pe = get(loc.origin)
     val voc = pe.getVocabulary
-    voc.descendantAt(gc,loc)
+    voc.descendantAt(gc, loc)
   }
 
   /** All visible entries concatenated except for the given document
+    *
     * @return All declarations that are in the context for checking `so`
     */
   def makeContext(so: SourceOrigin): GlobalContext = {
     val declsInContext = entries
-      .filter (_.inContextFor(so))
+      .filter(_.inContextFor(so))
       .flatMap(_.checked.decls)
     GlobalContext(TheoryValue(declsInContext))
   }
 
-  /**
-    * all visible entries concatenated except for the given document; checked resp. executed
+  /** all visible entries concatenated except for the given document; checked resp. executed
+    *
     * @return All global declarations, and the evaluation of all other fragments in the same source
     */
   def makeEvaluationContext(so: SourceOrigin): TheoryValue = {
@@ -143,7 +150,7 @@ class MultiFileProject() {
       .filter(_.inContextFor(so))
       .partition(_.source match {
         case _: SourceFragment => false
-        case _ => true
+        case _                 => true
       })
     val gCs = gEs.flatMap(_.checked.decls)
     val lRs = lEs.flatMap(_.result.decls)
@@ -156,10 +163,10 @@ class MultiFileProject() {
     GlobalContext(TheoryValue(ds))
   }
 
-  /**
-    * Updates the entry for `so`, without checking for errors.
+  /** Updates the entry for `so`, without checking for errors.
     * If no entry exists, a new one will be created.
-    * @param so The [[SourceOrigin]] of the code
+    *
+    * @param so  The [[SourceOrigin]] of the code
     * @param src The code as [[String]]
     */
   def shallowUpdate(so: SourceOrigin, src: String): ProjectEntry = {
@@ -180,9 +187,8 @@ class MultiFileProject() {
         val leC = ch.checkVocabulary(gc, le.parsed, true)(le.parsed)
         le.checked = leC
         le.checkedIsDirty = false
-      }
-      catch {
-        case _:PError => return Left(le.errors.getErrors)
+      } catch {
+        case _: PError => return Left(le.errors.getErrors)
       }
     }
     Right(le.checked)
@@ -192,29 +198,30 @@ class MultiFileProject() {
     val le = get(so)
     val vocR = makeEvaluationContext(so)
     val checkedOrError = check(so)
-    checkedOrError.flatMap {
-      checked =>
+    checkedOrError.flatMap { checked =>
       val ip = new Interpreter(vocR)
       try {
         val leR = checked.decls.map(ip.interpretDeclaration)
         le.result = TheoryValue(leR)
         Right(le.result)
-      }
-      catch{
-        case err:PError => Left(List(err))
+      } catch {
+        case err: PError => Left(List(err))
       }
     }
   }
 
-  /**
-    * Updates the entry for `so`, or creates one if no such entry exists yet
+  /** Updates the entry for `so`, or creates one if no such entry exists yet
+    *
     * @param so  The [[SourceOrigin]] of the code
     * @param src The code as [[String]]
     * @return Either
     *         - Left: The list of errors encountered while parsing/checking
     *         - Right: The parsed and checked theory
     */
-  def update(so: SourceOrigin, src: String): Either[List[SError], TheoryValue] ={
+  def update(
+              so: SourceOrigin,
+              src: String
+            ): Either[List[SError], TheoryValue] = {
     shallowUpdate(so, src)
     check(so)
   }
@@ -231,8 +238,7 @@ class MultiFileProject() {
         es foreach eh.apply
       }
       Left(ec.getErrors)
-    }
-    else Right(vocC)
+    } else Right(vocC)
   }
 
   def run(): Option[Interpreter] = {
@@ -245,9 +251,9 @@ class MultiFileProject() {
     val e = main.getOrElse(UnitValue)
     val ch = new Checker(ErrorThrower)
     try {
-      val (eC,_) = ch.checkAndInferExpression(GlobalContext(voc), e)
-      val prog = Program(voc,eC)
-      val (ip,r) = Interpreter.run(prog)
+      val (eC, _) = ch.checkAndInferExpression(GlobalContext(voc), e)
+      val prog = Program(voc, eC)
+      val (ip, r) = Interpreter.run(prog)
       println(r)
       Some(ip)
     } catch {
@@ -257,7 +263,7 @@ class MultiFileProject() {
     }
   }
 
-  private def replLine(ip: Interpreter, id: Int, input: String): String = {
+  protected def replLine(ip: Interpreter, id: Int, input: String): String = {
     val ec = new ErrorCollector
     val e = Parser.expression(TmpSource, input, ec)
     if (ec.hasErrors) {
@@ -266,8 +272,8 @@ class MultiFileProject() {
       var result = ""
       val ec = new ErrorCollector
       val ch = new Checker(ec)
-      val (eC,eI) = ch.checkAndInferExpression(GlobalContext(ip.voc),e)
-      val ed = ExprDecl("res" + id.toString,eI,Some(eC),false)
+      val (eC, eI) = ch.checkAndInferExpression(GlobalContext(ip.voc), e)
+      val ed = ExprDecl("res" + id.toString, eI, Some(eC), false)
       result = ed.toString + "\n"
       if (ec.hasErrors) {
         result += ec
@@ -297,8 +303,8 @@ class MultiFileProject() {
     }
   }
 
-  /**
-    * Attempts to evaluate [[main]], and start a REPL afterwards
+  /** Attempts to evaluate [[main]], and start a REPL afterwards
+    *
     * @return
     *  - true if the REPL successfully started (and closed)
     *  - false if an error occurred, and the REPL couldn't start
@@ -306,10 +312,15 @@ class MultiFileProject() {
   def tryStartRepl(): Boolean = {
     run() match {
       case Some(ip) => repl(ip); true
-      case None => false
+      case None     => false
     }
   }
 }
+
+/**
+  * A project stores interrelated toplevel source snippets.
+  */
+class MultiFileProject() extends Project
 
 object MultiFileProject {
   private val fileEndings = List(".p", ".p.tex")
