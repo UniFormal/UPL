@@ -15,7 +15,7 @@ sealed trait SourceOrigin{
     */
   def global: Boolean
   /** Are the toplevel declarations in this source visible from the other Source? */
-  def inContextFor(other: SourceOrigin): Boolean = global
+  def inContextFor(other: SourceOrigin): Boolean = global && this != other
 }
 /** An independent Source; toplevel declarations are globally visible
   * @example Files
