@@ -4,10 +4,6 @@ trait Project {
 
   /** A part in a project with mutable fields maintained by the project */
   protected class ProjectEntry(val source: SourceOrigin) {
-  /**
-    * Global entries are visible to all others
-    */
-  def global: Boolean = source.global
 
   /** Are the toplevel declarations in this entry in the context for the other Source? */
   def inContextFor(so: SourceOrigin): Boolean = source.inContextFor(so)
@@ -108,7 +104,7 @@ trait Project {
 
   /** all global entries concatenated */
   def makeGlobalContext(): GlobalContext = {
-    val ds = entries.filter(_.global).flatMap(_.getVocabulary.decls)
+    val ds = entries.filter(_.source match { case _: GlobalSource => true }).flatMap(_.getVocabulary.decls)
     GlobalContext(TheoryValue(ds))
   }
 

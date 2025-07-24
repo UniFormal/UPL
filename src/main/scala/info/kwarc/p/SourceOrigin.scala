@@ -9,18 +9,12 @@ package info.kwarc.p
   *   - the FrameIT SituationTheory
   */
 sealed trait SourceOrigin{
-  /**
-    * Toplevel declarations of a global source are in the context for all other sources
-    * Non global sources may override [[inContextFor]] to give visibility conditions
-    */
-  def global: Boolean
   /** Are the toplevel declarations in this source visible from the other Source? */
   def inContextFor(other: SourceOrigin): Boolean
 }
 
-/** A source where toplevel declarations are globally visible */
+/** Toplevel declarations of a global source are in the context for all other sources */
 trait GlobalSource extends SourceOrigin{
-  def global: Boolean = true
   def inContextFor(other: SourceOrigin): Boolean = this != other
 }
 
@@ -39,7 +33,6 @@ final case class AnonymousSource private (id: Int) extends GlobalSource {
   override def toString: String = s"??$id"
 }
 object AnonymousSource{
-  def global: Boolean = false
   private var counter = -1
   /**  */
   private def apply(id: Int): AnonymousSource = {
@@ -53,17 +46,12 @@ object AnonymousSource{
   }
 }
 
-/** A code fragment that is not visible for all others. */
-trait LocalSource extends SourceOrigin{
-  def global: Boolean = false
-}
-
 /** A small code fragment; toplevel declarations are visible only for other fragments of the same source
   * @example Cells of a notebook-file
   * @param source an identifier shared by all fragments of the same source, such as a file path or URL
   * @param fragment an identifier of the fragment
   */
-case class SourceFragment(source: String, fragment: String) extends LocalSource {
+case class SourceFragment(source: String, fragment: String) extends SourceOrigin {
   override def toString: String = source + "#" + fragment
 
   def inContextFor(other: SourceOrigin): Boolean = other match {
@@ -79,6 +67,6 @@ case class SourceFragment(source: String, fragment: String) extends LocalSource 
   * @example - parse/check/evaluate some input, without affecting the project
   *          - REPL lines
   */
-case object TmpSource extends LocalSource {
+case object TmpSource extends SourceOrigin {
   def inContextFor(other: SourceOrigin): Boolean = false
 }
