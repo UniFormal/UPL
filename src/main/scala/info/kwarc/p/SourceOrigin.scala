@@ -8,7 +8,7 @@ package info.kwarc.p
   *   - REPL inputs
   *   - the FrameIT SituationTheory
   */
-sealed trait SourceOrigin{
+trait SourceOrigin{
   /** Are the toplevel declarations in this source visible from the other Source? */
   def inContextFor(other: SourceOrigin): Boolean
 }
