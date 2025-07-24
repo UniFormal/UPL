@@ -1,5 +1,6 @@
 package info.kwarc.p
 
+//<editor-fold desc="SourceOrigin">
 /**
   * An abstraction of source files
   *  - avoids dependency on java.io.File
@@ -97,6 +98,27 @@ class ProjectEntry(val source: SourceOrigin) {
     if (errors.hasErrors) Left(errors.getErrors)
     else Right(getVocabulary)
   }
+
+  /** Updates this entry with new code, without type-checking.
+    * Doesn't throw on parser errors, but set [[errors]] instead.
+    *
+    * @param src The new code as [[String]], to be parsed.
+    */
+  def shallowUpdate(src: String) = {
+    errors.clear
+    parsed = Parser.text(source, src, errors)
+    checkedIsDirty = true
+  }
+
+  /** Updates this entry, without type-checking.
+    *
+    * @param thVal the new value of this.[[parsed]]
+    */
+  def shallowUpdate(thVal: TheoryValue) = {
+    parsed = thVal
+    errors.clear
+    checkedIsDirty = true
+  }
 }
 
 trait Project {
@@ -163,20 +185,6 @@ trait Project {
     GlobalContext(TheoryValue(ds))
   }
 
-  /** Updates the entry for `so`, without checking for errors.
-    * If no entry exists, a new one will be created.
-    *
-    * @param so  The [[SourceOrigin]] of the code
-    * @param src The code as [[String]]
-    */
-  def shallowUpdate(so: SourceOrigin, src: String): ProjectEntry = {
-    val le = get(so)
-    le.errors.clear
-    le.parsed = Parser.text(so, src, le.errors)
-    le.checkedIsDirty = true
-    le
-  }
-
   def check(so: SourceOrigin): Either[List[SError], TheoryValue] = {
     val le = get(so)
     val gc = makeContext(so)
@@ -222,7 +230,25 @@ trait Project {
               so: SourceOrigin,
               src: String
             ): Either[List[SError], TheoryValue] = {
-    shallowUpdate(so, src)
+    val le = get(so)
+    le.shallowUpdate(src)
+    check(so)
+  }
+
+  /** Updates the entry for `so`, or creates one if no such entry exists yet
+    *
+    * @param so  The [[SourceOrigin]] of the code
+    * @param thVal The already parsed code as [[TheoryValue]]
+    * @return Either
+    *         - Left: The list of errors encountered while parsing/checking
+    *         - Right: The parsed and checked theory
+    */
+  def update(
+              so: SourceOrigin,
+              thVal: TheoryValue
+            ): Either[List[SError], TheoryValue] = {
+    val le = get(so)
+    le.shallowUpdate(thVal)
     check(so)
   }
 
@@ -353,8 +379,9 @@ object MultiFileProject {
     val p = new MultiFileProject()
     p.main = mainS.map(s => Parser.expression(projFile.toSourceOrigin, s, ErrorThrower))
     for (file <- paths) {
-      p.shallowUpdate(file.toSourceOrigin, Parser.getFileContent(file))
-      // new ProjectEntry(file.toSourceOrigin)
+      p
+        .get(file.toSourceOrigin) // new ProjectEntry(file.toSourceOrigin)
+        .shallowUpdate(Parser.getFileContent(file))
     }
     // p.entries.foreach {e => p.update(e.source, Parser.getFileContent(File(e.source.toString)))}
     p
