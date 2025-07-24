@@ -5,45 +5,45 @@ trait Project {
   /** A part in a project with mutable fields maintained by the project */
   protected class ProjectEntry(val source: SourceOrigin) {
 
-  /** Are the toplevel declarations in this entry in the context for the other Source? */
-  def inContextFor(so: SourceOrigin): Boolean = source.inContextFor(so)
+    /** Are the toplevel declarations in this entry in the context for the other Source? */
+    def inContextFor(so: SourceOrigin): Boolean = source.inContextFor(so)
 
-  var parsed = Theory.empty
-  var checked = Theory.empty
-  var checkedIsDirty = false
-  var result = Theory.empty
-  var errors = new ErrorCollector
+    var parsed = Theory.empty
+    var checked = Theory.empty
+    var checkedIsDirty = false
+    var result = Theory.empty
+    var errors = new ErrorCollector
 
-  override def toString = s"$source:$getVocabulary"
+    override def toString = s"$source:$getVocabulary"
 
-  def getVocabulary: TheoryValue = if (checkedIsDirty) parsed else checked
+    def getVocabulary: TheoryValue = if (checkedIsDirty) parsed else checked
 
-  def getStatus: Either[List[SError], TheoryValue] = {
-    if (errors.hasErrors) Left(errors.getErrors)
-    else Right(getVocabulary)
+    def getStatus: Either[List[SError], TheoryValue] = {
+      if (errors.hasErrors) Left(errors.getErrors)
+      else Right(getVocabulary)
+    }
+
+    /** Updates this entry with new code, without type-checking.
+      * Doesn't throw on parser errors, but set [[errors]] instead.
+      *
+      * @param src The new code as [[String]], to be parsed.
+      */
+    def shallowUpdate(src: String) = {
+      errors.clear
+      parsed = Parser.text(source, src, errors)
+      checkedIsDirty = true
+    }
+
+    /** Updates this entry, without type-checking.
+      *
+      * @param thVal the new value of this.[[parsed]]
+      */
+    def shallowUpdate(thVal: TheoryValue) = {
+      parsed = thVal
+      errors.clear
+      checkedIsDirty = true
+    }
   }
-
-  /** Updates this entry with new code, without type-checking.
-    * Doesn't throw on parser errors, but set [[errors]] instead.
-    *
-    * @param src The new code as [[String]], to be parsed.
-    */
-  def shallowUpdate(src: String) = {
-    errors.clear
-    parsed = Parser.text(source, src, errors)
-    checkedIsDirty = true
-  }
-
-  /** Updates this entry, without type-checking.
-    *
-    * @param thVal the new value of this.[[parsed]]
-    */
-  def shallowUpdate(thVal: TheoryValue) = {
-    parsed = thVal
-    errors.clear
-    checkedIsDirty = true
-  }
-}
 
   /** the main call to run this project */
   var main: Option[Expression] = None
@@ -309,6 +309,4 @@ object MultiFileProject {
     // p.entries.foreach {e => p.update(e.source, Parser.getFileContent(File(e.source.toString)))}
     p
   }
-}
-
 }
