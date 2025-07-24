@@ -74,10 +74,10 @@ case object TmpSource extends SourceOrigin{
 }
 //</editor-fold>
 
-/**
-  * a part in a project with mutable fields maintained by the project
-  */
-class ProjectEntry(val source: SourceOrigin) {
+trait Project {
+
+  /** A part in a project with mutable fields maintained by the project */
+  protected class ProjectEntry(val source: SourceOrigin) {
   /**
     * Global entries are visible to all others
     */
@@ -85,6 +85,7 @@ class ProjectEntry(val source: SourceOrigin) {
 
   /** Are the toplevel declarations in this entry in the context for the other Source? */
   def inContextFor(so: SourceOrigin): Boolean = source.inContextFor(so)
+
   var parsed = Theory.empty
   var checked = Theory.empty
   var checkedIsDirty = false
@@ -94,6 +95,7 @@ class ProjectEntry(val source: SourceOrigin) {
   override def toString = s"$source:$getVocabulary"
 
   def getVocabulary: TheoryValue = if (checkedIsDirty) parsed else checked
+
   def getStatus: Either[List[SError], TheoryValue] = {
     if (errors.hasErrors) Left(errors.getErrors)
     else Right(getVocabulary)
@@ -121,7 +123,6 @@ class ProjectEntry(val source: SourceOrigin) {
   }
 }
 
-trait Project {
   /** the main call to run this project */
   var main: Option[Expression] = None
   protected var entries: List[ProjectEntry] = Nil
@@ -386,5 +387,6 @@ object MultiFileProject {
     // p.entries.foreach {e => p.update(e.source, Parser.getFileContent(File(e.source.toString)))}
     p
   }
+}
 
 }
