@@ -1,72 +1,76 @@
 package info.kwarc.p
 
-trait Project {
+import scala.collection.mutable
+import scala.collection.MapView
 
-  /** A part in a project with mutable fields maintained by the project */
-  protected class ProjectEntry(val source: SourceOrigin) {
+/** A part in a project with mutable fields maintained by the project
+  * @todo ProjectEntries currently serve two purposes:
+  *       - parsed, checked, result and getVocabulary are the internal representation of a piece of source code
+  *       - source, inContextFor, checkedIsDirty and shallowUpdate serve the management of that code in the project
+  *       only `errors` serves both purposes, and both times it's a "nice-to-have".
+  *       I suggest making "CodeEntry", or "SourceContent" (mirroring [[SourceOrigin]]) its own thing.
+  *       [[Parser]], [[Checker]] and [[Interpreter]] may prefer to use them, over [[TheoryValue]]s with social contracts.
+  *       ---
+  *       As a first step I removed the use of [[ProjectEntry.source]] from [[Project]]
+  */
+class ProjectEntry(source:SourceOrigin) {
 
-    /** Are the toplevel declarations in this entry in the context for the other Source? */
-    def inContextFor(so: SourceOrigin): Boolean = source.inContextFor(so)
+  var parsed = Theory.empty
+  var checked = Theory.empty
+  var checkedIsDirty = false
+  var result = Theory.empty
+  var errors = new ErrorCollector
 
-    var parsed = Theory.empty
-    var checked = Theory.empty
-    var checkedIsDirty = false
-    var result = Theory.empty
-    var errors = new ErrorCollector
+  def getVocabulary: TheoryValue = if (checkedIsDirty) parsed else checked
 
-    override def toString = s"$source:$getVocabulary"
-
-    def getVocabulary: TheoryValue = if (checkedIsDirty) parsed else checked
-
-    def getStatus: Either[List[SError], TheoryValue] = {
-      if (errors.hasErrors) Left(errors.getErrors)
-      else Right(getVocabulary)
-    }
-
-    /** Updates this entry with new code, without type-checking.
-      * Doesn't throw on parser errors, but set [[errors]] instead.
-      *
-      * @param src The new code as [[String]], to be parsed.
-      */
-    def shallowUpdate(src: String) = {
-      errors.clear
-      parsed = Parser.text(source, src, errors)
-      checkedIsDirty = true
-    }
-
-    /** Updates this entry, without type-checking.
-      *
-      * @param thVal the new value of this.[[parsed]]
-      */
-    def shallowUpdate(thVal: TheoryValue) = {
-      parsed = thVal
-      errors.clear
-      checkedIsDirty = true
-    }
+  /** Updates this entry with new code, without type-checking.
+    * Doesn't throw on parser errors, but set [[errors]] instead.
+    *
+    * @param src The new code as [[String]], to be parsed.
+    */
+  def shallowUpdate(src: String) = {
+    errors.clear
+    parsed = Parser.text(source, src, errors)
+    checkedIsDirty = true
   }
 
+  /** Updates this entry, without type-checking.
+    *
+    * @param thVal the new value of this.[[parsed]]
+    */
+  def shallowUpdate(thVal: TheoryValue) = {
+    parsed = thVal
+    errors.clear
+    checkedIsDirty = true
+  }
+}
+
+/**
+  * A project stores interrelated source snippets.
+  * @todo Currently [[Project]] implicitly assumes to be a [[MultiSourceProject]],
+  *       although it's intended to become more general.
+  * @todo There may be a point in having [[Project]] extend [[mutable.Map]][ [[SourceOrigin]], ???]
+  *       (for some sensible pick of ???), because it kind of is mostly an extension of its `entries` field
+  */
+trait Project{
   /** the main call to run this project */
   var main: Option[Expression] = None
-  protected var entries: List[ProjectEntry] = Nil
+  /** the entries of the project.  */
+  protected var entries: mutable.Map[SourceOrigin, ProjectEntry] = mutable.Map.empty
 
   override def toString: String =
-    entries.map(_.source.toString).mkString(", ") + ": " + main.getOrElse(
-      "(no main)"
-    )
+    entries.keysIterator.mkString(", ") + ": " + main.getOrElse("(no main)")
 
   def verboseToString: String =
-    entries.map(_.toString).mkString("\n") + "\nmain: " + main.getOrElse("()")
+    entries.mkString("\n") + "\nmain: " + main.getOrElse("()")
 
-  def get(so: SourceOrigin): ProjectEntry =
-    entries.find(_.source == so).getOrElse {
-      val e = new ProjectEntry(so)
-      entries = entries ::: List(e)
-      e
-    }
+  def get(so: SourceOrigin): ProjectEntry = {
+    entries.getOrElseUpdate(so, new ProjectEntry(so))
+  }
 
-  def hasErrors: Boolean = entries.exists(_.errors.hasErrors)
+  def hasErrors: Boolean = entries.valuesIterator.exists( _.errors.hasErrors )
 
-  def getErrors: List[SError] = entries.flatMap(_.errors.getErrors)
+  def getErrors: List[SError] = entries.valuesIterator.flatMap(_.errors.getErrors).toList
 
   def fragmentAt(loc: Location) = {
     val gc = makeGlobalContext()
@@ -80,32 +84,41 @@ trait Project {
     * @return All declarations that are in the context for checking `so`
     */
   def makeContext(so: SourceOrigin): GlobalContext = {
-    val declsInContext = entries
-      .filter(_.inContextFor(so))
-      .flatMap(_.checked.decls)
-    GlobalContext(TheoryValue(declsInContext))
+    val declsInContext = entries.view
+      .filterKeys(_.inContextFor(so))
+      .mapValues(_.checked.decls)
+      .values.flatten
+    GlobalContext(declsInContext)
   }
 
   /** all visible entries concatenated except for the given document; checked resp. executed
     *
     * @return All global declarations, and the evaluation of all other fragments in the same source
+    *
+    * @todo Is the order of sources of relevance here? The current implementation guarantees NO order, but
+    *       there is a snippet below that does some grouping
     */
   def makeEvaluationContext(so: SourceOrigin): TheoryValue = {
-    val (gEs, lEs) = entries
-      .filter(_.inContextFor(so))
-      .partition(_.source match {
-        case _: SourceFragment => false
-        case _                 => true
-      })
-    val gCs = gEs.flatMap(_.checked.decls)
-    val lRs = lEs.flatMap(_.result.decls)
-    TheoryValue(gCs ::: lRs)
+    val decls = entries.view
+      .collect {
+        case (_: GlobalSource, e) => e.checked.decls
+        case (oso, e) if oso.inContextFor(so) => e.result.decls
+      }.flatten.toList
+    TheoryValue(decls)
+
+//    val (lRs, gCs) = entries.view
+//      .filterKeys(_.inContextFor(so))
+//      .partitionMap{
+//        case (_: SourceFragment,e) => Left(e.result.decls)
+//        case (_,e) => Right(e.checked.decls)
+//      }
+//    TheoryValue((gCs ++ lRs).flatten.toList)
   }
 
   /** all global entries concatenated */
   def makeGlobalContext(): GlobalContext = {
-    val ds = entries.filter(_.source match { case _: GlobalSource => true }).flatMap(_.getVocabulary.decls)
-    GlobalContext(TheoryValue(ds))
+    val ds = entries.view.collect{ case (_: GlobalSource,e) => e.getVocabulary.decls }.flatten
+    GlobalContext(ds)
   }
 
   def check(so: SourceOrigin): Either[List[SError], TheoryValue] = {
@@ -175,8 +188,15 @@ trait Project {
     check(so)
   }
 
+  /**
+    * @todo There is no canonical way to handle non-global [[SourceOrigin]]s in the returned [[TheoryValue]].
+    *       I will just ignore them outright, but that means they will not be checked, despite the name of this method
+    * @return
+    */
   def checkProject(): Either[List[SError], TheoryValue] = {
-    val ds = entries.flatMap(_.parsed.decls)
+    val ds = entries.view
+      .collect{case (_:GlobalSource, e) => e.parsed.decls}
+      .flatten.toList
     val voc = TheoryValue(ds)
     val ec = new ErrorCollector
     val ch = new Checker(ec)
@@ -255,8 +275,8 @@ trait Project {
   /** Attempts to evaluate [[main]], and start a REPL afterwards
     *
     * @return
-    *  - true if the REPL successfully started (and closed)
-    *  - false if an error occurred, and the REPL couldn't start
+    *  - `true` if the REPL successfully started (and closed)
+    *  - `false` if an error occurred, and the REPL couldn't start
     */
   def tryStartRepl(): Boolean = {
     run() match {
@@ -265,6 +285,7 @@ trait Project {
     }
   }
 }
+
 
 /**
   * A multi-source project contains code from multiple (truly independent) sources, e.g.
