@@ -3,19 +3,11 @@ package info.kwarc.p
 import java.io._
 import scala.collection._
 
-/** like File, but used to avoid any dependency on java.io.File
-  * @param path an identifier of the document holding the sources, such as a file path or URL
-  * @param fragment if the document is split into multiple fragments (e.g., in a notebook consisting of cells), an identifier of the fragment
-  */
-case class SourceOrigin(path: String, fragment: String = null) {
-  override def toString = path + (if (fragment != null) "#"+fragment else "")
-}
-
 case class File(toJava: java.io.File) {
    def /(s: String) = File(new java.io.File(toJava, s))
    def canonical : File = File(toJava.getCanonicalPath)
    override def toString = toJava.toString
-   def toSourceOrigin = SourceOrigin(toString)
+   def toSourceOrigin = StandaloneSource(toString)
 
   /** name (including extension) */
   def getName = toJava.getName

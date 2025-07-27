@@ -100,17 +100,17 @@ object Parser {
     if (f.getExtension contains ("tex")) Tex.detexify(txt) else txt
   }
 
-  def text(so: SourceOrigin,s: String,eh: ErrorHandler) = {
+  def text(so: SourceOrigin, s: String, eh: ErrorHandler): TheoryValue = {
     val p = new Parser(so,s,eh)
-    val ds = if (so.fragment != null) {
-      p.parseAll(p.parseExpressionOrDeclarations("_" + so.fragment.hashCode.abs))
-    } else {
-      p.parseAll(p.parseDeclarations)
+    val ds = so match {
+      case SourceFragment(source, fragment) =>
+        p.parseAll(p.parseExpressionOrDeclarations("_" + fragment.hashCode.abs))
+      case _ => p.parseAll(p.parseDeclarations)
     }
     TheoryValue(ds)
   }
 
-  def expression(so: SourceOrigin,s: String,eh: ErrorHandler) = {
+  def expression(so: SourceOrigin, s: String, eh: ErrorHandler): Expression = {
     val p = new Parser(so,s,eh)
     p.parseAll(p.parseExpression(PContext.empty))
   }

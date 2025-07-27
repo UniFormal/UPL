@@ -7,13 +7,13 @@ import scala.scalajs.js.annotation._
 object WebMain {
   val checker = new Checker(ErrorThrower)
   def checkProgram(input: String) = {
-    val voc = Parser.text(SourceOrigin("anonymous"),input, ErrorThrower)
+    val voc = Parser.text(AnonymousSource.getNew, input, ErrorThrower)
     val prog = Program(voc, UnitValue)
     checker.checkProgram(prog)
   }
 
   def runIn(prog: Program, expS: String) = {
-    val parser = new Parser(SourceOrigin("anonymous"),expS, ErrorThrower)
+    val parser = new Parser(AnonymousSource.getNew,expS, ErrorThrower)
     val exp = parser.parseExpression(PContext.empty)
     val (expC,expI) = checker.checkAndInferExpression(GlobalContext(prog.voc), exp)
     val intp = new Interpreter(prog.voc)

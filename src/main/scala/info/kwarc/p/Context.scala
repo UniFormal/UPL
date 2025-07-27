@@ -1,11 +1,11 @@
 package info.kwarc.p
 
 /** joint parent class for all levels of contexts
- * - global: all global declarations, i.e., the program's entire vocabulary
+ *  - global: all global declarations, i.e., the program's entire vocabulary
  *   names are unique due to qualification
- * - regional: global + choice of theory relative to which expressions are formed
+ *  - regional: global + choice of theory relative to which expressions are formed
  *   duplicate names are merged
- * - local: regional + locally bound variables
+ *  - local: regional + locally bound variables
  *   duplicate names cause shadowing
  *
  * Implementation-wise, it is more convenient to group the contexts in such a way that each subsumes the smaller ones.
@@ -446,6 +446,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
 
 object GlobalContext {
   def apply(n: String): GlobalContext = GlobalContext(Module(n, false, Nil))
+  def apply(decls: Iterable[Declaration]): GlobalContext = GlobalContext(Module.anonymous(decls.toList))
   def apply(v: TheoryValue): GlobalContext = GlobalContext(Module.anonymous(v.decls))
   def apply(m: Module): GlobalContext = GlobalContext(m, List(RegionalContextFrame(RegionalContext(Path.empty), true, Some(m.closed))))
 }
