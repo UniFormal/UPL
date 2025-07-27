@@ -16,7 +16,7 @@ object Main {
       java.nio.file.Files.createFile(file.toJava.toPath)
     }
     val mn = if (left.nonEmpty) Some(next) else None
-    val proj = MultiFileProject.fromFile(path, mn)
+    val proj = MultiSourceProject.fromFile(path, mn)
     //println(proj)
     if(interactive) proj.tryStartRepl()
     else proj.run()

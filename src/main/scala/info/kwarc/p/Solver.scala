@@ -210,7 +210,7 @@ object InverseMethods {
 object SolverTest {
   def main(args: Array[String]): Unit = {
     val path = File(args(0)).canonical
-    val proj = MultiFileProject.fromFile(path, None)
+    val proj = MultiSourceProject.fromFile(path, None)
     proj.checkProject().foreach{ voc =>
       val gc = GlobalContext(voc)
       val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "EqualSidedTriangle")))

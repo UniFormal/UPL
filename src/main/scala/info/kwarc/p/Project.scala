@@ -267,11 +267,11 @@ trait Project {
 }
 
 /**
-  * A project stores interrelated toplevel source snippets.
+  * A multi-source project contains code from multiple (truly independent) sources, e.g.
   */
-class MultiFileProject() extends Project
+class MultiSourceProject() extends Project
 
-object MultiFileProject {
+object MultiSourceProject {
   private val fileEndings = List(".p", ".p.tex")
   private def pFiles(f: File) = {
     val candidates = if (f.toJava.isFile) List(f) else f.descendants
@@ -286,7 +286,7 @@ object MultiFileProject {
     *                 - source: a list of source files/folders (may occur multiple times)
     *                 - main: the main expression
     */
-  def fromFile(projFile: File, main: Option[String] = None): MultiFileProject = {
+  def fromFile(projFile: File, main: Option[String] = None): MultiSourceProject = {
     val (paths,mainS) = if (projFile.getExtension contains "pp") {
       val props = File.readPropertiesFromString(File.read(projFile))
       val src = props.getOrElse("source", "").split("\\s")
@@ -299,7 +299,7 @@ object MultiFileProject {
     } else {
       (pFiles(projFile), main)
     }
-    val p = new MultiFileProject()
+    val p = new MultiSourceProject()
     p.main = mainS.map(s => Parser.expression(projFile.toSourceOrigin, s, ErrorThrower))
     for (file <- paths) {
       p
