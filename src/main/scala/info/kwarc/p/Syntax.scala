@@ -195,7 +195,7 @@ sealed abstract class Object extends SyntaxFragment
 
 /** theories */
 sealed trait Theory extends Object {
-  /* default values that are overriden only in TheoryValue */
+  /* default values that are overridden only in TheoryValue */
   def toValue: TheoryValue = TheoryValue(decls)
   def decls: List[Declaration] = List(Include(this))
   def isEmpty = this == Theory.empty
@@ -377,6 +377,9 @@ case class TheoryValue(override val decls: List[Declaration]) extends Theory wit
 
   /** prepend a declaration */
   def add(d: Declaration) = copy(decls = d :: decls)
+  def add(ds: List[Declaration]) = copy(decls = ds ::: decls)
+
+  // def slowAppend(ds: List[Declaration]) = copy(decls = decls ::: ds)
   override def copyFrom(sf: SyntaxFragment): this.type = {
     super.copyFrom(sf)
     sf match {

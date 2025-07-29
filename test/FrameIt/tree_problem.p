@@ -31,9 +31,9 @@ theory OppositeLength {
     acos = (x:float) -> 0.0
     
     dist:_ = (a:point, b:point) -> sqrt(scalar(vector(a, b), vector(a, b)))
-    scalar = (a:point, b:point) -> { return (a[0]+b[0], a[1]+b[1], a[2]+b[2]) }
-    length = (a:point) -> { dist(a, (0,0,0)) }
-    vector = (from:point, to:point) -> {return (b[0]-a[0], b[1]-a[1], b[2]-a[2])}
+    scalar = (a:point, b:point) -> (a[0]+b[0], a[1]+b[1], a[2]+b[2])
+    length = (a:point) -> dist(a, (0,0,0)) 
+    vector = (from:point, to:point) -> (b[0]-a[0], b[1]-a[1], b[2]-a[2])
     getAngle = ( a:point, b:point, c:point) -> {
         ba : point = vector(b, a)
         bc : point = vector(b, c)

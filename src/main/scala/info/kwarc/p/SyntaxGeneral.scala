@@ -4,7 +4,9 @@ package info.kwarc.p
 trait SyntaxFragment {
   private[p] var loc: Location =
     null // set by parser to remember location in source
-  def toStringShort = toString.take(10)
+
+  /** at max 10 characters */
+  def toStringShort: String = if (toString.length <= 10) toString else toString.take(7) + "..."
 
   /** moves over mutable fields, may be called after performing traversals
    * if the resulting expression is "the same" as the original in some sense

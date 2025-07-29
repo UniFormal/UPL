@@ -1,4 +1,4 @@
-module synth_geometry_v1{
+module synth_geometry_v1 {
 // #begin "Library" : Just a bunch of stubs, until there are actual importable implementations
     type num = rat
     type vec = (num, num, num)
@@ -153,8 +153,7 @@ module synth_geometry_Venema{
         }
 
         on: On{l=l_1}.Point
-        incidenceAxiom:_ 
-        = (p:point) -> (q:point) -> (l:line, |- in(p)(l), |- in(q)(l) )
+        incidenceAxiom: (p:point) -> (q:point) -> (l:line, |- in(p)(l), |- in(q)(l) )
         type distance = point -> point -> num
     }
     
@@ -179,12 +178,24 @@ module synth_geometry_Venema{
         // incidenceAxiom31: (_: Line, (l: Line) -> (p:Point, |- !on(p,l)))
 
         // Definition 2.2.1. Three points A, B, and C are collinear if there exists one line l such that all three of the points A, B, and C all lie on l.
-        type collinear = (A: Point, B: Point, C: Point) 
-            -> (l: Line, |- on(A,l), |- on(B,l), |- on(C,l))
+        type _collinear = (A: Point, B: Point, C: Point, l: Line, |- on(A,l), |- on(B,l), |- on(C,l))
+
+        theory collinear{
+            A: Point
+            B: Point
+            C: Point
+            coll: (l: Line, |- on(A,l), |- on(B,l), |- on(C,l))
+        } 
 
         // Definition 2.3.1. Two lines l and m are said to be parallel if there is no point P such that P lies on both l and m.
-        type parallel = (l:Line, m: Line) 
+        type _parallel = (l: Line, m: Line) 
             -> (P:Point) -> (|- !on(P,l) | !on(P,m)) 
+
+        theory parallel{
+            l: Line
+            m: Line
+            par: (P:Point) -> (|- !on(P,l) | !on(P,m))
+        }
         // There is no `empty` type, so no standard negation 
         type notParallel = (l:Line, m: Line) 
             -> (P:Point, |- on(P,l) , |- on(P,m)) 

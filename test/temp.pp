@@ -1,1 +1,1 @@
-source: FrameIT/components.p
+source: FrameIT/gameplay_example.p
