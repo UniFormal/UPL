@@ -30,11 +30,11 @@ module SolverTest {
   }
 
   theory MathStubs {
-    sin: float -> float
-    cos : float -> float
-    tan: float -> float
+    sin: float -> float = x -> x
+    cos : float -> float = x -> x
+    tan: float -> float = x -> x
 
-    sqrt : float -> float
+    sqrt : float -> float = x -> x
   }
 
   theory Triangle {
@@ -106,6 +106,14 @@ module SolverTest {
     alpha60: |- alpha == pi/3.0
     beta60: |- beta == pi/3.0
     gamma60: |- gamma == pi/3.0
-    //allAnglesEqual : |- (alpha == pi/3.0) && (beta == pi/3.0) && (gamma == pi/3.0)
+    //allAnglesEqual : |- (alpha == pi/3.0) & (beta == pi/3.0) & (gamma == pi/3.0)
+  }
+
+  theory Test {
+    include Triangle
+
+    ta: |- a == 4.0
+    tb: |- b == 4.0
+    tg: |- gamma == pi/2.0
   }
 }

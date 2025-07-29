@@ -49,49 +49,62 @@ object Solver {
      println(thyN.decls.filter(d => d.defined))
 
 
-     // TODO remove redundant axioms
-     props.foreach(p => {
-       if (p.occursRight.appendedAll(p.occursLeft).forall(s => knowns.exists(k => k.name == s))) {
-          redundantP ::= p
-         // TODO check axiom eval true ??
-       }
-     })
+     var noChanges : Boolean = false
+     while(!noChanges) {
+       noChanges = true
 
-     // TODO #unknowns in axiom/thy = 1
-     props.filter(p => !redundantP.contains(p)).foreach(p => {
-       val us = unknowns.filter(u => (p.occursRight:::p.occursLeft).contains(u.name))
-       println(p, us, us.length, us.flatMap(u => List((u.name, (p.occursRight:::p.occursLeft).count(s => s == u.name)))))
+       // TODO remove redundant axioms
+       props.foreach(p => {
+         if (p.occursRight.appendedAll(p.occursLeft).forall(s => knowns.exists(k => k.name == s))) {
+           redundantP ::= p
+           // TODO check axiom eval true ??
+         }
+       })
 
-       if (us.length == 1 && (p.occursRight:::p.occursLeft).iterator.count(s => s == us.head.name) == 1) {
-         val u = us.head
-         // unknown == f(knowns)
-         p.definiendum match {
-           case Some(u.name) => {
-             knowns ::= Known(u.name, p.right, true)
-             redundantP = p::redundantP
-           }
-           // f(knowns) == unknown
-           case Some(_) | None => p.reverseDefinendum match {
-             case Some(u.name) =>  {
-               knowns ::= Known(u.name, p.left, true)
+       // TODO #unknowns in axiom/thy = 1
+       props.filter(p => !redundantP.contains(p)).foreach(p => {
+         val us = unknowns.filter(u => (p.occursRight:::p.occursLeft).contains(u.name))
+         println(p, us, us.length, us.flatMap(u => List((u.name, (p.occursRight:::p.occursLeft).count(s => s == u.name)))))
+
+         if (us.length == 1 && (p.occursRight:::p.occursLeft).iterator.count(s => s == us.head.name) == 1) {
+           val u = us.head
+           // unknown == f(knowns)
+           p.definiendum match {
+             case Some(u.name) => {
+               knowns ::= Known(u.name, p.right, true)
+               unknowns = unknowns.filter(x => x.name != u.name)
+               noChanges = false
                redundantP = p::redundantP
              }
-             // other forms
-             // TODO umformungen
-             case Some(_) | None => {
-               val iso = findIsolatable(p.left, Occurrence.root.path).filter(n => n._1 == u.name)
-               val newProp = isolate(p, iso(0)._2)
-               props ::= newProp
-               knowns ::= Known(u.name, newProp.right, true)
+             // f(knowns) == unknown
+             case Some(_) | None => p.reverseDefinendum match {
+               case Some(u.name) =>  {
+                 knowns ::= Known(u.name, p.left, true)
+                 unknowns = unknowns.filter(x => x.name != u.name)
+                 noChanges = false
+                 redundantP = p::redundantP
+               }
+               // other forms
+               // TODO umformungen
+               case Some(_) | None => {
+                 val iso = findIsolatable(p.left, Occurrence.root.path).filter(n => n._1 == u.name)
+                 iso match {
+                   case Nil =>
+                   case iso_head :: rest =>
+                     // TODO andere Optionen aus rest???
+                     val newProp = isolate(p, iso_head._2)
+                     props ::= newProp
+                     knowns ::= Known(u.name, newProp.right, true)
+                     unknowns = unknowns.filter(x => x.name != u.name)
+                     noChanges = false
+                 }
+               }
              }
            }
          }
+       })
+     }
 
-
-
-
-       }
-     })
      // TODO #unknowns in axiom/thy > 1
 
 
@@ -190,6 +203,20 @@ case class Property(left: Expression, right: Expression) {
   }
 }
 
+/*class InverseMethodData(fun: Path, argPos: Int) {
+  def apply(l: Expression, r: Expression): Option[(Expression,Expression)]
+}
+
+case class InverseUnary(fun: Path, inv: Path) {
+  def apply(l: Expression, r: Expression): Option[(Expression,Expression)] = {
+    l match {
+      case Application(OpenRef(q), List(a)) if fun == q => Some((a,Application(OpenRef(inv), List(r))))
+    }
+  }
+}
+
+InverseUnary(Path(List("sin")), asin); */
+
 object InverseMethods {
   var table : List[(String, String)] = Nil
   table ::= ("sin", "asin")
@@ -213,7 +240,7 @@ object SolverTest {
     val proj = Project.fromFile(path, None)
     val voc = proj.check(true)
     val gc = GlobalContext(voc)
-    val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "EqualSidedTriangle")))
+    val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "Test")))
     println(tS)
   }
 }
