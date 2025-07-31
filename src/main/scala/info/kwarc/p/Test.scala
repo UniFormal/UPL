@@ -11,7 +11,7 @@ object Test {
     }
   }
 
-  def parse(s: String): TheoryValue = Parser.text(StandaloneSource("test"), s, ErrorThrower)
+  def parse(s: String): TheoryValue = Parser.text(SourceOrigin("test"), s, ErrorThrower)
 
   def check(s: String): TheoryValue = {
     val v = parse(s)

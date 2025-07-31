@@ -59,7 +59,7 @@ case class RegionalEnvironment(name: String, region: Option[Instance] = None, lo
       addedInBlock = addedInBlock.tail
     }
   }
-  private var addedInBlock: List[Int] = Nil
+  private var addedInBlock: List[Int] = List(0) // we start with an implicit block for toplevel variables
 }
 
 class GlobalEnvironment(var voc: TheoryValue) {

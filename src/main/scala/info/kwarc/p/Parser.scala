@@ -102,10 +102,10 @@ object Parser {
 
   def text(so: SourceOrigin, s: String, eh: ErrorHandler): TheoryValue = {
     val p = new Parser(so,s,eh)
-    val ds = so match {
-      case SourceFragment(source, fragment) =>
-        p.parseAll(p.parseExpressionOrDeclarations("_" + fragment.hashCode.abs))
-      case _ => p.parseAll(p.parseDeclarations)
+    val ds = if (!so.isStandalone) {
+      p.parseAll(p.parseExpressionOrDeclarations("_" + so.fragment.hashCode.abs))
+    } else {
+      p.parseAll(p.parseDeclarations)
     }
     TheoryValue(ds)
   }
@@ -298,7 +298,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   // check if input left after parsing
   def parseAll[A](parse: => A) = {
     val a = parse
-    if (!atEnd) reportError("expected end of input; found: " + input.substring(index))
+    if (!atEnd) reportError("expected end of input")
     a
   }
 
@@ -495,7 +495,13 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     es
   }
 
-  def parseExpression(implicit ctxs: PContext): Expression = addRef {parseExpressionInner}
+  def parseExpression(implicit ctxs: PContext): Expression = addRef {
+    try {
+      parseExpressionInner
+    } catch {
+      case Abort() => UndefinedValue(Type.unknown()) // give up on the subexpression but parse the rest
+    }
+  }
   def parseBracketedExpression(implicit ctxs: PContext) = {
     skip("(")
     val e = parseExpression
@@ -674,7 +680,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         case _ => true
       })
       val strongPostops = List(".","(","[","{","°")
-      while (tryPostOps && startsWithAny(strongPostops:_*)) {
+      while (tryPostOps && {trim; startsWithAny(strongPostops:_*)}) {
         setRef(exp,expBeginAt) // only the outermost expression gets its source reference automatically
         if (startsWithS("(")) {
           val es = parseExpressions("",")")
