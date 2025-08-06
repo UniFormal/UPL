@@ -79,10 +79,10 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
     }
   }
 
-  def check(stopOnError: Boolean) = {
+  def checkAll(throwOnError: Boolean) = {
     val ds = entries.flatMap(_.parsed.decls)
     val voc = TheoryValue(ds)
-    val ec = if (stopOnError) ErrorThrower else new ErrorCollector
+    val ec = if (throwOnError) ErrorThrower else new ErrorCollector
     val ch = new Checker(ec)
     val vocC = ch.checkVocabulary(GlobalContext(""), voc, true)(voc)
     ec match {
@@ -106,7 +106,7 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
 
   def run(): Option[Interpreter] = {
     if (checkErrors()) return None
-    val voc = check(true)
+    val voc = checkAll(false)
     if (checkErrors()) return None
     val e = main.getOrElse(UnitValue)
     val ch = new Checker(ErrorThrower)
