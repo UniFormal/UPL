@@ -89,6 +89,7 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
       case ec: ErrorCollector =>
         ec.getErrors.groupBy(e => e.loc.origin).foreach {case (o,es) =>
           val eh = get(o).errors
+          eh.clear
           es foreach eh.apply
         }
       case _ =>
