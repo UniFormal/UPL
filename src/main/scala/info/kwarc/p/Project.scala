@@ -29,8 +29,8 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
 
   def hasErrors = entries.exists(_.errors.hasErrors)
   def getErrors = entries.flatMap(_.errors.getErrors)
-
-  def fragmentAt(loc: Location)= {
+  
+  def fragmentAt(loc: Location) = {
     val gc = makeGlobalContext()
     val pe = get(loc.origin)
     val voc = pe.getVocabulary
@@ -51,11 +51,17 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
     GlobalContext(TheoryValue(ds))
   }
 
-  def update(so: SourceOrigin, src: String) = {
+  def shallowUpdate(so: SourceOrigin, src: String) = {
     val le = get(so)
     le.errors.clear
     le.parsed = Parser.text(so, src, le.errors)
     le.checkedIsDirty = true
+  }
+
+  def update(so: SourceOrigin, src: String) = {
+    shallowUpdate(so, src)
+    check(so, false)
+    get(so).errors.getErrors
   }
 
   def check(so: SourceOrigin, alsoRun: Boolean): TheoryValue = {
