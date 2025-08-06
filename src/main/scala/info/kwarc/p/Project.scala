@@ -1,11 +1,13 @@
 package info.kwarc.p
 
-/** a part in a project with mutable fields maintained by the project */
-class ProjectEntry(val source: SourceOrigin) {
-  /** A source part may be split into fragments, e.g., for notebook cells.
-   * Such documents can see the global ones but not each other.
-   */
-  def global = source.fragment == null
+import scala.collection.mutable
+
+/** A part in a project with mutable fields maintained by the project
+  * @todo [[Project]] has several methods where every other line starts with `entry.`
+  *       I suggest we move [[ProjectEntry]] into Project, and those methods into [[ProjectEntry]].
+  */
+class ProjectEntry(val source:SourceOrigin) {
+
   var parsed = Theory.empty
   var checked = Theory.empty
   var checkedIsDirty = false
@@ -15,21 +17,21 @@ class ProjectEntry(val source: SourceOrigin) {
 }
 
 /**
- * a project stores interrelated toplevel source snippets.
- * @param entries the sources
+ * A project stores interrelated toplevel source snippets.
  * @param main the main call to run this project
  */
-class Project(private var entries: List[ProjectEntry], main: Option[Expression] = None) {
-  override def toString = entries.map(_.source.toString).mkString(", ") + ": " + main.getOrElse("(no main)")
-  def get(so: SourceOrigin) = entries.find(_.source == so).getOrElse {
-    val e = new ProjectEntry(so)
-    entries = entries ::: List(e)
-    e
-  }
+class Project(main: Option[Expression] = None) {
+  protected var entries: mutable.Map[SourceOrigin, ProjectEntry] = mutable.Map.empty
+  override def toString: String =
+    entries.keysIterator.mkString(", ") + ": " + main.getOrElse("(no main)")
 
-  def hasErrors = entries.exists(_.errors.hasErrors)
-  def getErrors = entries.flatMap(_.errors.getErrors)
-  
+  def verboseToString: String =
+    entries.mkString("\n") + "\nmain: " + main.getOrElse("()")
+
+  def get(so: SourceOrigin): ProjectEntry = entries.getOrElseUpdate(so, new ProjectEntry(so))
+  def hasErrors: Boolean = entries.valuesIterator.exists( _.errors.hasErrors )
+  def getErrors: List[SError] = entries.valuesIterator.flatMap(_.errors.getErrors).toList
+
   def fragmentAt(loc: Location) = {
     val gc = makeGlobalContext()
     val pe = get(loc.origin)
@@ -37,18 +39,38 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
     voc.descendantAt(gc,loc)
   }
 
-  /** all global entries concatenated except for the given document; checked resp. executed */
-  def makeGlobalContext(so: SourceOrigin) = {
-    val gs = entries.filter(e => e.global && e.source.container != so.container).flatMap(_.checked.decls)
-    val les = entries.filter(e => !e.global && e.source.container == so.container && e.source.fragment != so.fragment)
-    val lesC = les.flatMap(_.checked.decls)
-    val lesR = les.flatMap(_.result.decls)
-    (TheoryValue(gs:::lesC),TheoryValue(gs:::lesR))
+  def isInContext(other: SourceOrigin)(implicit so: SourceOrigin) = {
+    so != other && (global(other) || so.container == other.container)
   }
+
+  def global(so: SourceOrigin) = so.fragment == null
+
+  /** all global entries concatenated except for the given document; checked resp. executed */
+  def makeContexts(implicit so: SourceOrigin) = {
+    val (checked, results) = (for{
+      (s, e) <- entries.view
+      if isInContext(s)
+      c <- e.checked.decls
+      r <- e.result.decls
+    } yield {
+      if (s.isStandalone) (c,c)
+      else (c,r)
+    }).unzip
+    (GlobalContext(checked), TheoryValue(results.toList))
+
+      // The old semantic, for comparison
+//    val es = entries.view.filterKeys(isInContext)
+//    val gs = es.filterKeys(_.isStandalone).valuesIterator.flatMap(_.checked.decls)
+//    val les = es.filterKeys(!_.isStandalone).valuesIterator
+//    val lesC = les.flatMap(_.checked.decls)
+//    val lesR = les.flatMap(_.result.decls)
+//    (GlobalContext((gs ++ lesC).toList), TheoryValue((gs ++ lesR).toList))
+  }
+
   /** all global entries concatenated */
   def makeGlobalContext() = {
-    val ds = entries.filter(_.global).flatMap(_.getVocabulary.decls)
-    GlobalContext(TheoryValue(ds))
+    val ds = entries.view.filterKeys(global).values.flatMap(_.getVocabulary.decls)
+    GlobalContext(ds)
   }
 
   def shallowUpdate(so: SourceOrigin, src: String) = {
@@ -60,34 +82,37 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
 
   def update(so: SourceOrigin, src: String) = {
     shallowUpdate(so, src)
-    check(so, false)
+    runChecker(so)
     get(so).errors.getErrors
   }
 
-  def check(so: SourceOrigin, alsoRun: Boolean): TheoryValue = {
+  def runChecker(so: SourceOrigin, gc: Option[GlobalContext] = None): Unit = {
     val le = get(so)
-    val (vocC,vocR) = makeGlobalContext(so)
     if (le.checkedIsDirty) {
-      if (le.errors.hasErrors) return le.parsed
+      if (le.errors.hasErrors) return
+      val vocC = gc.getOrElse(makeContexts(so)._1)
       val ch = new Checker(le.errors)
-      val leC = ch.checkVocabulary(GlobalContext(vocC),le.parsed,true)(le.parsed)
+      val leC = ch.checkVocabulary(vocC, le.parsed, true)(le.parsed)
       le.checked = leC
       le.checkedIsDirty = false
     }
-    if (alsoRun) {
-      if (le.errors.hasErrors) return le.checked
-      val ip = new Interpreter(vocR)
-      val leR = le.checked.decls.map(ip.interpretDeclaration(_))
-      le.result = TheoryValue(leR)
-      le.result
-    } else {
-      le.checked
-    }
+  }
+
+  def checkAndRun(so: SourceOrigin): TheoryValue = {
+    val le = get(so)
+    if (le.errors.hasErrors)
+      return { if (le.checkedIsDirty) le.parsed else le.checked }
+    val (vocC,vocR) = makeContexts(so)
+    runChecker(so, Some(vocC))
+    val ip = new Interpreter(vocR)
+    val leR = le.checked.decls.map(ip.interpretDeclaration)
+    le.result = TheoryValue(leR)
+    le.result
   }
 
   def checkAll(throwOnError: Boolean) = {
-    val ds = entries.flatMap(_.parsed.decls)
-    val voc = TheoryValue(ds)
+    val ds = entries.valuesIterator.flatMap(_.parsed.decls)
+    val voc = TheoryValue(ds.toList)
     val ec = if (throwOnError) ErrorThrower else new ErrorCollector
     val ch = new Checker(ec)
     val vocC = ch.checkVocabulary(GlobalContext(""), voc, true)(voc)
@@ -182,20 +207,21 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
   }
 }
 
-/**
- * @param projFile either a .pp file containing a project description or a source file/folder
- * @param main the expression to run
- *
- * A .pp file is of the form (key:value)^* where the keys are
- * - source: a list of source files/folders (may occur multiple times)
- * - main: the main expression
- */
 object Project {
   private val fileEndings = List(".p", ".p.tex")
   private def pFiles(f: File) = {
     val candidates = if (f.toJava.isFile) List(f) else f.descendants
     candidates.filter(d => fileEndings.exists(d.getName.endsWith))
   }
+
+  /**
+    * @param projFile either a .pp file containing a project description or a source file/folder
+    * @param main     the expression to run
+    *
+    *                 A .pp file is of the form (key:value)^*^ where the keys are
+    *                 - source: a list of source files/folders (may occur multiple times)
+    *                 - main: the main expression
+    */
   def fromFile(projFile: File, main: Option[String] = None): Project = {
     val (paths,mainS) = if (projFile.getExtension contains "pp") {
       val props = File.readPropertiesFromString(File.read(projFile))
@@ -210,12 +236,11 @@ object Project {
       (pFiles(projFile), main)
     }
     val mainE = mainS.map(s => Parser.expression(projFile.toSourceOrigin, s, ErrorThrower))
-    val es = paths.map {p =>
-      new ProjectEntry(p.toSourceOrigin)
+    val proj = new Project(mainE)
+    paths.foreach { file =>
+      proj.shallowUpdate(file.toSourceOrigin, Parser.getFileContent(file))
     }
-    val p = new Project(es,mainE)
-    p.entries.foreach {e => p.update(e.source, Parser.getFileContent(File(e.source.toString)))}
-    p
+    proj
   }
 
 }
