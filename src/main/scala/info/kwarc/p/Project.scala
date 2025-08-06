@@ -162,9 +162,17 @@ class Project(private var entries: List[ProjectEntry], main: Option[Expression] 
     }
   }
 
-  def runMaybeRepl(dropToRepl: Boolean): Unit = {
-    val ipO = run()
-    if (dropToRepl) ipO foreach {ip => repl(ip)}
+  /** Attempts to evaluate [[main]], and start a REPL afterwards
+    *
+    * @return
+    *  - `true` if the REPL successfully started (and closed)
+    *  - `false` if an error occurred, and the REPL couldn't start
+    */
+  def tryStartRepl(): Boolean = {
+    run() match {
+      case Some(ip) => repl(ip); true
+      case None => false
+    }
   }
 }
 
