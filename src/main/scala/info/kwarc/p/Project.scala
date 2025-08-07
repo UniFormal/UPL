@@ -52,17 +52,17 @@ class Project(main: Option[Expression] = None) {
 
   /** all global entries concatenated except for the given document; checked resp. executed */
   def makeContexts(implicit so: SourceOrigin) = {
-    val (checked, results) = (for{
-      e <- entries.view
+    val (checked, results) = (for {
+      e <- entries
       s = e.source
+      r = e.result.decls
+      c = e.checked.decls
       if isInContext(s)
-      c <- e.checked.decls
-      r <- e.result.decls
     } yield {
       if (s.isStandalone) (c,c)
       else (c,r)
     }).unzip
-    (GlobalContext(checked), TheoryValue(results.toList))
+    (GlobalContext(checked.flatten), TheoryValue(results.flatten))
 
       // The old semantic, for comparison
 //    val es = entries.filter(isInContext)
@@ -80,7 +80,6 @@ class Project(main: Option[Expression] = None) {
       if global(e.source)
       decl <- e.getVocabulary.decls
     } yield decl
-
     GlobalContext(ds)
   }
 
@@ -94,7 +93,6 @@ class Project(main: Option[Expression] = None) {
   def update(so: SourceOrigin, src: String) = {
     shallowUpdate(so, src)
     runChecker(so)
-    get(so).errors.getErrors
   }
 
   def runChecker(so: SourceOrigin, gc: Option[GlobalContext] = None): Unit = {
