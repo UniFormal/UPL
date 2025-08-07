@@ -13,3 +13,6 @@ sbt.xml
 /javascript
 /.idea/*
 !/.idea/runConfigurations
+/.bloop
+/.metals
+/.vscode
