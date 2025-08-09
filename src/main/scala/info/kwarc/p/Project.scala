@@ -18,7 +18,7 @@ class ProjectEntry(val source: SourceOrigin) {
  * A project stores interrelated toplevel source snippets.
  * @param main the main call to run this project
  */
-class Project(private var entries: List[ProjectEntry], main: Option[Expression] = None) {
+class Project(protected var entries: List[ProjectEntry], main: Option[Expression] = None) {
   override def toString: String = entries.map(_.source).mkString(", ") + ": " + main.getOrElse("(no main)")
 
   def get(so: SourceOrigin) = entries.find(_.source == so).getOrElse {

@@ -25,7 +25,7 @@ trait SiTh_handler {
   * A FrameIT Project has a "SituationTheory" (SiTh), a UPL theory (i.e. a closed [[Module]]) which can grow over time.
   * Its current value is accessible via [[SiTh.get]], and new declarations can be added via [[SiTh.tryAdd]]
   */
-class FrameITProject private()(implicit debug: Boolean) extends Project {
+class FrameITProject private()(implicit debug: Boolean) extends Project(Nil) {
   // SiTh: SituationTheory
   private def SiThFragment(id: Int) = SourceOrigin("SiTh", id.toString)
 
@@ -109,7 +109,7 @@ class FrameITProject private()(implicit debug: Boolean) extends Project {
     e.parsed = thVal
     e.errors.clear
     e.checkedIsDirty = true
-    runChecker(so)
+    check(so, false)
   }
 }
 object FrameITProject{
@@ -140,7 +140,7 @@ object FrameIT_Backend {
 //    JS_addS("z= 1+1")
 //    JS_addS("a=3")
     //SiTh.eval
-    proj.tryStartRepl()
+    proj.runMaybeRepl(true)
   }
 
   def CreatesDoubleCheckError() = {
