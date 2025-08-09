@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>UPL JS Test</title>
+  <style>
+    .row{
+      display: flex;
+      margin-bottom: 10px;
+    }
+    .col{
+      display: flex;
+      flex-direction: column;
+    }
+    button{
+      width: 5em;
+      margin: 10px;
+    }
+    textarea[error="true"]{
+      color: red;
+    }
+    .grow-wrap {
+      /* easy way to plop the elements on top of each other and have them both sized based on the tallest one's height */
+      display: grid;
+      width: 40%;
+    }
+    .grow-wrap::after {
+      /* Note the weird space! Needed to prevent jumpy behavior */
+      content: attr(data-replicated-value) " ";
+
+      /* This is how textarea text behaves */
+      white-space: pre-wrap;
+
+      /* Hidden from view, clicks, and screen readers */
+      visibility: hidden;
+    }
+    .grow-wrap > textarea {
+      /* You could leave this, but after a user resizes, then it ruins the auto sizing */
+      resize: none;
+
+      /* Firefox shows scrollbar on growth, you can hide like this. */
+      overflow: hidden;
+      /*! visibility: hidden; */
+    }
+    .grow-wrap > textarea,
+    .grow-wrap::after {
+      /* Identical styling required!! */
+      border: 1px solid black;
+      padding: 0.5rem;
+      font: inherit;
+
+      /* Place on top of each other */
+      grid-area: 1 / 1 / 2 / 2;
+    }
+  </style>
+  <script type="text/javascript" src="./target/scala-2.13/upl-fastopt/main.js"></script>
+  <script type="text/javascript">
+
+    function addToProject() {
+      const pS = document.getElementById("projIn").value
+      const out = document.getElementById("projOut")
+      if(FrameIT.addToSiTh(pS)){
+        out.removeAttribute("error")
+        out.value = FrameIT.showSiTh
+      }
+      else {
+        out.value = FrameIT.SiThErrors
+        out.setAttribute("error","true")
+      }
+      out.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function reset() {
+      const pS = document.getElementById("projIn").value
+      const out = document.getElementById("projOut")
+      FrameIT.resetSiTh()
+      out.removeAttribute("error")
+      out.value = FrameIT.showSiTh
+      out.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function evalUPL() {
+      // an empty line can be used to separate multiple expressions
+      const eS = document.getElementById("in").value.split("\n\n")
+      const out = document.getElementById("out")
+      if (prog === null){
+        out.value = "No context to evaluate in, use \"check\" first.\n(Checking an empty program is possible)."
+        out.setAttribute("error","true")
+        return
+      }
+      out.removeAttribute("error")
+      out.value = ""
+      eS.forEach(expr => {
+        try {
+          out.value += UPL.print(UPL.runIn(prog, expr)) + "\n\n"
+
+        } catch (error) {
+          out.value = error.name +" : "+ error.message + "\n\n"
+          out.setAttribute("error","true")
+          console.error(error)
+        }
+      });
+      // remove the unnecessary linebreaks at the end
+      out.value = out.value.trim()
+      out.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    // clone the value to the wrapper, so it can adapt the size
+    function replicateValue(node){
+      node.parentNode.dataset.replicatedValue = node.value + '\n'
+    }
+  </script>
+</head>
+<body>
+  <div class="row">
+    <div class="grow-wrap">
+      <textarea id="projIn" oninput="replicateValue(this)">x = 1</textarea>
+    </div>
+    <div class="col">
+      <button onclick="addToProject()">Add</button>
+      <button onclick="reset()">Reset</button>
+    </div>
+    <div class="grow-wrap">
+      <textarea id="projOut" oninput="replicateValue(this)"></textarea>
+    </div>
+  </div><div class="row">
+    <div class="grow-wrap">
+      <textarea id="in" oninput="replicateValue(this)">M.x</textarea>
+    </div>
+    <button onclick="evalUPL()">Evaluate</button>
+    <div class="grow-wrap">
+      <textarea id="out" oninput="replicateValue(this)"></textarea>
+    </div>
+  </div>
+</body>
+</html>
