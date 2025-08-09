@@ -445,7 +445,7 @@ class UnknownTypeContainer(private var id: Int, private[p] var tp: Type) {
   * All local variables that were visible when the type was created can be free in the solution.
   * This class can be seen as a redex that abstracts over them and is then applied to some arguments.
   * @param originalContext the free variables, initially context in which this type occurred
-  * @param container the mutable container of the solved type, initially null
+  * @param container the mutable container of the solved type, initially empty
   * @param sub the argument corresponding to the free variables, initially the identity
   */
 case class UnknownType(originalContext: GlobalContext, container: UnknownTypeContainer, sub: Substitution) extends Type {
@@ -462,7 +462,13 @@ case class UnknownType(originalContext: GlobalContext, container: UnknownTypeCon
   def label = container.label
   def children = if (sub == null) Nil else sub.children
   override def known = container.known
-  override def skipUnknown = if (!known) this else container.tp.skipUnknown.substitute(sub)
+  override def skipUnknown = if (!known) this else {
+    val sk = container.tp.skipUnknown
+    if (sub == null)
+      sk // only happens if unchecked content is reused after checking has solved a type
+    else
+      sk.substitute(sub)
+  }
 
   /** solves the unknown type
     * pre: if not null, t is relative to u.gc
