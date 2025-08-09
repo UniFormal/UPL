@@ -11,8 +11,7 @@ object Main {
     val mn = if (left.nonEmpty) Some(next) else None
     val proj = Project.fromFile(path, mn)
     //println(proj)
-    if (interactive) proj.tryStartRepl()
-    else proj.run()
+    proj.runMaybeRepl(interactive)
   }
 
   val doc =

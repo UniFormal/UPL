@@ -184,7 +184,7 @@ case class TypeDecl(name: String, tp: Type, dfO: Option[Type]) extends SymbolDec
   * @param tp the type, null if to be inferred during checking
   */
 case class ExprDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean) extends SymbolDeclaration {
-  def kind = if (mutable) Keywords.mutableExprDecl else "const"
+  def kind = if (mutable) Keywords.mutableExprDecl else Keywords.exprDecl
   def tpSep = ":"
 }
 
@@ -1184,6 +1184,7 @@ case class UndefinedValue(tp: Type) extends Expression {
   */
 case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean, output: Boolean) extends Expression with Named {
   def defined = dfO.isDefined
+  def keyword = if (mutable) Keywords.mutableVarDecl else Keywords.varDecl
   override def toString = {
     val sep = if (output) "#" else ":"
     val tpS = if (tp == null) "???" else tp.toString
@@ -1191,7 +1192,7 @@ case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boo
       case Some(v) => " = " + v.toString
       case None    => ""
     }
-    s"$name$sep $tpS$vlS"
+    s"$keyword $name$sep $tpS$vlS"
   }
   def label = if (name != "") name else "_"
   def children = tp :: dfO.toList

@@ -26,4 +26,18 @@ object Util {
     l.forall(n => r.contains(n))
   }
   def reverseMap[A,B](l: List[A])(f: A => B) = l.reverseIterator.map(f).toList
+
+  /** mutable list seen as a map
+   *  update prepends for efficiency; obsolete values are not cleared
+   */
+  class ListMap[A,B] {
+    private var entries: List[(A,B)] = Nil
+    def getEntries = entries
+    def apply(a: A) = entries.find(_._1 == a).map(_._2)
+    def update(a: A, b: B) = {
+      entries ::= (a,b)
+    }
+    def isEmpty = entries.isEmpty
+    def clear() = {entries = Nil}
+  }
 }

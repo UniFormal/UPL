@@ -56,7 +56,10 @@ abstract class Traverser[A] {
   def apply(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = matchC(d)(applyDefault _)
 
   protected final def applyDefault(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = d match {
-    case Module(n,op,df) => Module(n, op, apply(df).asInstanceOf[TheoryValue])
+    case m@Module(n,op,df) =>
+      val gcI = gc.enter(m)
+      val dsT = df.decls.map(d => apply(d)(gcI, a))
+      Module(n, op, TheoryValue(dsT))
     case Include(dm,df, r) =>
       Include(apply(dm), df map apply, r)
     case TypeDecl(n, bd, dfO) => TypeDecl(n, apply(bd), dfO map apply)

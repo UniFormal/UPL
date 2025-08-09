@@ -238,7 +238,7 @@ object SolverTest {
   def main(args: Array[String]): Unit = {
     val path = File(args(0)).canonical
     val proj = Project.fromFile(path, None)
-    val voc = proj.checkAll(true)
+    val voc = proj.check(true)
     val gc = GlobalContext(voc)
     val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "EqualSidedTriangle")))
     println(tS)

@@ -1,5 +1,7 @@
 package info.kwarc.p
 
+import java.time.chrono.ChronoLocalDate
+
 /** joint parent class for all levels of contexts
  *  - global: all global declarations, i.e., the program's entire vocabulary
  *   names are unique due to qualification
@@ -368,6 +370,9 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     throw ASTError("unknown parent: " + currentParent)
   }
 
+  /** returns the current open module if we are in one */
+  def inOpenModule = if (regions.forall(_.physical.contains(false))) Some(currentParent) else None
+
   /** declarations of the current parent/region */
   def parentDecls = {
     if (inPhysicalTheory) parentDecl.decls
@@ -401,6 +406,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     val n = obj match {
       case VarRef(n) => n
       case ClosedRef(n) => n
+      case OpenRef(p) => return resolvePath(p) map {case (pR,d) => (OpenRef(pR),Some(d))}
       case _ => return Some((obj, None))
     }
     // try finding local variable n in context
@@ -415,11 +421,10 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
         val level = regions.length - gc.regions.length + 1
         val ret = if (level > 1) {
           val owner = This(level)
-          val dom = gc.currentRegion.theory
           d match {
             case nd: NamedDeclaration =>
               val dO = OwnersSubstitutor.applyDecl(gc,nd,-level).asInstanceOf[NamedDeclaration]
-              val objC = OwnedReference(owner,dom,nd)
+              val objC = OwnedReference(owner,null,nd) // we keep the domain uninfered to avoid triggering checks later; but it will be inferred eventually anyway
               (objC,Some(dO))
             case _ => throw IError("impossible case")
           }

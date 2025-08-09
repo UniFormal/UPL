@@ -553,10 +553,10 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           if (startsWith(";")) skip(";")
         }
         Block(cs.reverse)
-      } else if (startsWithS("var")) {
+      } else if (startsWithS(Keywords.mutableVarDecl)) {
         trim
         parseVarDecl(true, true)
-      } else if (startsWithS("val")) {
+      } else if (startsWithS(Keywords.varDecl)) {
         trim
         parseVarDecl(false,true)
       } else if (startsWithAny("exists","forall")) {
@@ -917,6 +917,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           case _ => ProdType(ys)
         }
       } else if (startsWithS("|-")) {
+        // TODO: this awkardly parses c: |- F = p as c : |- (F = p) and then fails with a confusing error
         val e = parseExpression
         ProofType(e)
       } else {
@@ -978,6 +979,8 @@ object Keywords {
   val totalInclude = "realize"
   val exprDecl = "val"
   val mutableExprDecl = "mutable"
+  val varDecl = "val"
+  val mutableVarDecl = "var"
   val typeDecl = "type"
   val allDeclKeywords = List(openModule,closedModule,include,totalInclude,mutableExprDecl,typeDecl)
 }
