@@ -144,7 +144,6 @@ class Project(protected var entries: List[ProjectEntry], main: Option[Expression
       } else {
         var result = ""
         val (eC,eI) = ch.checkAndInferExpression(gc,e)
-        gc = gc.append(LocalContext.collectContext(eC))
         val ed = ExprDecl("res" + i.toString,eI,Some(eC),false)
         result = ed.toString
         if (ec.hasErrors) {
@@ -152,6 +151,7 @@ class Project(protected var entries: List[ProjectEntry], main: Option[Expression
         } else {
           try {
             val edI = ip.interpretDeclaration(ed)
+            gc = gc.append(LocalContext.collectContext(eC))
             result += "\n --> " + edI.dfO.get
           } catch {
             case e: PError =>
