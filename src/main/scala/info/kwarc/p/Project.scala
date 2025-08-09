@@ -113,6 +113,8 @@ class Project(main: Option[Expression] = None) {
       return { if (le.checkedIsDirty) le.parsed else le.checked }
     val (vocC,vocR) = makeContexts(so)
     runChecker(so, Some(vocC))
+    if (le.errors.hasErrors)
+      return le.checked
     val ip = new Interpreter(vocR)
     val leR = le.checked.decls.map(ip.interpretDeclaration)
     le.result = TheoryValue(leR)
@@ -120,7 +122,7 @@ class Project(main: Option[Expression] = None) {
   }
 
   def checkAll(throwOnError: Boolean) = {
-    val ds = entries.flatMap(_.parsed.decls)
+    val ds = entries.flatMap(_.getVocabulary.decls)
     val voc = TheoryValue(ds)
     val ec = if (throwOnError) ErrorThrower else new ErrorCollector
     val ch = new Checker(ec)
