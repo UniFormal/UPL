@@ -141,7 +141,7 @@ class Project(main: Option[Expression] = None) {
 
   def checkErrors() = {
     if (hasErrors) {
-      println(getErrors.mkString("\n"))
+      println("Project errors: " ++ getErrors.mkString("\n"))
       true
     } else
       false
@@ -180,22 +180,23 @@ class Project(main: Option[Expression] = None) {
       val so = SourceOrigin.shell(i)
       val e = Parser.expression(so,input,ec)
       val output = if (ec.hasErrors) {
-        ec.getErrors.mkString("\n")
+        ec.toString
       } else {
         var result = ""
         val (eC,eI) = ch.checkAndInferExpression(gc,e)
-        gc = gc.append(LocalContext.collectContext(eC))
         val ed = ExprDecl("res" + i.toString,eI,Some(eC),false)
         result = ed.toString
         if (ec.hasErrors) {
-          result += ec
+          result = s"Error while trying to check `$result`:\n$ec"
+          ec.clear
         } else {
           try {
             val edI = ip.interpretDeclaration(ed)
-            result += edI
+            gc = gc.append(LocalContext.collectContext(eC))
+            result += "\n=> " ++ edI.dfO.get.toString
           } catch {
             case e: PError =>
-              result += e.toString
+              result = s"Error while trying to interpret `$result`:\n$e"
           }
         }
         result
