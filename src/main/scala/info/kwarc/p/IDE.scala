@@ -99,6 +99,7 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
     val txt = doc.getText()
     val txtU = if (doc.fileName.endsWith(".tex")) Tex.detexify(txt) else txt
     proj.update(so,txtU)
+    proj.check(so, false)
     val pe = proj.get(so)
     val diags = pe.errors.getErrors.map {e =>
       val rg = range(doc,e.loc)
