@@ -411,6 +411,10 @@ case class TheoryValue(override val decls: List[Declaration]) extends Theory wit
   }
 }
 
+object TheoryValue {
+  def apply(decls: Declaration*): TheoryValue = TheoryValue(decls.toList)
+}
+
 object PhysicalTheory {
   def apply(p: Path, sds: List[SymbolDeclaration] = Nil): TheoryValue = TheoryValue(Include(OpenRef(p)) :: sds)
   def unapply(thy: Theory) = thy.decls match {

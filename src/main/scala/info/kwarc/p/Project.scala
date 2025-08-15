@@ -3,7 +3,7 @@ package info.kwarc.p
 
 /** A part in a project with mutable fields maintained by the projects */
 class ProjectEntry(val source: SourceOrigin) {
-  override def toString: String = source.toString
+  override def toString: String = source.toString ++ " ::\n" ++ getVocabulary.toString.indent(2)
   val errors = new ErrorCollector
   val depInter = new DependencyInterface
   var parsed = Theory.empty
@@ -18,12 +18,17 @@ class ProjectEntry(val source: SourceOrigin) {
  * A project stores interrelated toplevel source snippets.
  * @param main the main call to run this project
  */
-class Project(protected var entries: List[ProjectEntry], main: Option[Expression] = None) {
-  override def toString: String = entries.map(_.source).mkString(", ") + ": " + main.getOrElse("(no main)")
+class Project(protected var entries: List[ProjectEntry], var main: Option[Expression] = None) {
+  //val entries: SeqView[ProjectEntry] = revEntries.view.reverse
+  override def toString: String =
+    entries.map(_.source).mkString(", ") + ": " + main.getOrElse("(no main)")
+
+  def verboseToString: String =
+    entries.mkString("\n") + "\nmain: " + main.getOrElse("()")
 
   def get(so: SourceOrigin) = entries.find(_.source == so).getOrElse {
     val e = new ProjectEntry(so)
-    entries = entries ::: List(e)
+    entries = entries :+ e
     e
   }
   def hasErrors: Boolean = entries.exists(_.errors.hasErrors )
@@ -42,13 +47,13 @@ class Project(protected var entries: List[ProjectEntry], main: Option[Expression
     val les = entries.filter(e => !e.global && e.source.container == so.container && e.source.fragment != so.fragment)
     val lesC = les.flatMap(_.checked.decls)
     val lesR = les.flatMap(_.result.decls)
-    (TheoryValue(gs:::lesC),TheoryValue(gs:::lesR))
+    (TheoryValue(gs ++ lesC),TheoryValue(gs ++ lesR))
   }
 
   /** all global entries concatenated */
   def makeGlobalContext() = {
     val ds = entries.filter(_.global).flatMap(_.getVocabulary.decls)
-    GlobalContext(TheoryValue(ds))
+    GlobalContext(ds)
   }
 
   def update(so: SourceOrigin, src: String) = {
@@ -57,6 +62,11 @@ class Project(protected var entries: List[ProjectEntry], main: Option[Expression
     le.parsed = Parser.text(so, src, le.errors)
     DependencyAnalyzer.update(le)
     le.checkedIsDirty = true
+  }
+
+  def updateAndCheck(so: SourceOrigin, src: String): TheoryValue = {
+    update(so, src)
+    check(so, false)
   }
 
   def check(so: SourceOrigin, alsoRun: Boolean): TheoryValue = {
@@ -72,7 +82,7 @@ class Project(protected var entries: List[ProjectEntry], main: Option[Expression
     if (alsoRun) {
       if (le.errors.hasErrors) return le.checked
       val ip = new Interpreter(vocR)
-      val leR = le.checked.decls.map(ip.interpretDeclaration(_))
+      val leR = le.checked.decls.map(ip.interpretDeclaration)
       le.result = TheoryValue(leR)
       le.result
     } else {
@@ -138,7 +148,7 @@ class Project(protected var entries: List[ProjectEntry], main: Option[Expression
       i += 1
       val so = SourceOrigin.shell(i)
       ec.clear
-      val e = Parser.expression(so,input,ec)
+      val e = Parser.expression(so, input, ec)
       val output = if (ec.hasErrors) {
         ec.getErrors.mkString("\n")
       } else {
@@ -155,7 +165,7 @@ class Project(protected var entries: List[ProjectEntry], main: Option[Expression
             result += "\n --> " + edI.dfO.get
           } catch {
             case e: PError =>
-              result += e.toString
+              result += " " + e.toString
           }
         }
         result
@@ -206,5 +216,12 @@ object Project {
     val p = new Project(es,mainE)
     p.entries.foreach {e => p.update(e.source, Parser.getFileContent(File(e.source.toString)))}
     p
+  }
+}
+
+object ProjectTest{
+  def main(args: Array[String]): Unit = {
+    val proj = new Project(Nil)
+    proj.runMaybeRepl(true)
   }
 }

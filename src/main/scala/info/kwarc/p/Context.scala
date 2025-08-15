@@ -92,7 +92,7 @@ case class LocalContext(variables: List[VarDecl]) extends Context[LocalContext] 
 }
 object LocalContext {
   val empty = LocalContext(Nil)
-  def apply(d: VarDecl): LocalContext = LocalContext(List(d))
+  def apply(d: VarDecl*): LocalContext = LocalContext(d.toList)
   def make(vds: List[VarDecl]) = LocalContext(vds.reverse)
 
   /** collects the declarations introduced by this expression */
