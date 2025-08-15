@@ -186,6 +186,7 @@ case class TypeDecl(name: String, tp: Type, dfO: Option[Type]) extends SymbolDec
 case class ExprDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean) extends SymbolDeclaration {
   def kind = if (mutable) Keywords.mutableExprDecl else Keywords.exprDecl
   def tpSep = ":"
+  def asExpression: VarDecl = VarDecl(name, tp, dfO, mutable)
 }
 
 // ***************** Objects **************************************
@@ -1189,8 +1190,8 @@ case class UndefinedValue(tp: Type) extends Expression {
 
 /** local variable declaration
   * @param mutable write access allowed at run time
-  * @param output the variable has no value (unless defined) and can only be written to
-  *               unnamed output variables are the target of return statements
+  * @param output the variable has no value (unless defined) and can only be written to.
+  *               Unnamed output variables are the target of return statements
   */
 case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean, output: Boolean) extends Expression with Named {
   def defined = dfO.isDefined
@@ -1208,6 +1209,7 @@ case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boo
   def children = tp :: dfO.toList
   def toRef = VarRef(name).copyFrom(this)
   def toSub = VarDecl.sub(name, toRef)
+  def asDeclaration: ExprDecl = ExprDecl(name, tp, dfO, mutable)
 }
 object VarDecl {
   def apply(n: String, tp: Type, dfO: Option[Expression] = None, mutable: Boolean = false): VarDecl = VarDecl(n, tp, dfO, mutable, false)

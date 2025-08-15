@@ -141,10 +141,10 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     val ec = new ErrorCollector
     val ch = new Checker(ec)
     var gc = GlobalContext(ip.voc)
-    while (true) {
-      print("> ")
-      val input = scala.io.StdIn.readLine()
-      if (input == "exit") return
+    while (true) { scala.io.StdIn.readLine("> ") match {
+      case "exit" => return
+      case "#context" => println(gc)
+      case input =>
       i += 1
       val so = SourceOrigin.shell(i)
       ec.clear
@@ -153,15 +153,19 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
         ec.getErrors.mkString("\n")
       } else {
         var result = ""
-        val (eC,eI) = ch.checkAndInferExpression(gc,e)
-        val ed = ExprDecl("res" + i.toString,eI,Some(eC),false)
+        val (eC, eI) = ch.checkAndInferExpression(gc, e)
+        val ed: ExprDecl = eC match {
+          case v: VarDecl => v.asDeclaration
+          case _ => ExprDecl("res" + i.toString, eI, Some(eC), false)
+        }
         result = ed.toString
         if (ec.hasErrors) {
           result += "\n" + ec
         } else {
           try {
             val edI = ip.interpretDeclaration(ed)
-            gc = gc.append(LocalContext.collectContext(eC))
+            // ^this^ calls ip.env.voc = ip.env.voc.add(edI) 
+            gc = gc.append(LocalContext.collectContext(edI.asExpression))
             result += "\n --> " + edI.dfO.get
           } catch {
             case e: PError =>
@@ -171,6 +175,7 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
         result
       }
       println(output)
+    }
     }
   }
 
