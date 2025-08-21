@@ -26,13 +26,20 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
   def verboseToString: String =
     entries.mkString("\n") + "\nmain: " + main.getOrElse("()")
 
+  // holds errors with unknown location
+  val errors = new ErrorCollector
+
   def get(so: SourceOrigin) = entries.find(_.source == so).getOrElse {
     val e = new ProjectEntry(so)
     entries = entries :+ e
     e
   }
-  def hasErrors: Boolean = entries.exists(_.errors.hasErrors )
-  def getErrors: List[SError] = entries.flatMap(_.errors.getErrors)
+  def hasErrors: Boolean = errors.hasErrors || entries.exists(_.errors.hasErrors)
+  def getErrors: List[SError] = errors.getErrors ++ entries.flatMap(_.errors.getErrors)
+  private def getErrorContainer(soO: Option[SourceOrigin]) = soO match {
+    case None => errors
+    case Some(o) => get(o).errors
+  }
 
   def fragmentAt(loc: Location) = {
     val gc = makeGlobalContext()
@@ -98,8 +105,9 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     val vocC = ch.checkVocabulary(GlobalContext(""), voc, true)(voc)
     ec match {
       case ec: ErrorCollector =>
-        ec.getErrors.groupBy(e => e.loc.origin).foreach {case (o,es) =>
-          val eh = get(o).errors
+        errors.clear
+        ec.getErrors.groupBy(e => Option(e.loc).map(_.origin)).foreach {case (o,es) =>
+          val eh = getErrorContainer(o)
           eh.clear
           es foreach eh.apply
         }

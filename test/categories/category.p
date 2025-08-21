@@ -1,58 +1,62 @@
 module Cat {
 
+    theory Type {
+       type univ
+    }
+
     theory Category {
         // A category consists of objects and morphisms (arrows) between them.
         type object
-        type morphism = (object, object)
+        // This would be something "type morphism(object,object)" if UPL supported dependent base types
+        morphism: (object, object) -> Type
 
-        // 1. identity: every object has an identity morphism
-        // declare id as subtype of morphism?
-        is_id_morphism: morphism -> bool = m -> {
-            m match {
-                (obj1, obj2) -> obj1 == obj2
-            }
-        }
-        is_source: morphism -> object -> bool = m -> o -> {
-            m match {
-                (src, tgt) -> src == o
-            }
-        }
-        // in a category, every object has an identity morphism
-        identity: |- forall o: object. exists m: morphism. is_source(m)(o) & is_id_morphism(m)
+        id: (a:object) -> morphism(a,a)
+        op: (a,b,c, f: morphism(a,b), g:morphism(b,c)) -> morphism(a,c)
 
-        // 2. composition: morphisms compose
-        // composition operator
-        op: (morphism, morphism) -> morphism = (m1, m2) -> {
-            // m1 and m2 must be compatible, i.e., the target of m1 must match the source of m2
-            (m1, m2) match {
-                ((src1, tgt1), (src2, tgt2)) -> (src1, tgt2)
-            }
-        }
+        neutLeft:  |- forall a,b, f: morphism(a,b). op(a,a,b,id(a), f) == f
+        neutRight: |- forall a,b, f: morphism(a,b). op(a,b,b,f,id(b)) == f
+        assoc: |- forall a,b,c,d, f: morphism(a,b), g: morphism(b,c), h: morphism(c,d). op(a,b,d,f,op(b,c,d,g,h)) == op(a,c,d,op(a,b,c,f,g), h)
+    }
 
-        // category is closed under composition: the composition of two morphisms must exists
-        comp: |- forall m1, m2: morphism. exists m3: morphism. m3 == op(m1, m2)
+    // alternative formalization that uses only simple types
+    theory CategoryST {
+        type object
+        type morphism
+        domain: morphism -> object
+        codomain: morphism -> object
 
-        // identity morphism is a neutral element for composition
+        fromTo = (f,a,b) -> domain(f) == a & codomain(f) == b
+        composable = (f,g) -> codomain(f) == domain(g)
 
-        // 3. composition is associative
-        assoc: |- forall x,y,z: morphism. op(op(x,y),z) == op(x,op(y,z))
+        id: object -> morphism
+        id_fromto: |- forall a. fromTo(id(a),a,a)
+
+        // this must be a partial function, compose(f,g) is defined only if composable(f,g)
+        compose: (moprhism,morphism) -> morphism
+        compose_fromto: |- forall f,g. composable(f,g) => fromTo(compose(f,g), domain(f), codomain(g))
+
+        // optionally: we make composition formally a total function by assigning an arbitrary result
+        // alternatively, wihtout this axiom, the composition of non-composable morphisms is simply unspecified
+        compose_total: |- forall f,g. !composable(f,g) => compose(f,g) == f
+
+        neutLeft:  |- forall a,f. domain(f) == a => compose(id(a), f) == f
+        neutRight: |- forall a,f. codomain(f) == a => compose(f,id(a)) == f
+        assoc: |- forall f,g,h. composable(f,g) & composable(g,h) => compose(compose(f,g), h) == compose(f, compose(g,h))
     }
 
     unitCat = Category {
         type object = ()
-        identity = |- forall o: object. exists m: morphism. is_source(m)(o) & is_id_morphism(m)
-        comp = |- forall m1, m2: morphism. exists m3: morphism. m3 == op(m1, m2)
-        assoc = |- forall x, y, z: morphism. op(op(x, y), z) == op(x, op(y, z))
+        morphism = (a,b) -> Type {univ = ()}
+        identity = a -> ()
+        op = (a,b,c,f,g) -> ()
+
+        neutLeft = ???
+        neutRight = ???
+        assoc = ???
     }
 
     test = {
-        obj = ()
-        id1 = (obj, obj) // identity morphism for unitCat
-        obj2 = unitCat.object
-        id2 = unitCat.morphism
-        Cat.is_id_morphism(id1) &&
-        (obj2, obj2) == id2
+        unitCat.op((),(),(),(),()) == ()
     }
-
 
 }

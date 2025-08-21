@@ -1356,7 +1356,7 @@ class Checker(errorHandler: ErrorHandler) {
             val (lC, lI) = inferExpression (gc, l)
             val (rC, rI) = inferExpression (gc, r)
             val tpC = typeUnion(gc, lI, rI)
-            if (tpC == AnyType) reportError (s"ill-typed equality: $lI, $rI")
+            if (tpC == AnyType) reportError(s"ill-typed equality: $lI, $rI")
             u.set(tpC)
             (lC, rC)
           case _ =>
@@ -1553,7 +1553,10 @@ class Checker(errorHandler: ErrorHandler) {
           case Some(ed: ExprDecl) => if (ed.mutable) isNot("deterministic")
           case _ =>
         }
-        case VarRef(n) => if (gc.lookup(n).mutable) isNot("determinisitic")
+        case VarRef(n) =>
+          // this suppresses errors for undeclared variables in ill-typed input
+          if (gc.lookupO(n).exists(_.mutable))
+            isNot("determinisitic")
         case _: Instance => isNot("deterministic")
         case _: Assign => isNot("effect-free")
         // match ???

@@ -1,6 +1,5 @@
 package info.kwarc.p
 
-
 object Main {
   def main(args: Array[String]): Unit = {
     var left = args.toList
