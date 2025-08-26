@@ -26,14 +26,14 @@ module CatST {
         assoc: |- forall f,g,h. composable(f,g) & composable(g,h) => compose(compose(f,g), h) == compose(f, compose(g,h))
     }
 
-    unitCat = CategoryST {
+    singletonCat = CategoryST {
         type object = int
-        unit_object: object = 0
-        unit_morphism: morphism = id(unit_object)
-        domain = x -> unit_object
-        codomain = x -> unit_object
-        id = a -> unit_morphism
-        compose = (f,g) -> unit_morphism
+        singleton_object: object = 0
+        singleton_morphism: morphism = id(singleton_object)
+        domain = x -> singleton_object
+        codomain = x -> singleton_object
+        id = a -> singleton_morphism
+        //compose = (f,g) -> singleton_morphism
         //neutLeft = ???
         //neutRight = ???
         //assoc = ???
