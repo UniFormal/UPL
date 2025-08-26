@@ -5,15 +5,35 @@ module MonST {
     import test.categories.functorst
 
     theory MonadST {
-        // A monad is a special kind of endofunctor with additional structure.
+        // A monad is an endofunctor T with 2 operations (natural transformations) join and return that
+        // satisfy three laws.
+
         include EndofunctorST
-        // Monad has a unit operation that maps an object to a morphism.
-        type unit: C.object -> C.morphism
-        // Monad has a bind operation that maps a morphism to a morphism.
-        type bind: C.morphism -> C.morphism
-        // Monad preserves identity morphisms.
-        forall x: C.object. bind(unit(x)) == C.id(x)
-        // Monad preserves composition of morphisms.
-        forall m1, m2: C.morphism. bind(op(m1, m2)) == op(bind(m1), bind(m2))
+        // T = EndofunctorST {}
+        type monad
+        T: monad
+
+        // join :: T (T a) -> T a
+        // mu :: T^2 -> T
+        join: (monad,monad) -> monad
+
+        // return :: a -> T a
+        // nu :: Id -> T (IdentityFunctor -> MonadEndofunctor)
+        return: () -> monad
+
+        // also need identity natural transformation
+        // identity :: T a -> T a
+        // Id :: T -> T
+        identity: monad -> monad
+
+        // satisfies three identities
+        // 1. mu . (mu . Id) == mu . (Id . mu)
+        // Id is IdentityNaturalTransformation
+        identity1: |- join(join(identity(T^3))) == T == join(identity(join(T^3)))
+
+        // 2. Id . T == T == mu . (nu . T)
+
+        // 3. T . Id == T == mu . (T . nu)
+
     }
 }

@@ -6,7 +6,7 @@ module FunST {
     theory FunctorST {
         // A functor is a mapping between categories.
         // It maps objects to objects and morphisms to morphisms.
-        // preservation of structure, i.e., identity morphisms and composition of morphisms.
+        // preserves structure, i.e., identity morphisms and composition of morphisms.
         
         include CategoryST
 
@@ -18,14 +18,19 @@ module FunST {
         D: Category
         
         // Functor maps objects of C to objects of D.
+        // object a in C is mapped to Fa in D.
         Functor_objects: Category -> Category
         // Functor maps morphisms of C to morphisms of D.
+        // morphism f:a->b in C is mapped to Ff:Fa->Fb in D.
         Functor_morphisms: Category -> Category
 
         // Functor preserves identity morphisms.
-        forall x: C.object. Functor_morphisms(C.id(x)) == D.id(Functor_objects(x))
+        // F id_a == id_Fa
+        forall a: C.object. Functor_morphisms(C.id(a)) == D.id(Functor_objects(a))
         // Functor preserves composition of morphisms.
-        forall m1, m2: C.morphism. Functor_morphisms(op(m1, m2)) == op(Functor_morphisms(m1), Functor_morphisms(m2))
+        // if f:a->b, g:b->c then F (g . f) == F g . F f
+        forall m1, m2: C.morphism. composable(m1, m2) =>
+                Functor_morphisms(compose(m1, m2)) == compose(Functor_morphisms(m1), Functor_morphisms(m2))
     }
 
     theory EndofunctorST {

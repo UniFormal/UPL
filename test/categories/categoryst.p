@@ -18,11 +18,12 @@ module CatST {
         compose_fromto: |- forall f,g. composable(f,g) => fromTo(compose(f,g), domain(f), codomain(g))
 
         // optionally: we make composition formally a total function by assigning an arbitrary result
-        // alternatively, wihtout this axiom, the composition of non-composable morphisms is simply unspecified
+        // alternatively, without this axiom, the composition of non-composable morphisms is simply unspecified
         compose_total: |- forall f,g. !composable(f,g) => compose(f,g) == f
 
         neutLeft:  |- forall a,f. domain(f) == a => compose(id(a), f) == f
         neutRight: |- forall a,f. codomain(f) == a => compose(f,id(a)) == f
+        // may omit composable(g,h), because compose(compose(f,g), h) == compose(f,g) == compose(f, compose(g,h))
         assoc: |- forall f,g,h. composable(f,g) & composable(g,h) => compose(compose(f,g), h) == compose(f, compose(g,h))
     }
 
@@ -33,7 +34,10 @@ module CatST {
         domain = x -> singleton_object
         codomain = x -> singleton_object
         id = a -> singleton_morphism
+        //id_fromto
         //compose = (f,g) -> singleton_morphism
+        //compose_fromto
+        //compose_total
         //neutLeft = ???
         //neutRight = ???
         //assoc = ???
