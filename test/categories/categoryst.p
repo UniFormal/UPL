@@ -27,24 +27,33 @@ module CatST {
         assoc: |- forall f,g,h. composable(f,g) & composable(g,h) => compose(compose(f,g), h) == compose(f, compose(g,h))
     }
 
+
+    // Monoid
+
+
     singletonCat = CategoryST {
-        type object = int
-        singleton_object: object = 0
-        singleton_morphism: morphism = id(singleton_object)
+        type object = ()
+        type morphism = ()
+        singleton_object: object = ()
+        singleton_morphism: morphism = ()
         domain = x -> singleton_object
         codomain = x -> singleton_object
-        id = a -> singleton_morphism
-        //id_fromto
-        //compose = (f,g) -> singleton_morphism
-        //compose_fromto
-        //compose_total
-        //neutLeft = ???
-        //neutRight = ???
-        //assoc = ???
+        id = x -> singleton_morphism
+        id_fromto = ???
+        compose = (f,g) -> singleton_morphism
+        compose_total = ???
+        compose_fromto = ???
+        neutLeft = ???
+        neutRight = ???
+        assoc = ???
     }
 
+    // Nat with add1 und add0
+
     test = {
-        1 == 1
+        val obj = singletonCat.singleton_object
+        val mpm = singletonCat.singleton_morphism
+        obj == () & mpm == ()
     }
 
 }
