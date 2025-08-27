@@ -5,8 +5,9 @@ module MonST {
     import test.categories.functorst
 
     theory MonadST {
+        // Derivation from functors
         // A monad is an endofunctor T with 2 operations (natural transformations) join and return that
-        // satisfy three laws.
+        // satisfy four laws.
 
         include EndofunctorST
         // T = EndofunctorST {}
@@ -19,21 +20,21 @@ module MonST {
 
         // return :: a -> T a
         // nu :: Id -> T (IdentityFunctor -> MonadEndofunctor)
-        return: () -> monad
+        unit: () -> monad
 
-        // also need identity natural transformation
-        // identity :: T a -> T a
-        // Id :: T -> T
-        identity: monad -> monad
+        // f: a -> b
+        identity-unit: |- unit(f(x)) == map(f,unit(x))
 
         // satisfies three identities
         // 1. mu . (mu . Id) == mu . (Id . mu)
         // Id is IdentityNaturalTransformation
-        identity1: |- join(join(identity(T^3))) == T == join(identity(join(T^3)))
+        identity1: |- join(fmap(join,mmma) == join(join(mmma) == ma
 
         // 2. Id . T == T == mu . (nu . T)
+        identity2: |- join(map(unit,ma) == join(unit(ma)) == ma
 
         // 3. T . Id == T == mu . (T . nu)
+        identity3: |- join(map(x -> map(f,x), mma)) == map(f, join(mma)) == mb
 
     }
 }
