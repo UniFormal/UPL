@@ -1,16 +1,24 @@
-module CatST {
+module Cat3 {
 
-    // alternative formalization that uses only simple types
-    theory CategoryST {
-        type object
+    // alternative formalization that uses only morphisms and no objects
+    theory Category3 {
+        // identity morphisms can represent objects
         type morphism
-        domain: morphism -> object
-        codomain: morphism -> object
+
+        // some morphisms are identity morphisms
+        // And identity morphisms can represent objects
+        id_pred: morphism -> bool
+
+        // So in principle from category1st to category2st:
+        // we only need to define an additional predicate and change the type object to morphism
+
+        domain: morphism -> morphism
+        codomain: morphism -> morphism
 
         fromTo = (f,a,b) -> domain(f) == a & codomain(f) == b
         composable = (f,g) -> codomain(f) == domain(g)
 
-        id: object -> morphism
+        id: morphism -> morphism
         id_fromto: |- forall a. fromTo(id(a),a,a)
 
         // this must be a partial function, compose(f,g) is defined only if composable(f,g)
@@ -25,35 +33,6 @@ module CatST {
         neutRight: |- forall a,f. codomain(f) == a => compose(f,id(a)) == f
         // may omit composable(g,h), because compose(compose(f,g), h) == compose(f,g) == compose(f, compose(g,h))
         assoc: |- forall f,g,h. composable(f,g) & composable(g,h) => compose(compose(f,g), h) == compose(f, compose(g,h))
-    }
-
-
-    // Monoid
-
-
-    singletonCat = CategoryST {
-        type object = ()
-        type morphism = ()
-        singleton_object: object = ()
-        singleton_morphism: morphism = ()
-        domain = x -> singleton_object
-        codomain = x -> singleton_object
-        id = x -> singleton_morphism
-        id_fromto = ???
-        compose = (f,g) -> singleton_morphism
-        compose_total = ???
-        compose_fromto = ???
-        neutLeft = ???
-        neutRight = ???
-        assoc = ???
-    }
-
-    // Nat with add1 und add0
-
-    test = {
-        val obj = singletonCat.singleton_object
-        val mpm = singletonCat.singleton_morphism
-        obj == () & mpm == ()
     }
 
 }
