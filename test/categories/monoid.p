@@ -16,9 +16,8 @@ module Monoid {
     }
 
     // In the examples we declare and prove the types (sets of values) as monoids (instance of a theory)
-    // example: natural numbers, +
 
-    // example: integers, -
+    // example: natural numbers/integers, +
 
     // example: reals, *
 
