@@ -22,7 +22,7 @@ module FunHask {
     theory FunctorHaskell {
         // functors in Haskell are defined on unary type constructors with a single type parameter
         // example of a unary polymorphic type: Maybe a
-        functorTypeConstructor = typeConstructor.typeConstructorUnary
+        functorTypeConstructor = TypeConstructor.typeConstructorUnary
 
         // the type constructor represents the object mapping in the category Hask of Haskell types
         // that a functor in Haskell is an endofunctor in the category of Hask is only implicit in this representation
