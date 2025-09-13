@@ -26,11 +26,11 @@ module Cat {
 
     unitCat = Category {
         type object = ()
-        morphism = (a,b) -> Type {univ = ()}
-        identity = a -> ()
+        morphism = (a,b) -> Type {type univ = ()}
+        id = a -> ()
         op = (a,b,c,f,g) -> ()
 
-        neutLeft = ???
+        // neutLeft = ???
         neutRight = ???
         assoc = ???
     }
