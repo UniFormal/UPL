@@ -33,9 +33,11 @@ abstract class Traverser[A] {
   def apply(ctx: LocalContext)(implicit gc: GlobalContext, a:A): (LocalContext,A) = {
     if (ctx == null) (null,a) else {
       var aT = a
+      var gcI = gc
       val ctxT = matchC(ctx) {ctx =>
         ctx.map {d =>
-          val (vdT,_a) = applyVarDecl(d)
+          val (vdT,_a) = applyVarDecl(d)(gcI,aT)
+          gcI = gcI.append(vdT)
           aT = _a
           vdT
         }

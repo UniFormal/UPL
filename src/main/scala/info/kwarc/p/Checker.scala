@@ -1543,7 +1543,7 @@ class Checker(errorHandler: ErrorHandler) {
     * The following expressions must not have side-effects
     * - Boolean conditions in if, while, assert
     * - Evals and operator arguments (to avoid specifying their order of evaluation)
-    * - elements in a tuple or a collection value???
+    * - elements in a tuple or a collection value
     */
   private object PurityChecker extends StatelessTraverser {
     override def apply(e: Expression)(implicit gc: GlobalContext,a:Unit) = {
