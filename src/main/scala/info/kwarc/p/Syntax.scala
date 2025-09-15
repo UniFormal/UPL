@@ -174,6 +174,7 @@ sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
 
 /** declares a type symbol
   * @param tp the upper type bound, [AnyType] if unrestricted, null if to be inferred during checking
+  * @param args input (bound in both type bound and definition)
   */
 case class TypeDecl(name: String, tp: Type, dfO: Option[Type]) extends SymbolDeclaration {
   def kind = Keywords.typeDecl
@@ -1008,7 +1009,7 @@ case class NumberValue(override val tp: NumberType, re: Real, im: Real) extends 
   def real = im.zero
   def negate = NumberValue(tp.copy(negative = true), re.negate, im.negate)
   def conjugate = NumberValue(tp.copy(negative = true), re, im.negate)
-  def invert = (this times conjugate) scale ((re times re) plus (im times im)).invert
+  def invert = conjugate scale ((re times re) plus (im times im)).invert
   def plus(z: NumberValue) = NumberValue(tp union z.tp, re plus z.re, im plus z.im)
   def minus(z: NumberValue) = plus(z.negate)
   def times(z: NumberValue) = NumberValue(tp union z.tp, (re times z.re) minus (im times z.im), (re times z.im) plus (im times z.re))
@@ -1143,8 +1144,8 @@ case class Rat(enum: BigInt, denom: BigInt) extends Real {
   def power(r: Real) = r match {
     case r: Rat if r.integer =>
       val n = r.normalize.enum.abs
-      val p = Rat(enum ^ n, denom ^ n)
-      if (n < 0) p.invert else p
+      val p = Rat(enum pow n.toInt, denom pow n.toInt)
+      if (r.negative) p.invert else p
     case _ => approx power r
   }
   def eq(r: Real) = r match {
@@ -1688,7 +1689,7 @@ object Operator {
             }
           } else (inf, as(0), as(1)) match {
             case (Plus, x:NumberValue, y:NumberValue) => x plus y
-            case (Minus, x:NumberValue, y:NumberValue) => x plus y
+            case (Minus, x:NumberValue, y:NumberValue) => x minus y
             case (Times, x:NumberValue, y:NumberValue) => x times y
             case (Divide, x:NumberValue, y:NumberValue) =>
               if (!y.tp.approximate && y.zero) throw ASTError("division by 0")

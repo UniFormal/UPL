@@ -62,8 +62,10 @@ abstract class Traverser[A] {
       Module(n, op, TheoryValue(dsT))
     case Include(dm,df, r) =>
       Include(apply(dm), df map apply, r)
-    case TypeDecl(n, bd, dfO) => TypeDecl(n, apply(bd), dfO map apply)
-    case ExprDecl(n, tp, dfO, m) => ExprDecl(n, apply(tp), dfO map apply, m)
+    case TypeDecl(n, bd, dfO) =>
+      TypeDecl(n, apply(bd), dfO map apply)
+    case ExprDecl(n, tp, dfO, m) =>
+      ExprDecl(n, apply(tp), dfO map apply, m)
   }
 
   def apply(tp: Type)(implicit gc: GlobalContext, a: A): Type = matchC(tp)(applyDefault _)

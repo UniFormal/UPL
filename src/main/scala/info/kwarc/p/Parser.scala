@@ -439,6 +439,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
 
   def parseExprDecl(mutable: Boolean, nameAlreadyParsed: Option[String] = None): ExprDecl = {
     val name = nameAlreadyParsed getOrElse parseName
+    val args = if (startsWith("(")) Some(parseBracketedContext(PContext.empty)) else None
     trim
     val tp = if (startsWithS(":")) {
       parseType(PContext.empty)
@@ -447,11 +448,16 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     val vl = if (startsWithS("=")) {
       Some(parseExpression(PContext.empty))
     } else None
-    ExprDecl(name, tp, vl, mutable)
+    val (atp,avl) = args match {
+      case None => (tp,vl)
+      case Some(lc) => (FunType(lc,tp), vl map {v => Lambda(lc,v, true)})
+    }
+    ExprDecl(name, atp, avl, mutable)
   }
 
   def parseTypeDecl: TypeDecl = {
     val name = parseName
+    //val args = parseBracketedContext(PContext.empty)
     trim
     val (tp,df) = if (startsWithS("=")) {
       (Type.unbounded,Some(parseType(PContext.empty)))
@@ -487,6 +493,18 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     val vds = parseList(parseVarDecl(false, namesMandatory), ",", ")")
     LocalContext.make(vds)
   }
+
+  def parseBracketedContext(implicit ctxs: PContext): LocalContext = {
+    trim
+    if (startsWithS("(")) {
+      val c = parseContext(false)
+      skip(")")
+      c
+    } else {
+      LocalContext.empty
+    }
+  }
+
 
   def parseExpressions(open: String, close: String)(implicit ctxs: PContext) = {
     skip(open)
@@ -908,16 +926,14 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         skip("]")
         CollectionType(y, kind)
       } else if (startsWith("(")) {
-        skip("(")
-        val ys = parseContext(false)
-        skip(")")
+        val ys = parseBracketedContext
         ys.decls match {
           case Nil => UnitType
           case List(vd) if vd.anonymous => vd.tp
           case _ => ProdType(ys)
         }
       } else if (startsWithS("|-")) {
-        // TODO: this awkardly parses c: |- F = p as c : |- (F = p) and then fails with a confusing error
+        // TODO: this awkwardly parses c: |- F = p as c : |- (F = p) and then fails with a confusing error
         val e = parseExpression
         ProofType(e)
       } else {

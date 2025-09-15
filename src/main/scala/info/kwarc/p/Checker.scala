@@ -375,7 +375,7 @@ class Checker(errorHandler: ErrorHandler) {
       case Some(abs: SymbolDeclaration) =>
         if (abs.kind != sd.kind) reportError("name is inherited but has kind " + abs.kind)
         // Concrete: error
-        if (abs.dfO.isDefined && abs.dfO != sd.dfO) reportError("name is inherited and already defined differently")
+        if (abs.defined && sd.defined && abs.dfO != sd.dfO) reportError("name is inherited and already defined differently")
         // Abstract: inherit type
         val expectedTp = abs.tp
         val tpC = if (!sd.tp.known) {
@@ -404,11 +404,11 @@ class Checker(errorHandler: ErrorHandler) {
           case td: TypeDecl =>
             val tpC = checkType(gc,td.tp)
             val dfOC = td.dfO map {df => checkType(gc,df,tpC)}
-            td.copy(tp = tpC,dfO = dfOC)
+            td.copy(tp = tpC, dfO = dfOC)
           case sd: ExprDecl =>
             val tpC = checkType(gc,sd.tp)
             val dfC = sd.dfO map {d => checkExpression(gc,Lambda.allowReturn(d),tpC)}
-            sd.copy(tp = tpC,dfO = dfC)
+            sd.copy(tp = tpC, dfO = dfC)
         }
     }
   }
