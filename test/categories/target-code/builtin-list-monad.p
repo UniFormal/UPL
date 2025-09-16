@@ -15,7 +15,7 @@ module BuiltinListMonad {
             3 -> ["c"]
             4 -> ["d"]
         }
-    bls: list[int] = ls.bind(inttochar)
+    bls: list[string] = ls.bind(inttochar)
 
     // 1. monad law: return(x).bind(f) = f x
     ls1l: [string] = return(1).bind(inttochar)

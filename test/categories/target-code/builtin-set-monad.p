@@ -15,7 +15,12 @@ module BuiltinSetMonad {
             3 -> ["c"]
             4 -> ["d"]
         }
-    bs: set[int] = ls.bind(inttochar)
+    bs: set[string] = s.bind(inttochar)
+
+    // using bind to map from a list to a set monad?
+    ls: list[int] = [1,2,3,4]
+    bs2: set[int] = s.bind(inttochar)
+
 
     // 1. monad law: return(x).bind(f) = f x
     s1l: set[string] = return(1).bind(inttochar)
