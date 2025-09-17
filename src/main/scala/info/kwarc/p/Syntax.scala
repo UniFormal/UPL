@@ -1100,10 +1100,10 @@ case class ApproxReal(value: Double) extends Real {
   def approx = this
   def negate = ApproxReal(-value)
   def invert = ApproxReal(1/value)
-  def plus(r: Real) = ApproxReal(value + approx.value)
-  def times(r: Real) = ApproxReal(value * approx.value)
-  def power(r: Real) = ApproxReal(Math.pow(value, approx.value))
-  def eq(r: Real) = value == approx.value
+  def plus(r: Real) = ApproxReal(value + r.approx.value)
+  def times(r: Real) = ApproxReal(value * r.approx.value)
+  def power(r: Real) = ApproxReal(Math.pow(value, r.approx.value))
+  def eq(r: Real) = value == r.approx.value
 
   def zero = value == 0.0
   def infinite = value.isInfinite
