@@ -157,32 +157,33 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
       val so = SourceOrigin.shell(i)
       ec.clear
       val e = Parser.expression(so, input, ec)
-      val output = if (ec.hasErrors) {
-        ec.getErrors.mkString("\n")
+      if (ec.hasErrors) {
+        println(ec)
       } else {
-        var result = ""
         val (eC, eI) = ch.checkAndInferExpression(gc, e)
         val ed: ExprDecl = eC match {
           case v: VarDecl => v.asDeclaration
+          case Assign(VarDecl(name, tp, _, mutable, _), e: Expression) =>
+            ExprDecl(name, tp, Some(e), mutable)
           case _ => ExprDecl("res" + i.toString, eI, Some(eC), false)
         }
-        result = ed.toString
+        println(ed)
         if (ec.hasErrors) {
-          result += "\n" + ec
+          println(ec)
         } else {
+          var result = " --> "
           try {
             val edI = ip.interpretDeclaration(ed)
             // ^this^ calls ip.env.voc = ip.env.voc.add(edI) 
             gc = gc.append(LocalContext.collectContext(edI.asExpression))
-            result += "\n --> " + edI.dfO.get
+            result += edI.dfO.get
           } catch {
             case e: PError =>
-              result += " " + e.toString
+              result += e.toString
           }
+          println(result)
         }
-        result
       }
-      println(output)
     }
     }
   }
