@@ -27,5 +27,8 @@ module BuiltinTupleMonad {
     //    }
     // bs: tuples[string] = ls.bind(inttochar)
 
+    test = {
+        true
+    }
 
 }

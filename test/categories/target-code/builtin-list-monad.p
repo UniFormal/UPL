@@ -35,7 +35,7 @@ module BuiltinListMonad {
     ls3r = ls.bind(x -> inttochar(x).bind(chartoint))
 
 
-    testlist = {
+    test = {
         mls == [2,3,4,5] &
         ret == [1] &
         bls == ["a","b","c","d"] &

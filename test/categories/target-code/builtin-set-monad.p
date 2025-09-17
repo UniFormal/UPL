@@ -40,7 +40,7 @@ module BuiltinSetMonad {
     s3r = s.bind(x -> inttochar(x).bind(chartoint))
 
 
-    testlist = {
+    test = {
         ms == set[2,3,4,5] &
         ret == set[1] &
         bs == set["a","b","c","d"] &

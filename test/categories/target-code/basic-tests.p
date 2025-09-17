@@ -7,6 +7,10 @@ module Tests {
     ls: list[int] = [1,2,3,4]
     ls2: [int] = [1,2,3,4]
 
+    // chars
+    // c: char = 'a' // produces error
+    //c: string = "a"
+
     // int -> list[char] doesn't work
     maptochar: int -> [string] = n -> n match {
         1 -> ["a"]
@@ -41,6 +45,22 @@ module Tests {
     o11: option[int] = option[1]
     o2: option[int] = []
 
+    // ranges
+    range: (int,int) -> [int]
+    range =  (m,n) -> {
+        if (m==n) return [n]
+        (m -: range(m+1,n))
+    }
+    rls = range(1,4)
+
+    // arithmetic operators
+    a = 1 + 2
+    b = 4 - 1
+    // type coercion problematic
+    c: int = 3 * 1
+    d = 9 / 3
+    e = 3 ^ 2
+
 
     test = {
         lstest: bool = 1 == ls[0] &
@@ -57,7 +77,7 @@ module Tests {
 
         ttest: bool = t == (1,"foo") & 1 == t1 & "foo" == t(2) & ut == ut2 & tt(3)
 
-        o3: option[int] = [1,2] // parses
+        // o3: option[int] = [1,2] // parses no more
         // o4: option[int] = option[1,2] // doesn't
         otest: bool = o1 == o11 & o1 != o2 & o1 == [1] & o2 == [] // & o1 == o4
 
@@ -65,7 +85,12 @@ module Tests {
         //o5: [int] = [1]
         //otest2: o1 == o5
 
-        lstest & stest1 & ttest & otest
+        rtest: bool = ls == rls
+
+        arithtest: bool = a == b & //c == d
+            e == 9
+
+        lstest & stest1 & ttest & otest & rtest & arithtest
     }
 
 }
