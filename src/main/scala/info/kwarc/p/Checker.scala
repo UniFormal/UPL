@@ -993,7 +993,7 @@ class Checker(errorHandler: ErrorHandler) {
         iC
       case (CollectionValue(es,vk), CollectionType(t,tk)) =>
         if (!vk.sub(tk)) reportError(s"a $vk cannot be seen as a $tk")
-        if (vk.sizeOne && es.length > 1) reportError("option value must have at most one element")
+        if (tk.sizeOne && es.length > 1) reportError("option value must have at most one element")
         val esC = es.map(e => checkExpression(gc,e,t))
         CollectionValue(esC, tk)
       case (Tuple(es),ProdType(ts)) =>
