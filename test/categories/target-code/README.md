@@ -13,7 +13,7 @@ Built-in monad methods: `fmap`, `return/pure`, `bind` + `do` notation\
 
 The mechanism will work with magic methods that substitute behind the hood.
 
-### UPL calls to monadic types/methods are replaced (=>) with other expressions: (?)
+### UPL calls to monadic types/methods are internally replaced (=>) with other expressions: (?)
 
 ```
 fmap(mx, f) => monad.type_name.fmap.(mx,f)

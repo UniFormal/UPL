@@ -14,10 +14,11 @@ object Main {
   }
 
   val doc =
-"""[--repl] PATH [EXPR]
-where
-PATH: project file or source file/folder
-EXPR: toplevel call relative to sources
---repl: drop into REPL after running ('exit' to quit)
-"""
+    """[--repl] PATH [EXPR]
+    where
+    PATH: project file or source file/folder
+    EXPR: toplevel call relative to sources
+    --repl: drop into REPL after running ('exit' to quit)
+    """
+
 }
