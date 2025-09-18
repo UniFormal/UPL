@@ -7,7 +7,7 @@ case class File(toJava: java.io.File) {
    def /(s: String) = File(new java.io.File(toJava, s))
    def canonical : File = File(toJava.getCanonicalPath)
    override def toString = toJava.toString
-   def toSourceOrigin = StandaloneSource(toString)
+   def toSourceOrigin = SourceOrigin(toString)
 
   /** name (including extension) */
   def getName = toJava.getName

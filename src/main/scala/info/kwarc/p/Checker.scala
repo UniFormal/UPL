@@ -365,13 +365,17 @@ class Checker(errorHandler: ErrorHandler) {
     */
   private def checkSymbolDeclaration(gc: GlobalContext, sd: SymbolDeclaration): SymbolDeclaration = {
     implicit val cause = sd
-    val sdP = gc.resolveName(ClosedRef(sd.name)).flatMap(_._2) // resolveName finds both regional and global declarations
+    // resolveName finds names in global, contained regional, and local contexts, but we only want the current region and its parent
+    val sdP = gc.resolveName(ClosedRef(sd.name)).flatMap {
+      case (ClosedRef(_), dO) => dO
+      case _ => None
+    }
     sdP match {
       // switch on inherited
       case Some(abs: SymbolDeclaration) =>
         if (abs.kind != sd.kind) reportError("name is inherited but has kind " + abs.kind)
         // Concrete: error
-        if (abs.dfO.isDefined && abs.dfO != sd.dfO) reportError("name is inherited and already defined differently")
+        if (abs.defined && sd.defined && abs.dfO != sd.dfO) reportError("name is inherited and already defined differently")
         // Abstract: inherit type
         val expectedTp = abs.tp
         val tpC = if (!sd.tp.known) {
@@ -400,11 +404,11 @@ class Checker(errorHandler: ErrorHandler) {
           case td: TypeDecl =>
             val tpC = checkType(gc,td.tp)
             val dfOC = td.dfO map {df => checkType(gc,df,tpC)}
-            td.copy(tp = tpC,dfO = dfOC)
+            td.copy(tp = tpC, dfO = dfOC)
           case sd: ExprDecl =>
             val tpC = checkType(gc,sd.tp)
             val dfC = sd.dfO map {d => checkExpression(gc,Lambda.allowReturn(d),tpC)}
-            sd.copy(tp = tpC,dfO = dfC)
+            sd.copy(tp = tpC, dfO = dfC)
         }
     }
   }
@@ -432,22 +436,22 @@ class Checker(errorHandler: ErrorHandler) {
   /** checks a theory, preserving its structure */
   def checkTheory(gc: GlobalContext, thy: Theory, mustBeConcrete: Boolean = false)(implicit cause: SyntaxFragment): Theory = {
     if (thy.isFlat) return thy
-    thy match {
+    val (thyR,ndO) = gc.resolveName(thy).getOrElse(fail("unknown identifier"))
+    thyR match {
       case thy: TheoryValue =>
         val kf = false
         val declsC = flattenCheckDeclarations(gc.enterEmpty(),thy.decls,FlattenParams(alsoCheck=true,mustBeConcrete,keepFull=kf))
         Theory(declsC, Some(kf))
       case r: Ref =>
-        val (rC,ndO) = gc.resolveName(r).getOrElse(fail("unknown identifier"))
         val nd = ndO.getOrElse(gc.lookupModule(r))
-        (rC,nd) match {
-          case (rC: Ref,m: Module) =>
+        nd match {
+          case m: Module =>
             if (!m.closed) fail("module not closed")
             val undef = m.df.undefined
             // realizations were already checked when checking r
             if (mustBeConcrete && undef.nonEmpty) fail("theory not concrete, missing definitions for: " + undef.map(_.name).mkString(", "))
-            rC.flatness = Theory.QuasiFlat // tentatively trying to avoid expanding references
-            rC
+            r.flatness = Theory.QuasiFlat // tentatively trying to avoid expanding references
+            r
           case _ => fail("identifier not a module")
         }
       case OwnedTheory(owner,dom,t) =>
@@ -619,12 +623,17 @@ class Checker(errorHandler: ErrorHandler) {
   }
   def checkType(gc: GlobalContext, tp: Type): Type = recoverWith(tp) {
     implicit val cause = tp
-    def r(x:Type): Type = checkType(gc,x)
+    def rec(x:Type): Type = checkType(gc,x)
     disambiguateOwnedObject(gc, tp).foreach {corrected => return checkType(gc, corrected)}
-    matchC(tp) {
-      case r: Ref =>
-        val (rC, sdO) = gc.resolveName(r).getOrElse(fail("unknown identifier"))
-        val sd = sdO.getOrElse(fail("identifier not a symbol"))
+    val (tpR, sdO) = gc.resolveName(tp).getOrElse(fail("unknown identifier"))
+    val tpRR = tpR match {
+      case tp: Type => tp
+      case thy: Theory => ClassType(thy)
+      case ex: Expression => fail("not a type")
+    }
+    matchC(tpRR) {
+      case rC: Ref =>
+        val sd = sdO.getOrElse {(fail("identifier not a symbol"))}
         (rC,sd) match {
           case (rC: Ref, _: TypeDecl) =>
             // type ref
@@ -640,20 +649,26 @@ class Checker(errorHandler: ErrorHandler) {
               }
               case _ => fail("expression cannot be coerced to a type")
             }
-          case (rC:OpenRef, m: Module) =>
+          case (rC: Ref, m: Module) =>
             // module ref, interpret as class type, closed ref not supported yet
-            // if (!m.closed) reportError("open module not a type")
+            if (!m.closed) reportError("open module not a type")
             checkType(gc, ClassType(rC))
           case _ => fail("not a type")
         }
-      case OwnedType(owner,dom,tp) =>
-        val (ownerC,ownerI) = inferExpressionNorm(gc,owner)(true)
+      case oo: OwnedObject =>
+        val (ownerC,ownerI) = inferExpressionNorm(gc,oo.owner)(true)
         PurityChecker(ownerC)(gc,())
         ownerI match {
           case ClassType(domC) =>
-            if (dom != null && dom != domC) reportError("unexpected theory")
-            val envO = gc.push(domC,Some(ownerC))
-            val tpC = checkType(envO,tp)
+            if (oo.ownerDom != null && oo.ownerDom != domC) reportError("unexpected theory")
+            val gcI = gc.push(domC,Some(ownerC))
+            val tpC = oo.owned match {
+              case tp: Type => checkType(gcI, tp)
+              case thy: Theory =>
+                val thyC = checkTheory(gcI, thy)
+                ClassType(thyC)
+              case e: Expression => fail("not a type") // TODO: insert .univ
+            }
             OwnedType(ownerC,domC,tpC)
           case _ => fail("owner must be an instance")
         }
@@ -662,7 +677,7 @@ class Checker(errorHandler: ErrorHandler) {
         val lC = l map {e => checkExpressionPure(gc,e,NumberType.Int)}
         val uC = u map {e => checkExpressionPure(gc,e,NumberType.Int)}
         IntervalType(lC,uC)
-      case CollectionType(a,k) => CollectionType(r(a),k)
+      case CollectionType(a,k) => CollectionType(rec(a),k)
       case ProdType(as) => ProdType(checkLocal(gc,as,false,false))
       case FunType(as,b) =>
         val asC = checkLocal(gc,as,false,false)
@@ -978,7 +993,7 @@ class Checker(errorHandler: ErrorHandler) {
         iC
       case (CollectionValue(es,vk), CollectionType(t,tk)) =>
         if (!vk.sub(tk)) reportError(s"a $vk cannot be seen as a $tk")
-        if (vk.sizeOne && es.length > 1) reportError("option value must have at most one element")
+        if (tk.sizeOne && es.length > 1) reportError("option value must have at most one element")
         val esC = es.map(e => checkExpression(gc,e,t))
         CollectionValue(esC, tk)
       case (Tuple(es),ProdType(ts)) =>
@@ -1162,16 +1177,7 @@ class Checker(errorHandler: ErrorHandler) {
         if (alsoCheck)
           checkSubtype(gc, opI.out, ft.out)(exp)
         (BaseOperator(op.operator, ft), op.tp)
-      case r: OpenRef =>
-        val (rC, rd) = sdCached match {
-          case Some(d) => (r, d)
-          case _ => checkOpenRef(gc, r)
-        }
-        rd match {
-          case ed: ExprDecl => (rC, ed.tp)
-          case _ => fail(s"$rC is not an expression")
-        }
-      case ClosedRef(n) =>
+      case r: Ref =>
         sdCached match {
           case Some(ed: ExprDecl) => (exp, ed.tp)
           case _ => fail("not an expression")
@@ -1350,7 +1356,7 @@ class Checker(errorHandler: ErrorHandler) {
             val (lC, lI) = inferExpression (gc, l)
             val (rC, rI) = inferExpression (gc, r)
             val tpC = typeUnion(gc, lI, rI)
-            if (tpC == AnyType) reportError (s"ill-typed equality: $lI, $rI")
+            if (tpC == AnyType) reportError(s"ill-typed equality: $lI, $rI")
             u.set(tpC)
             (lC, rC)
           case _ =>
@@ -1392,7 +1398,7 @@ class Checker(errorHandler: ErrorHandler) {
         val expC = if (alsoCheck) {
           val (eC,eI) = inferExpression(gc,e)
           val dfC = checkExpression(gc,df,eI)
-          val targets = checkAssignable(gc,e)
+          val targets = checkAssignable(gc,eC)
           if (!Util.noReps(targets)) fail("multiple assignments to same object")
           Assign(eC,dfC)
         } else exp
@@ -1537,7 +1543,7 @@ class Checker(errorHandler: ErrorHandler) {
     * The following expressions must not have side-effects
     * - Boolean conditions in if, while, assert
     * - Evals and operator arguments (to avoid specifying their order of evaluation)
-    * - elements in a tuple or a collection value???
+    * - elements in a tuple or a collection value
     */
   private object PurityChecker extends StatelessTraverser {
     override def apply(e: Expression)(implicit gc: GlobalContext,a:Unit) = {
@@ -1547,7 +1553,10 @@ class Checker(errorHandler: ErrorHandler) {
           case Some(ed: ExprDecl) => if (ed.mutable) isNot("deterministic")
           case _ =>
         }
-        case VarRef(n) => if (gc.lookup(n).mutable) isNot("determinisitic")
+        case VarRef(n) =>
+          // this suppresses errors for undeclared variables in ill-typed input
+          if (gc.lookupO(n).exists(_.mutable))
+            isNot("determinisitic")
         case _: Instance => isNot("deterministic")
         case _: Assign => isNot("effect-free")
         // match ???
@@ -1609,16 +1618,6 @@ class Checker(errorHandler: ErrorHandler) {
   def simplifyExpression(gc: GlobalContext, exp: Expression) = Simplify(gc,exp)
 
   // ************ auxiliary functions for handling identifiers (sharing code for types and expressions)
-
-  /** disambiguate single-segment identifiers that the parser may have left ambiguous
-    * resolving can involve retrieving the declaration, which can be expensive; so we return it if we find one
-    */
-  private def checkOpenRef(gc: GlobalContext, r: OpenRef)(implicit cause: SyntaxFragment) = {
-    val (pC, pd) = gc.resolvePath(r.path).getOrElse {fail("unknown identifier: " + r)}
-    // TODO check that base of open module is included into current scope
-    val rC = OpenRef(pC)
-    (rC,pd)
-  }
 
   /** for replacing OwnedObj with
     * - Expr[s]Over
@@ -1838,7 +1837,7 @@ object Checker {
     var gcI = gc
     var thyI = thy
     while (true) {
-      thy match {
+      thyI match {
         case OwnedTheory(o,d,t) =>
           gcI = gcI.push(d,Some(o))
           thyI = t

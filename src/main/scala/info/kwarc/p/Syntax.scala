@@ -174,6 +174,7 @@ sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
 
 /** declares a type symbol
   * @param tp the upper type bound, [AnyType] if unrestricted, null if to be inferred during checking
+  * @param args input (bound in both type bound and definition)
   */
 case class TypeDecl(name: String, tp: Type, dfO: Option[Type]) extends SymbolDeclaration {
   def kind = Keywords.typeDecl
@@ -184,8 +185,9 @@ case class TypeDecl(name: String, tp: Type, dfO: Option[Type]) extends SymbolDec
   * @param tp the type, null if to be inferred during checking
   */
 case class ExprDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean) extends SymbolDeclaration {
-  def kind = if (mutable) Keywords.mutableExprDecl else "const"
+  def kind = if (mutable) Keywords.mutableExprDecl else Keywords.exprDecl
   def tpSep = ":"
+  def asExpression: VarDecl = VarDecl(name, tp, dfO, mutable)
 }
 
 // ***************** Objects **************************************
@@ -411,6 +413,10 @@ case class TheoryValue(override val decls: List[Declaration]) extends Theory wit
   }
 }
 
+object TheoryValue {
+  def apply(decls: Declaration*): TheoryValue = TheoryValue(decls.toList)
+}
+
 object PhysicalTheory {
   def apply(p: Path, sds: List[SymbolDeclaration] = Nil): TheoryValue = TheoryValue(Include(OpenRef(p)) :: sds)
   def unapply(thy: Theory) = thy.decls match {
@@ -445,7 +451,7 @@ class UnknownTypeContainer(private var id: Int, private[p] var tp: Type) {
   * All local variables that were visible when the type was created can be free in the solution.
   * This class can be seen as a redex that abstracts over them and is then applied to some arguments.
   * @param originalContext the free variables, initially context in which this type occurred
-  * @param container the mutable container of the solved type, initially null
+  * @param container the mutable container of the solved type, initially empty
   * @param sub the argument corresponding to the free variables, initially the identity
   */
 case class UnknownType(originalContext: GlobalContext, container: UnknownTypeContainer, sub: Substitution) extends Type {
@@ -462,7 +468,13 @@ case class UnknownType(originalContext: GlobalContext, container: UnknownTypeCon
   def label = container.label
   def children = if (sub == null) Nil else sub.children
   override def known = container.known
-  override def skipUnknown = if (!known) this else container.tp.skipUnknown.substitute(sub)
+  override def skipUnknown = if (!known) this else {
+    val sk = container.tp.skipUnknown
+    if (sub == null)
+      sk // only happens if unchecked content is reused after checking has solved a type
+    else
+      sk.substitute(sub)
+  }
 
   /** solves the unknown type
     * pre: if not null, t is relative to u.gc
@@ -997,7 +1009,7 @@ case class NumberValue(override val tp: NumberType, re: Real, im: Real) extends 
   def real = im.zero
   def negate = NumberValue(tp.copy(negative = true), re.negate, im.negate)
   def conjugate = NumberValue(tp.copy(negative = true), re, im.negate)
-  def invert = (this times conjugate) scale ((re times re) plus (im times im)).invert
+  def invert = conjugate scale ((re times re) plus (im times im)).invert
   def plus(z: NumberValue) = NumberValue(tp union z.tp, re plus z.re, im plus z.im)
   def minus(z: NumberValue) = plus(z.negate)
   def times(z: NumberValue) = NumberValue(tp union z.tp, (re times z.re) minus (im times z.im), (re times z.im) plus (im times z.re))
@@ -1088,10 +1100,10 @@ case class ApproxReal(value: Double) extends Real {
   def approx = this
   def negate = ApproxReal(-value)
   def invert = ApproxReal(1/value)
-  def plus(r: Real) = ApproxReal(value + approx.value)
-  def times(r: Real) = ApproxReal(value * approx.value)
-  def power(r: Real) = ApproxReal(Math.pow(value, approx.value))
-  def eq(r: Real) = value == approx.value
+  def plus(r: Real) = ApproxReal(value + r.approx.value)
+  def times(r: Real) = ApproxReal(value * r.approx.value)
+  def power(r: Real) = ApproxReal(Math.pow(value, r.approx.value))
+  def eq(r: Real) = value == r.approx.value
 
   def zero = value == 0.0
   def infinite = value.isInfinite
@@ -1132,8 +1144,8 @@ case class Rat(enum: BigInt, denom: BigInt) extends Real {
   def power(r: Real) = r match {
     case r: Rat if r.integer =>
       val n = r.normalize.enum.abs
-      val p = Rat(enum ^ n, denom ^ n)
-      if (n < 0) p.invert else p
+      val p = Rat(enum pow n.toInt, denom pow n.toInt)
+      if (r.negative) p.invert else p
     case _ => approx power r
   }
   def eq(r: Real) = r match {
@@ -1179,11 +1191,12 @@ case class UndefinedValue(tp: Type) extends Expression {
 
 /** local variable declaration
   * @param mutable write access allowed at run time
-  * @param output the variable has no value (unless defined) and can only be written to
-  *               unnamed output variables are the target of return statements
+  * @param output the variable has no value (unless defined) and can only be written to.
+  *               Unnamed output variables are the target of return statements
   */
 case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean, output: Boolean) extends Expression with Named {
   def defined = dfO.isDefined
+  def keyword = if (mutable) Keywords.mutableVarDecl else Keywords.varDecl
   override def toString = {
     val sep = if (output) "#" else ":"
     val tpS = if (tp == null) "???" else tp.toString
@@ -1191,12 +1204,13 @@ case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boo
       case Some(v) => " = " + v.toString
       case None    => ""
     }
-    s"$name$sep $tpS$vlS"
+    s"$keyword $name$sep $tpS$vlS"
   }
   def label = if (name != "") name else "_"
   def children = tp :: dfO.toList
   def toRef = VarRef(name).copyFrom(this)
   def toSub = VarDecl.sub(name, toRef)
+  def asDeclaration: ExprDecl = ExprDecl(name, tp, dfO, mutable)
 }
 object VarDecl {
   def apply(n: String, tp: Type, dfO: Option[Expression] = None, mutable: Boolean = false): VarDecl = VarDecl(n, tp, dfO, mutable, false)
@@ -1675,7 +1689,7 @@ object Operator {
             }
           } else (inf, as(0), as(1)) match {
             case (Plus, x:NumberValue, y:NumberValue) => x plus y
-            case (Minus, x:NumberValue, y:NumberValue) => x plus y
+            case (Minus, x:NumberValue, y:NumberValue) => x minus y
             case (Times, x:NumberValue, y:NumberValue) => x times y
             case (Divide, x:NumberValue, y:NumberValue) =>
               if (!y.tp.approximate && y.zero) throw ASTError("division by 0")
