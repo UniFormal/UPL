@@ -1,11 +1,11 @@
 
-module types {
-    type float = int
-}
+//module types {
+    //type float = int
+//}
 
 module math_float {
 
-    include types
+    //include types
 
     // Constants
     PI : float
@@ -27,7 +27,8 @@ module math_float {
     cos = (x:float) -> {}
     acos = (x:float) -> {}
 
-    tan = (x:float) -> {}
+    //tan = (x:float) -> {}
+    tan : float -> float
     atan = (x:float) -> {}
     // JS Math atan2 --> atan of y/x ----> [-PI, PI]
     atan2 = (y:float, x:float) -> {}
