@@ -3,7 +3,7 @@
     <option name="ALTERNATIVE_JRE_PATH" value="BUNDLED" />
     <option name="MAIN_CLASS_NAME" value="info.kwarc.p.SolverTest" />
     <module name="UPL" />
-    <option name="PROGRAM_PARAMETERS" value="test/solver/test.p" />
+    <option name="PROGRAM_PARAMETERS" value="test/solver/test.pp" />
     <method v="2">
       <option name="Make" enabled="true" />
     </method>

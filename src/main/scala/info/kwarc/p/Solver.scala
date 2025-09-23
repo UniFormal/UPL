@@ -88,6 +88,8 @@ object Solver {
                // TODO umformungen
                case Some(_) | None => {
                  val iso = findIsolatable(p.left, Occurrence.root.path).filter(n => n._1 == u.name)
+                 // TODO InverseMethods an iso erweitern
+                 //Console.println(InverseMethods.all.foreach(m => m.apply(p.left, p.right)))
                  iso match {
                    case Nil =>
                    case iso_head :: rest =>
@@ -155,6 +157,7 @@ object Solver {
       op.isolatableArguments.flatMap(i => findIsolatable(as(i), i::traversed))
     case Application(OpenRef(p), as) =>
       Nil
+      // TODO InverseMethods.all.filter(im => im.fun.eq(p)).flatMap(im => ())
     case Tuple(es) =>
       Range(0,es.length).toList.flatMap(i => findIsolatable(es(i), i::traversed))
     case _ => Nil
@@ -169,6 +172,7 @@ object Solver {
       case i :: rest =>
         val lrO = prop.left match {
           case Application(BaseOperator(op, _), as) => op.isolate(i, as, prop.right)
+          // TODO case Application(OpenRef(p), as) => InverseMethods.
           case _ => None
         }
         val (l,r) = lrO.get
@@ -203,11 +207,11 @@ case class Property(left: Expression, right: Expression) {
   }
 }
 
-/*class InverseMethodData(fun: Path, argPos: Int) {
+abstract class InverseMethodData(fun: Path, argPos: Int) {
   def apply(l: Expression, r: Expression): Option[(Expression,Expression)]
 }
 
-case class InverseUnary(fun: Path, inv: Path) {
+case class InverseUnary(fun: Path, inv: Path) extends InverseMethodData (fun, 1) {
   def apply(l: Expression, r: Expression): Option[(Expression,Expression)] = {
     l match {
       case Application(OpenRef(q), List(a)) if fun == q => Some((a,Application(OpenRef(inv), List(r))))
@@ -215,23 +219,43 @@ case class InverseUnary(fun: Path, inv: Path) {
   }
 }
 
-InverseUnary(Path(List("sin")), asin); */
+// TODO InverseBinaryLeft
+//case class InverseBinaryLeft(fun: Path, inv: Path) extends InverseMethodData(fun, 1) {
+  //def apply(l: Expression, r: Expression): Option[(Expression,Expression)] = {
+   // l match {
+   //   case Application(OpenRef(q), List(a)) if fun == q => Some((a,Application(OpenRef(inv), List(r))))
+  //  }
+  //}
+//}
+// TODO InveseBinaryRight
+
+ // TODO Pfad math. ...
 
 object InverseMethods {
-  var table : List[(String, String)] = Nil
-  table ::= ("sin", "asin")
-  table ::= ("cos", "acos")
-  table ::= ("tan", "atan")
+  val all = List(
+    InverseUnary(Path("sin"), Path("asin")),
+    InverseUnary(Path("cos"), Path("acos")),
+    InverseUnary(Path("tan"), Path("atan")),
+    InverseUnary(Path("asin"), Path("sin")),
+    InverseUnary(Path("acos"), Path("cos")),
+    InverseUnary(Path("atan"), Path("tan")),
+    InverseUnary(Path("exp"), Path("ln")),
+    InverseUnary(Path("sqrt"), Path("pow2")),
+    InverseUnary(Path("pow2"), Path("sqrt"))
+  )
 
-  table ::= ("asin", "sin")
-  table ::= ("acos", "cos")
-  table ::= ("atan", "tan")
+  def findIsolatable(): Unit = {
+    // TODO
+  }
 
-  table ::= ("exp", "ln")
-
-  table ::= ("sqrt", "pow2")
-  table ::= ("pow2", "sqrt")
-
+  def isolate(p: Path): Unit = {
+    //val iu = all.filter(f => f.fun.eq(p))
+    //iu match {
+    //  case Nil =>
+    //  case i :: rest => i.apply()
+    //}
+  }
+  // --> apply
 }
 
 object SolverTest {
@@ -240,7 +264,7 @@ object SolverTest {
     val proj = Project.fromFile(path, None)
     val voc = proj.check(true)
     val gc = GlobalContext(voc)
-    val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "EqualSidedTriangle")))
+    val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "Test2")))
     println(tS)
   }
 }

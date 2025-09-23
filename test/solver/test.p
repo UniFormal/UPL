@@ -29,16 +29,8 @@ module SolverTest {
     ax: |- 1 * (c + a) == b
   }
 
-  theory MathStubs {
-    sin: float -> float = x -> x
-    cos : float -> float = x -> x
-    tan: float -> float = x -> x
-
-    sqrt : float -> float = x -> x
-  }
 
   theory Triangle {
-    include MathStubs
 
     //         C  gamma
     //        / \
@@ -66,13 +58,13 @@ module SolverTest {
 
     allAngles180 : |- alpha + beta + gamma == pi
     
-    cosineLawAlpha : |- a^2 == b^2 + c^2 - 2*b*c*cos(alpha)
-    cosineLawBeta: |- b^2 == a^2 + c^2 - 2.0*a*c*cos(beta)
-    cosineLawGamma: |- c^2 == a^2 + b^2 - 2*a*b*cos(gamma)
+    cosineLawAlpha : |- a^2 == b^2 + c^2 - 2*b*c*Math.cos(alpha)
+    cosineLawBeta: |- b^2 == a^2 + c^2 - 2*a*c*Math.cos(beta)
+    cosineLawGamma: |- c^2 == a^2 + b^2 - 2*a*b*Math.cos(gamma)
 
-    sineLawAB: |- a/sin(alpha) == b/sin(beta)
-    sineLawAC: |- a/sin(alpha) == c/sin(gamma)
-    sineLawBC: |- b/sin(beta) == c/sin(gamma)
+    sineLawAB: |- a/Math.sin(alpha) == b/Math.sin(beta)
+    sineLawAC: |- a/Math.sin(alpha) == c/Math.sin(gamma)
+    sineLawBC: |- b/Math.sin(beta) == c/Math.sin(gamma)
     
   }
 
@@ -82,13 +74,13 @@ module SolverTest {
     rightAngleAtC : |- gamma == pi/2.0
     pythagoras : |- c^2 == a^2 + b^2
 
-    sinAlpha: |- sin(alpha) == a/c
-    cosAlpha: |- cos(alpha) == b/c
-    tanAlpha: |- tan(alpha) == a/b
+    sinAlpha: |- Math.sin(alpha) == a/c
+    cosAlpha: |- Math.cos(alpha) == b/c
+    tanAlpha: |- Math.tan(alpha) == a/b
 
-    sinBeta: |- sin(beta) == b/c
-    cosBeta: |- cos(beta) == a/c
-    tanBeta: |- tan(beta) == b/a
+    sinBeta: |- Math.sin(beta) == b/c
+    cosBeta: |- Math.cos(beta) == a/c
+    tanBeta: |- Math.tan(beta) == b/a
 
   }
 
@@ -115,5 +107,18 @@ module SolverTest {
     ta: |- a == 4.0
     tb: |- b == 4.0
     tg: |- gamma == pi/2.0
+  }
+
+  theory Test2 {
+    include Triangle
+
+    a = 5.0
+    b = 5.0
+    gamma = pi/2.0
+  }
+
+  theory Test3 {
+    t: EqualSidedTriangle
+    t.a = 5.0
   }
 }
