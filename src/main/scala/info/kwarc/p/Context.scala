@@ -38,7 +38,7 @@ abstract class Context[A] extends SyntaxFragment with HasChildren[VarDecl] {
  *
  * Context-order means that the inner-most variables occurs first.
  * These are found first by lookup.
- * The constructors must not be applied to declartions in natural order - use make instead.
+ * The constructors must not be applied to declarations in natural order - use make instead.
  */
 case class LocalContext(variables: List[VarDecl]) extends Context[LocalContext] {
   override def toString = variables.reverse.mkString(", ")
