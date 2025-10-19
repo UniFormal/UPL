@@ -52,23 +52,6 @@
     <script type="text/javascript" src="./target/scala-2.13/upl-fastopt/main.js"></script>
     <script type="text/javascript">
       let prog = null
-      let inCounter = 0
-
-      function addToProject() {
-        const pS = document.getElementById("projIn").value
-        const out = document.getElementById("projOut")
-        const errors = UPL.update("p" + inCounter, pS)
-        inCounter++
-        if(errors.length === 0){
-          out.removeAttribute("error")
-          out.value = UPL.print(UPL.proj)
-        }
-        else {
-          out.value = errors.toString()
-          out.setAttribute("error","true")
-        }
-        out.dispatchEvent(new Event('input', { bubbles: true }));
-      }
 
       function checkUPL() {
         const pS = document.getElementById("progIn").value
@@ -118,15 +101,6 @@
     </script>
   </head>
   <body>
-    <div class="row">
-      <div class="grow-wrap">
-        <textarea id="projIn" oninput="replicateValue(this)">x = 1</textarea>
-      </div>
-      <button onclick="addToProject()">Add</button>
-      <div class="grow-wrap">
-        <textarea id="projOut" oninput="replicateValue(this)"></textarea>
-      </div>
-    </div>
     <div class="row">
       <div class="grow-wrap">
         <textarea id="progIn" oninput="replicateValue(this)">module M {x = 1}</textarea>
