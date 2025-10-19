@@ -124,18 +124,30 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
       false
   }
 
-  def run(): Option[Interpreter] = {
+  /** Try to run [[main]], and print the result.
+    *
+    * @return An [[Interpreter]] to run further [[Expression]]s in this project
+    */
+  def run(): Option[Interpreter] = run(main).map{t => t._1}
+
+  /** Generalization of [[run]]() to allow access to the evaluated [[Expression]].
+    * Also allows [[Expression]]s that aren't [[main]], because it's trivial and differentiates the signatures.
+    *
+    * @param expr The [[Expression]] to run. If [[None]], [[UnitValue]] is used instead
+    * @return The closest sensible equivalent of [[Interpreter.run]](expr)
+    */
+  def run(expr: Option[Expression]): Option[(Interpreter,Expression)] = {
     if (checkErrors()) return None
     val voc = check(false)
     if (checkErrors()) return None
-    val e = main.getOrElse(UnitValue)
+    val e = expr.getOrElse(UnitValue)
     val ch = new Checker(ErrorThrower)
     try {
-      val (eC,_) = ch.checkAndInferExpression(GlobalContext(voc), e)
-      val prog = Program(voc,eC)
-      val (ip,r) = Interpreter.run(prog)
+      val (eC, _) = ch.checkAndInferExpression(GlobalContext(voc), e)
+      val prog = Program(voc, eC)
+      val (ip, r) = Interpreter.run(prog)
       println(r)
-      Some(ip)
+      Some(ip,r)
     } catch {
       case e: PError =>
         println(e)
