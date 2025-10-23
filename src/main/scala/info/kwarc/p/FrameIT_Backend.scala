@@ -35,15 +35,19 @@ class FrameITProject private(main: Option[Expression] = None)(implicit debug: Bo
   private var counter = 0
   def currentFragment: String = fragment(counter)
   object SiTh extends ProjectEntry(SiThOrigin) {
+    /** Set the SiTh to the combination of all [[Declaration]]s of all SiThFragments
+      *
+      * @return `false` iff the resulting [[ProjectEntry]] does not type-check
+      */
     def update() = updateAsCombination(List.range(0, counter + 1))
+
     def updateAsCombination(frags: List[Int]) = {
       val includes = for (f <- frags) yield include(fragment(f))
       set(includes)
-      /** ToDo: Should this be done? */
-      //removeIncludes()
 
+      removeIncludes()
       if (debug) println(toString)
-      checkErrors()
+      !hasErrors
     }
     def set(fromDecls: List[Declaration]): TheoryValue = {
       updateAndCheck(SiThOrigin, TheoryValue(Module("SiTh", closed = true, fromDecls)))
