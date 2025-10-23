@@ -136,7 +136,6 @@ class Interpreter(vocInit: TheoryValue) {
         val df = ed.dfO.get
         val dfI = interpretExpression(df)
         val edI = ed.copy(dfO = Some(dfI))
-        edI.global = true
         env.voc = env.voc.add(edI)
         edI
       case _ => fail("uninterpretable")(d)
@@ -225,7 +224,7 @@ class Interpreter(vocInit: TheoryValue) {
                 // we keep all fields that are local (i.e., a constructor argument),
                 // declared in parent and mutable, or inherited and immutable and not values
                 // other fields can be looked up in the parent, in particular all lambdas
-                if (inclO.isEmpty || sd.mutable || !(df eq dfI)) {
+                if (inclO.isEmpty || sd.modifiers.mutable || !(df eq dfI)) {
                   runtimeInst.fields ::= MutableExpression(sd.name,dfI)
                 }
               case incl: Include =>

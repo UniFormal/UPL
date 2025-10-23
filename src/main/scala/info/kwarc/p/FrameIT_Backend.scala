@@ -40,7 +40,7 @@ class FrameITProject private(main: Option[Expression] = None)(implicit debug: Bo
       /** ToDo: Should this be done? */
       //removeIncludes()
 
-      if (debug) println(verboseToString)
+      if (debug) println(toString)
       checkErrors()
     }
     def set(fromDecls: List[Declaration]): TheoryValue = {

@@ -1,19 +1,31 @@
 package info.kwarc.p
 
+/**** TODO
+ * every declaration in a module can be open (= static) or closed (dynamic); hack with global flag can be undone
+ * the open/close flag of a module only defines the default
+ * static methods may be abstract
+ * static methods are inherited, i.e., kept during normalization
+ * static methods are accessed using global references, thus not affected by ownership/quotation, dereferencing uses a different method
+ * intro forms (e.g., for list making or monad return) are magic static methods that are found via the expected type
+ *
+ * every declaration in a module can be input or output
+ * regional input = parameters
+ * global input = environment variables etc.
+ */
+
+
 // ******* declarations *******
 
 /** parent of all structuring classes like module, symbol declarations */
 sealed abstract class Declaration extends SyntaxFragment with MaybeNamed {
   private[p] var subsumed = false // can be used to mark that this is redundant due to a later more specific one
   private[p] var subsuming = false // can be used to mark that this makes a previous declarations redundant
-  private[p] var global = false // true for declarations in open modules, which require OpenRef
   override def copyFrom(sf: SyntaxFragment): this.type = {
     super.copyFrom(sf)
     sf match {
       case d: Declaration =>
         subsuming = d.subsuming
         subsumed = d.subsumed
-        global = d.global
       case _ =>
     }
     this
@@ -33,6 +45,7 @@ sealed abstract class Declaration extends SyntaxFragment with MaybeNamed {
 }
 
 sealed abstract class NamedDeclaration extends Declaration with Named {
+  def modifiers: Modifiers
   def label = name
 }
 sealed abstract class UnnamedDeclaration extends Declaration {
@@ -74,6 +87,7 @@ case class Module(name: String, closed: Boolean, df: TheoryValue) extends NamedD
     s"$k $name {\n${decls.mkString("\n").indent(2)}}"
   }
   def kind = "theory"
+  def modifiers = Modifiers(closed, false, false)
   def decls = df.decls
   def children = decls
   override def childrenInContext = {
@@ -166,17 +180,21 @@ sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
     kind + " " + name + tpS + dfOS
   }
   def toRef = ClosedRef(name)
+  def modifiers: Modifiers
   def subsumedBy(that: SymbolDeclaration): Boolean = {
     this.kind == that.kind && this.name == that.name && this.tp == that.tp &&
-      (!this.defined || this.dfO == that.dfO)
+      (!this.defined || this.dfO == that.dfO) &&
+      modifiers == that.modifiers
   }
 }
+
+case class Modifiers(closed: Boolean, output: Boolean, mutable: Boolean)
 
 /** declares a type symbol
   * @param tp the upper type bound, [AnyType] if unrestricted, null if to be inferred during checking
   * @param args input (bound in both type bound and definition)
   */
-case class TypeDecl(name: String, tp: Type, dfO: Option[Type]) extends SymbolDeclaration {
+case class TypeDecl(name: String, tp: Type, dfO: Option[Type], modifiers: Modifiers) extends SymbolDeclaration {
   def kind = Keywords.typeDecl
   def tpSep = "<"
 }
@@ -184,10 +202,9 @@ case class TypeDecl(name: String, tp: Type, dfO: Option[Type]) extends SymbolDec
 /** declares a typed symbol
   * @param tp the type, null if to be inferred during checking
   */
-case class ExprDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean) extends SymbolDeclaration {
-  def kind = if (mutable) Keywords.mutableExprDecl else Keywords.exprDecl
+case class ExprDecl(name: String, tp: Type, dfO: Option[Expression], modifiers: Modifiers) extends SymbolDeclaration {
+  def kind = if (modifiers.mutable) Keywords.mutableExprDecl else Keywords.exprDecl
   def tpSep = ":"
-  def asExpression: VarDecl = VarDecl(name, tp, dfO, mutable)
 }
 
 // ***************** Objects **************************************
@@ -284,9 +301,17 @@ case class OpenRef(path: Path) extends Ref {
 
 /** regional reference: to a symbol from an included theory */
 case class ClosedRef(n: String) extends Ref {
+  override def toString = n
   def label = n
   def children = Nil
-  override def toString = n
+  def finite = false
+}
+
+/** local reference: to a variable */
+case class VarRef(name: String) extends Ref {
+  override def toString = name
+  def label = name
+  def children = Nil
   def finite = false
 }
 
@@ -1191,8 +1216,8 @@ case class UndefinedValue(tp: Type) extends Expression {
 
 /** local variable declaration
   * @param mutable write access allowed at run time
-  * @param output the variable has no value (unless defined) and can only be written to.
-  *               Unnamed output variables are the target of return statements
+  * @param output the variable has no value (unless defined) and can only be written to
+  *               unnamed output variables are the target of return statements
   */
 case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean, output: Boolean) extends Expression with Named {
   def defined = dfO.isDefined
@@ -1210,7 +1235,6 @@ case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boo
   def children = tp :: dfO.toList
   def toRef = VarRef(name).copyFrom(this)
   def toSub = VarDecl.sub(name, toRef)
-  def asDeclaration: ExprDecl = ExprDecl(name, tp, dfO, mutable)
 }
 object VarDecl {
   def apply(n: String, tp: Type, dfO: Option[Expression] = None, mutable: Boolean = false): VarDecl = VarDecl(n, tp, dfO, mutable, false)
@@ -1226,13 +1250,6 @@ object VarDecl {
     def apply(i:Int) = prefix + i.toString
     def unapply(s: String) = if (s.startsWith(prefix)) Some(s.substring(prefixL)) else None
   }
-}
-
-/** local reference: to a variable */
-case class VarRef(name: String) extends Expression {
-  override def toString = name
-  def label = name
-  def children = Nil
 }
 
 /** assignment to mutable local variables */

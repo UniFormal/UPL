@@ -92,7 +92,7 @@ case class LocalContext(variables: List[VarDecl]) extends Context[LocalContext] 
 }
 object LocalContext {
   val empty = LocalContext(Nil)
-  def apply(d: VarDecl*): LocalContext = LocalContext(d.toList)
+  def apply(d: VarDecl): LocalContext = LocalContext(List(d))
   def make(vds: List[VarDecl]) = LocalContext(vds.reverse)
 
   /** collects the declarations introduced by this expression */
@@ -256,7 +256,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     }}
     // look in the current module for a primitive or previously merged declaration
     tv.lookupO(name) match {
-      case Some(nd: NamedDeclaration) if !nd.global => return Some(nd)
+      case Some(nd: NamedDeclaration) if nd.modifiers.closed => return Some(nd)
       case _ =>
     }
     // look in included modules (only relevant for theories, that are not fully flat)
@@ -264,7 +264,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     // return the first found defined declaration; if none, return any abstract one
     var foundAbstract: Option[NamedDeclaration] = None
     val foundOne = (d: NamedDeclaration) => {
-      if (!d.global && !d.subsumed) {
+      if (d.modifiers.closed && !d.subsumed) {
         if (d.defined) return Some(d)
         else foundAbstract = Some(d)
       }
@@ -286,6 +286,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   def lookupRef(r: Ref) = r match {
     case OpenRef(p) => lookupGlobal(p)
     case ClosedRef(n) => lookupRegional(n)
+    case VarRef(n) => lookupLocal(n)
   }
 
   /** lookup a module that is known to exist */
@@ -410,8 +411,8 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
       case _ => return Some((obj, None))
     }
     // try finding local variable n in context
-    lookupLocal(n).foreach {_ =>
-      return Some((make(VarRef(n)), None))
+    lookupLocal(n).foreach {vd =>
+      return Some((make(VarRef(n)), Some(vd)))
     }
     // try finding n declared regionally in current or included module
     var gcO: Option[GlobalContext] = Some(this)

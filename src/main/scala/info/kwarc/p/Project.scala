@@ -3,7 +3,7 @@ package info.kwarc.p
 
 /** A part in a project with mutable fields maintained by the projects */
 class ProjectEntry(val source: SourceOrigin) {
-  override def toString: String = source.toString ++ " ::\n" ++ getVocabulary.toString.indent(2)
+  override def toString: String = source.toString
   val errors = new ErrorCollector
   val depInter = new DependencyInterface
   var parsed = Theory.empty
@@ -19,23 +19,18 @@ class ProjectEntry(val source: SourceOrigin) {
  * @param main the main call to run this project
  */
 class Project(protected var entries: List[ProjectEntry], var main: Option[Expression] = None) {
-  //val entries: SeqView[ProjectEntry] = revEntries.view.reverse
-  override def toString: String =
-    entries.map(_.source).mkString(", ") + ": " + main.getOrElse("(no main)")
-
-  def verboseToString: String =
-    entries.mkString("\n") + "\nmain: " + main.getOrElse("()")
+  override def toString: String = entries.map(_.source).mkString(", ") + ": " + main.getOrElse("(no main)")
 
   // holds errors with unknown location
   val errors = new ErrorCollector
 
   def get(so: SourceOrigin) = entries.find(_.source == so).getOrElse {
     val e = new ProjectEntry(so)
-    entries = entries :+ e
+    entries = entries ::: List(e)
     e
   }
   def hasErrors: Boolean = errors.hasErrors || entries.exists(_.errors.hasErrors)
-  def getErrors: List[SError] = errors.getErrors ++ entries.flatMap(_.errors.getErrors)
+  def getErrors: List[SError] = errors.getErrors ::: entries.flatMap(_.errors.getErrors)
   private def getErrorContainer(soO: Option[SourceOrigin]) = soO match {
     case None => errors
     case Some(o) => get(o).errors
@@ -54,7 +49,7 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     val les = entries.filter(e => !e.global && e.source.container == so.container && e.source.fragment != so.fragment)
     val lesC = les.flatMap(_.checked.decls)
     val lesR = les.flatMap(_.result.decls)
-    (TheoryValue(gs ++ lesC),TheoryValue(gs ++ lesR))
+    (TheoryValue(gs ::: lesC),TheoryValue(gs ::: lesR))
   }
 
   /** all global entries concatenated */
@@ -161,42 +156,37 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     val ec = new ErrorCollector
     val ch = new Checker(ec)
     var gc = GlobalContext(ip.voc)
-    while (true) { scala.io.StdIn.readLine("> ") match {
+    while (true) {scala.io.StdIn.readLine("> ") match {
       case "exit" => return
       case "#context" => println(gc)
       case input =>
-      i += 1
-      val so = SourceOrigin.shell(i)
-      ec.clear
-      val e = Parser.expression(so, input, ec)
-      if (ec.hasErrors) {
-        println(ec)
-      } else {
-        val (eC, eI) = ch.checkAndInferExpression(gc, e)
-        val ed: ExprDecl = eC match {
-          case v: VarDecl => v.asDeclaration
-          case Assign(VarDecl(name, tp, _, mutable, _), e: Expression) =>
-            ExprDecl(name, tp, Some(e), mutable)
-          case _ => ExprDecl("res" + i.toString, eI, Some(eC), false)
-        }
-        println(ed)
-        if (ec.hasErrors) {
-          println(ec)
+        i += 1
+        val so = SourceOrigin.shell(i)
+        ec.clear
+        val e = Parser.expression(so, input, ec)
+        val output = if (ec.hasErrors) {
+          ec.getErrors.mkString("\n")
         } else {
-          var result = " --> "
-          try {
-            val edI = ip.interpretDeclaration(ed)
-            // ^this^ calls ip.env.voc = ip.env.voc.add(edI) 
-            gc = gc.append(LocalContext.collectContext(edI.asExpression))
-            result += edI.dfO.get
-          } catch {
-            case e: PError =>
-              result += e.toString
+          var result = ""
+          val (eC, eI) = ch.checkAndInferExpression(gc, e)
+          gc = gc.append(LocalContext.collectContext(eC))
+          val ed: ExprDecl = ExprDecl("res" + i.toString, eI, Some(eC), Modifiers(true,true,false))
+          result = ed.toString
+          if (ec.hasErrors) {
+            result += "\n" + ec
+          } else {
+            try {
+              val edI = ip.interpretDeclaration(ed)
+              result += "\n --> " + edI.dfO.get
+            } catch {
+              case e: PError =>
+                result += " " + e.toString
+            }
           }
-          println(result)
+          result
         }
+        println(output)
       }
-    }
     }
   }
 
