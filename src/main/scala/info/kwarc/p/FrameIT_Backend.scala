@@ -54,8 +54,14 @@ class FrameITProject private(main: Option[Expression] = None)(implicit debug: Bo
     }
     def removeIncludes(): TheoryValue =
       set(decls.filterNot(_.isInstanceOf[Include]))
-    def asModule: Module = Module("SiTh", closed = true, decls)
-    def decls: List[Declaration] = getVocabulary.decls
+    def asModule: Module =
+      getVocabulary
+        .decls
+        .collectFirst{
+          case m: Module if m.name == "SiTh" => m
+        }
+        .getOrElse(Module("SiTh", closed = true, Theory.empty))
+    def decls: List[Declaration] = asModule.decls
     override def toString: String =
       source.toString ++ " ::\n" ++ decls.mkString("{", "\n ", "\n}").indent(2)
   }
@@ -69,10 +75,8 @@ class FrameITProject private(main: Option[Expression] = None)(implicit debug: Bo
     updateAndCheck(SiThFragment(counter), siThString)
     SiTh.update()
   }
-
   @inline
   final def tryAdd(decls: List[Declaration]): Boolean = tryAdd(decls.mkString("\n"))
-
   def reset(): Unit = {
     counter = 0
     entries = entries.filter {
