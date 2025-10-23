@@ -187,3 +187,36 @@ object FrameIT_Backend {
   }
 
 }
+
+/** Experimental factory to make common, but convoluted, declarations easier to interact with.*/
+object ValueFact {
+  ////// Useful conversions.
+  import scala.language.implicitConversions
+  implicit def varDeclAsDecl(expr: VarDecl): ExprDecl = expr match {
+    case VarDecl(name, tp, dfO, mutable, output) => ExprDecl(name, tp, dfO, Modifiers(false, output, mutable))
+  }
+  implicit def exprDeclAsExpr(decl: ExprDecl): VarDecl = decl match {
+    case ExprDecl(name, tp, dfO, Modifiers(closed, output, mutable)) => VarDecl(name, tp, dfO, mutable, output)
+  }
+  //////
+
+  def apply(name: String, func: ClosedRef, args: List[Expression], value: Double): ExprDecl = {
+    val tp = ProofType(Equality(
+      positive = true,
+      tp = NumberType.Float,
+      left = Application(func, args),
+      right = FloatValue(value)
+    ))
+    val modifiers = Modifiers(closed = false, output = false, mutable = false)
+    //VarDecl(name, tp, dfO = None, mutable = false, output = false)
+    ExprDecl(name, tp, dfO = None, modifiers)
+  }
+
+  def unapply(decl: ExprDecl): Option[(ClosedRef, List[Expression], Double)] = {
+    decl.tp match {
+      case ProofType(Equality(true, NumberType.Float, Application(fun: ClosedRef, args), FloatValue(value))) =>
+        Some(fun, args, value)
+      case _ => None
+    }
+  }
+}
