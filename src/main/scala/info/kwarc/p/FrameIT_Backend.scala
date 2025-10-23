@@ -107,7 +107,15 @@ class FrameITProject private(main: Option[Expression] = None)(implicit debug: Bo
     }
     e
   }
-
+  def tryReadAndRun(input: String): Try[Expression] = {
+    Try{
+      val parsed = Parser.expression(SourceOrigin.anonymous, input, ErrorThrower)
+      val voc = check(true)
+      val (checked, _) = ThrowingChecker.checkAndInferExpression(GlobalContext(voc), parsed)
+      val (_, r) = Interpreter.run(Program(voc, checked))
+      r
+    }
+  }
 }
 
 object FrameITProject{
@@ -123,7 +131,7 @@ object FrameITProject{
     // Add the BackgroundTheory. Compare [[proj.tryAdd]]
     val btString = s"theory ${proj.currentFragment}{\n$backgroundTheoryContent\n}"
     proj.updateAndCheck(so, btString)
-    proj.reset()
+    proj.SiTh.update()
     proj
   }
   private def fragment(i: Int) = s"SiTh$i"
@@ -144,18 +152,17 @@ object FrameIT_Backend {
   private var proj = FrameITProject("")
 
   def main(args: Array[String]): Unit = {
-    JS_addS("x= a+1 == 1")
-    //JS_addS("y= 1+1")
-    //SiTh.eval
-    println(proj.SiTh)
-    proj.runMaybeRepl(false)
+    JS_addS("x:in")
+    JS_addS("a = x+2")
+    println(JS_eval("SiTh{x=1}.a"))
+    //proj.runMaybeRepl(true)
   }
 
   // ToDO: Make a useful JS Object
   def makeJSReadable(declaration: Declaration) = declaration.toString
 
   @JSExport("showSiTh")
-  def JS_showSiTh: String = proj.SiThDecls.map(makeJSReadable).mkString("\n")
+  def JS_showSiTh: String = proj.getSiTh.toString
 
   @JSExport("SiThErrors")
   def JS_getSiThErrors: String = proj.getSiThErrors.mkString("\n")
@@ -168,19 +175,15 @@ object FrameIT_Backend {
   @JSExport("tryAdd")
   def JS_addS(decls_String: String): Boolean = proj.tryAdd(decls_String)
 
-  @JSExport("resetSiTh")
-  def JS_resetSiTh(): Unit = proj.reset()
+  def resetLevel(): Unit = proj.reset()
 
-  def pureValueFact(name: String, fun: ClosedRef, args: List[Expression], value: Float) = {
-    val definiendum = Application(fun = fun, args = args)
-    val definiens = FloatValue(value)
-    VarDecl(
-      name,
-      ProofType(Equality(positive = true, tp = NumberType.Float, left = definiendum, right = definiens)),
-      None,
-      mutable = false,
-      output = false
-    )
+  @JSExport("newLevel")
+  def JS_newProject(backgroundTheoryContent: String): Unit = { proj = FrameITProject(backgroundTheoryContent) }
+
+  @JSExport("eval")
+  def JS_eval(exprS: String): String = {
+    val ts = proj.tryReadAndRun(exprS)
+    ts.fold(err => err.toString, expression => expression.toString)
   }
 
 }

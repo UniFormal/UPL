@@ -1856,6 +1856,9 @@ object Checker {
   }
 }
 
+/** Shorthand to circumvent the need to create new instances */
+object ThrowingChecker extends Checker(ErrorThrower)
+
 class MagicFunctions(gc: GlobalContext) {
   class MagicFunction(val name: String) {
     def insert(dom: Theory, owner: Expression, args: List[Expression]) = Application(owner.field(dom,name),args)

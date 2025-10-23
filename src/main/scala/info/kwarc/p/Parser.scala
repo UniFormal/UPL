@@ -90,7 +90,7 @@ object Parser {
   val weakPostops = List("=","->","==","!=", "match", "catch")
   val conflictingInfixes = Operator.infixes.map(_.symbol).filter(o => weakPostops.exists(o.startsWith))
 
-  def file(f: File,eh: ErrorHandler) = {
+  def file(f: File,eh: ErrorHandler): TheoryValue = {
     val p = new Parser(f.toSourceOrigin, getFileContent(f), eh)
     TheoryValue(p.parseAll(p.parseDeclarations(false)))
   }
