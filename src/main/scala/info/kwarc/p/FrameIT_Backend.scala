@@ -2,11 +2,12 @@ package info.kwarc.p
 
 import scala.scalajs.js.annotation._
 import scala.scalajs.js
+import scala.util.Try
 
 /**
   * A FrameIT SituationTheory (SiTh) is semantically a mutable UPL theory (i.e. a closed [[Module]]),
   * used to store and deduce knowledge about the game-world. In practice, Modules are essentially an immutable
-  * `List[Declaration`, so a [[SiTh_handler]] provides the necessary functionality pretend access to a
+  * `List[Declaration]`, so a [[SiTh_handler]] provides the necessary functionality to pretend access to a
   * mutable [[Module]], while also ensuring nothing contradictory happens when mutating.
   *
   * This is more of an API specification, than an abstraction.
@@ -27,7 +28,8 @@ trait SiTh_handler {
   * This is implemented via a special [[ProjectEntry]]
   * Its current value is accessible via [[getSiTh]], and new declarations can be added via [[tryAdd]]
   */
-class FrameITProject private(main: Option[Expression] = None)(implicit debug: Boolean) extends Project(Nil, main) with SiTh_handler {
+class FrameITProject private(main: Option[Expression] = None)(implicit debug: Boolean)
+  extends Project(Nil, main) with SiTh_handler {
   import info.kwarc.p.FrameITProject._
 
   private var counter = 0
@@ -56,9 +58,6 @@ class FrameITProject private(main: Option[Expression] = None)(implicit debug: Bo
 
   def SiThDecls = SiTh.decls
   def getSiTh = SiTh.asModule
-
-  //def get: Module = getEntry(SiThOrigin).checked.lookup("SiTh").asInstanceOf[Module]
-
   def tryAdd(decls_String: String): Boolean = {
     val previousFragment = currentFragment
     counter += 1
@@ -72,37 +71,15 @@ class FrameITProject private(main: Option[Expression] = None)(implicit debug: Bo
 
   def reset(): Unit = {
     counter = 0
-    entries = entries.filter{ _.source match {
+    entries = entries.filter {
+      _.source match {
       case SourceOrigin("SiTh", i) if i != null => false
       case _ => true
       }
     }
     SiTh.update()
   }
-
-  def getSiThErrors = SiTh.errors.getErrors
-
-  /*def eval: TheoryValue = {
-    ??? // checkAndRun(siThEval) doesn't work rn, because it doesn't update the vocab along the way
-    var i = 0
-    val ec = new ErrorCollector
-    val ch = new Checker(ec)
-    val ip = new Interpreter(Theory.empty)
-    var gc = GlobalContext(ip.voc)
-    val evalDelcs = for {
-      d <- SiThDecls
-      if d.isInstanceOf[ExprDecl] && d.dfO.isDefined
-      } yield {
-        val e = d.asInstanceOf[ExprDecl].dfO.get
-        var result = ""
-        val (eC, eI) = ch.checkAndInferExpression(gc, e)
-        gc = gc.append(LocalContext.collectContext(eC))
-        i += 1
-        ExprDecl("res" + i.toString,eI,Some(eC),false)
-      }
-    Theory(evalDelcs)
-  }*/
-
+  def getSiThErrors: List[SError] = SiTh.errors.getErrors
   def updateAndCheck(so: SourceOrigin, thVal: TheoryValue): TheoryValue = {
     val e = get(so)
     e.errors.clear
@@ -110,39 +87,40 @@ class FrameITProject private(main: Option[Expression] = None)(implicit debug: Bo
     e.checkedIsDirty = true
     check(so, false)
   }
-
+  /** Find the corresponding [[ProjectEntry]] in [[entries]].
+    *
+    * If there isn't one yet, create it, and insert it as the __second to last__ entry, before the [[SiTh]]
+    */
   override def get(so: SourceOrigin): ProjectEntry = entries.find(_.source == so).getOrElse {
     val e = new ProjectEntry(so)
     entries = entries match {
-      case fs :+ s  => fs :+ e :+ s
+      case es :+ sith => es :+ e :+ sith
       case _ => e :: Nil
     }
     e
   }
 
 }
+
 object FrameITProject{
   // SiTh: SituationTheory
   private def SiThFragment(id: Int) = SourceOrigin("SiTh", id.toString)
-
   private val SiThOrigin: SourceOrigin = SourceOrigin("SiTh")
-  def apply(backgroundTheoryContent: String, main: String = "x")(implicit debug: Boolean): FrameITProject = {
+  def apply(backgroundTheoryContent: String, main: String = "")(implicit debug: Boolean): FrameITProject = {
     val so = SourceOrigin("BackgroundTheory")
-    val mainE = util.Try(Parser.expression(SiThOrigin, main, ErrorThrower)).toOption
+    val mainE = Try(Parser.expression(SiThOrigin, main, ErrorThrower)).toOption
     val proj = new FrameITProject(mainE)
     proj.entries = List(proj.SiTh)
+
+    // Add the BackgroundTheory. Compare [[proj.tryAdd]]
     val btString = s"theory ${proj.currentFragment}{\n$backgroundTheoryContent\n}"
     proj.updateAndCheck(so, btString)
     proj.reset()
     proj
   }
-
   private def fragment(i: Int) = s"SiTh$i"
-
   // Helpers to make AST generations more readable
   private def include(name: String) = Include(OpenRef(Path(List(name))))
-
-
 }
 
 /**
@@ -155,7 +133,7 @@ object FrameITProject{
 @JSExportAll
 object FrameIT_Backend {
   implicit val debug: Boolean = false
-  private val proj = FrameITProject("a=0","SiTh{ a = 0 }.x")
+  private var proj = FrameITProject("")
 
   def main(args: Array[String]): Unit = {
     JS_addS("x= a+1 == 1")
