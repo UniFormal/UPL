@@ -365,7 +365,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
 
   def parseExpressionOrDeclarations(defaultName: String) = {
-    if (startsWithDeclaration) parseDeclarations(false)
+    trim
+    if (atEnd) Nil else if (startsWithDeclaration) parseDeclarations(false)
     else {
       val e = parseExpression(PContext.empty)
       List(ExprDecl(defaultName,Type.unknown(),Some(e),Modifiers(false,false,false)))
