@@ -99,7 +99,7 @@ object LocalContext {
   def collect(exp: Expression): List[VarDecl] = exp match {
     case vd: VarDecl =>
       val vdNoDef = if (vd.defined && vd.mutable) vd.copy(dfO = None) else vd
-      List(vdNoDef)
+      vdNoDef :: collect(vd.dfO.toList)
     case Assign(t, v)        => collect(List(t, v))
     case Tuple(es)           => collect(es)
     case Projection(e, _)    => collect(e)
@@ -109,8 +109,8 @@ object LocalContext {
     case OwnedExpr(o, _, _)  => collect(o)
     case _                   => Nil
   }
-  def collectContext(e: Expression) = LocalContext(collect(e))
   def collect(exp: List[Expression]): List[VarDecl] = exp.flatMap(collect)
+  def collectContext(e: Expression) = LocalContext(collect(e))
 }
 
 /** substitution (for an omitted context) into a target context
@@ -200,7 +200,9 @@ object RegionalContext {
  * @param transparent subsequent frames may see this one (via .. for regional idents)
  * @param physical iff this represents a named module, whether it is closed; in that case, region.theory is just an include of that module
  */
-case class RegionalContextFrame(region: RegionalContext, transparent: Boolean, physical: Option[Boolean])
+case class RegionalContextFrame(region: RegionalContext, transparent: Boolean, physical: Option[Boolean]) {
+  def isGlobal = physical contains false
+}
 
 /** program-level context: provides the vocabulary and the stack of regional+local contexts
  *
@@ -249,7 +251,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   }
 
   /** lookup in the innermost region */
-  def lookupRegional(name: String): Option[NamedDeclaration] = {
+  def lookupRegional(name: String, noRecurse: Boolean = false): Option[NamedDeclaration] = {
     val tv = if (inPhysicalTheory) parentDecl.df else {theory match {
       case r:Ref => lookupModule(r).df
       case thy => thy.toValue
@@ -271,7 +273,8 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     }
     tv.supers.foreach {
       case OpenRef(p) => voc.lookupPath(p / name).foreach(foundOne)
-      case ClosedRef(n) => lookupRegional(n) match {
+      // we need to skip the case where we look for super-theory t by following "include t" itself
+      case ClosedRef(n) if !(name == n && noRecurse) => lookupRegional(n, true) match {
         case Some(m: Module) => m.lookupO(name).foreach {case d: NamedDeclaration => foundOne(d) case _ =>}
         case Some(_) => throw IError("not a module")
         case None => throw IError("unknown name")
@@ -402,7 +405,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     }
   }
   /** resolves an ambiguous name */
-  def resolveName(obj: Object): Option[(Object, Option[NamedDeclaration])] = {
+  def resolveName(obj: Object): Option[(Object, Option[Named])] = {
     def make(e: Object) = if (e == obj) obj else e.copyFrom(obj)
     val n = obj match {
       case VarRef(n) => n
@@ -416,7 +419,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     }
     // try finding n declared regionally in current or included module
     var gcO: Option[GlobalContext] = Some(this)
-    while (gcO.isDefined) {
+    while (gcO.exists(!_.regions.head.isGlobal)) {
       val gc = gcO.get
       gc.lookupRegional(n).foreach {d =>
         val level = regions.length - gc.regions.length + 1
@@ -435,10 +438,10 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
         return Some(ret)
       }
       // look in transparent enclosing regions
-      if (gc.regions.length > 1 && gc.currentIsTransparent) {
-        gcO = Some(gc.pop())
+      gcO = if (gc.regions.length > 1 && gc.currentIsTransparent) {
+        Some(gc.pop())
       } else {
-        gcO = None
+        None
       }
     }
     // try finding n declared globally in current module or parent modules

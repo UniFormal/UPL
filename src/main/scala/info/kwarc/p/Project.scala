@@ -169,15 +169,18 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
         } else {
           var result = ""
           val (eC, eI) = ch.checkAndInferExpression(gc, e)
-          gc = gc.append(LocalContext.collectContext(eC))
-          val ed: ExprDecl = ExprDecl("res" + i.toString, eI, Some(eC), Modifiers(true,true,false))
-          result = ed.toString
+          val vd: VarDecl = eC match {
+            case v: VarDecl => v
+            case e => VarDecl("res" + i.toString, eI, Some(eC), true, false)
+          }
+          gc = gc.append(LocalContext.collectContext(vd))
+          result = vd.toString
           if (ec.hasErrors) {
             result += "\n" + ec
           } else {
             try {
-              val edI = ip.interpretDeclaration(ed)
-              result += "\n --> " + edI.dfO.get
+              val vdI = ip.interpretExpression(vd)
+              result += "\n --> " + vdI
             } catch {
               case e: PError =>
                 result += " " + e.toString
@@ -215,8 +218,8 @@ object Project {
   def fromFile(projFile: File, main: Option[String] = None): Project = {
     val (paths,mainS) = if (projFile.getExtension contains "pp") {
       val props = File.readPropertiesFromString(File.read(projFile))
-      val src = props.getOrElse("source", "").split("\\s")
-      val mn = props.get("main")
+      val src = props("source").getOrElse("").split("\\s")
+      val mn = props("main")
       val ps = src.toList.flatMap {s =>
         val f = projFile.up.resolve(s)
         pFiles(f)

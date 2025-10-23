@@ -440,7 +440,7 @@ class Checker(errorHandler: ErrorHandler) {
   /** checks a theory, preserving its structure */
   def checkTheory(gc: GlobalContext, thy: Theory, mustBeConcrete: Boolean = false)(implicit cause: SyntaxFragment): Theory = {
     if (thy.isFlat) return thy
-    val (thyR,ndO) = gc.resolveName(thy).getOrElse(fail("unknown identifier"))
+    val (thyR: Theory,ndO) = gc.resolveName(thy).getOrElse(fail("unknown identifier"))
     thyR match {
       case thy: TheoryValue =>
         val kf = false
@@ -1184,13 +1184,10 @@ class Checker(errorHandler: ErrorHandler) {
       case r: Ref =>
         sdCached match {
           case Some(ed: ExprDecl) => (exp, ed.tp)
-          case _ => fail("not an expression")
+          case Some(vd: VarDecl) => (exp, vd.tp)
+          case Some(_: TypeDecl) => fail("not an expression")
+          case _ => fail("undeclared identifier")
         }
-      case VarRef(n) =>
-        val vd = gc.lookupLocal(n).getOrElse {
-          fail("undeclared variables")
-        }
-        (exp, vd.tp)
       case This(l) =>
         if (l <= 0) fail("illegal level")
         if (gc.regions.length < l) fail("level does not exist")
@@ -1555,12 +1552,10 @@ class Checker(errorHandler: ErrorHandler) {
       e match {
         case r:Ref => gc.lookupRef(r) match {
           case Some(ed: ExprDecl) => if (ed.modifiers.mutable) isNot("deterministic")
+          case Some(vd: VarDecl) => if (vd.mutable) isNot("determinisitic")
           case _ =>
+            // this case suppresses errors for undeclared variables in ill-typed input
         }
-        case VarRef(n) =>
-          // this suppresses errors for undeclared variables in ill-typed input
-          if (gc.lookupO(n).exists(_.mutable))
-            isNot("determinisitic")
         case _: Instance => isNot("deterministic")
         case _: Assign => isNot("effect-free")
         // match ???

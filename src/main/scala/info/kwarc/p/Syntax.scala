@@ -959,7 +959,7 @@ case class Projection(tuple: Expression, index: Int) extends Expression {
 
 /** collections, introduction form for [[CollectionType]] */
 case class CollectionValue(elems: List[Expression], kind: CollectionKind) extends Expression {
-  override def toString = kind + elems.mkString("[",",","]")
+  override def toString = kind.toString + elems.mkString("[",",","]")
   def label = "collection"
   def children = elems
   /** the elements, normalized according to collection kind */
@@ -1136,51 +1136,51 @@ case class ApproxReal(value: Double) extends Real {
   def integer = false
   def natural = false
 }
-case class Rat(enum: BigInt, denom: BigInt) extends Real {
+case class Rat(enu: BigInt, deno: BigInt) extends Real {
   override def toString = {
     val n = normalize
-    if (n.integer) n.enum.toString else s"${n.enum}/${n.denom}"
+    if (n.integer) n.enu.toString else s"${n.enu}/${n.deno}"
   }
   def tp = NumberType(true, !integer, false, false, infinite) // TODO inferring Nat is often too narrow and breaks type inference later
-  def approx = ApproxReal(enum.toDouble/denom.toDouble)
-  val valid = denom > 0
+  def approx = ApproxReal(enu.toDouble/deno.toDouble)
+  val valid = deno > 0
   private[p] var _normal = false
   def normal = _normal
   def normalize: Rat = {
-    if (denom == 0) return Rat(enum.sign,0)
+    if (deno == 0) return Rat(enu.sign,0)
     if (normal) return this
-    val g = enum gcd denom
-    val eg = enum / g
-    val dg = denom / g
+    val g = enu gcd deno
+    val eg = enu / g
+    val dg = deno / g
     val r = if (dg < 0) Rat(-eg, -dg) else Rat(eg, dg)
     r._normal = true
     r
   }
-  def negate = Rat(-enum,denom)
-  def invert = Rat(denom,enum)
+  def negate = Rat(-enu,deno)
+  def invert = Rat(deno,enu)
   def plus(r: Real) = r match {
-    case r: Rat => Rat(enum * r.denom + r.enum * denom, denom * r.denom)
+    case r: Rat => Rat(enu * r.deno + r.enu * deno, deno * r.deno)
     case _ => approx plus r
   }
   def times(r: Real) = r match {
-    case r: Rat => Rat(enum * r.enum, denom * r.denom)
+    case r: Rat => Rat(enu * r.enu, deno * r.deno)
     case _ => approx times r
   }
   def power(r: Real) = r match {
     case r: Rat if r.integer =>
-      val n = r.normalize.enum.abs
-      val p = Rat(enum pow n.toInt, denom pow n.toInt)
+      val n = r.normalize.enu.abs
+      val p = Rat(enu pow n.toInt, deno pow n.toInt)
       if (r.negative) p.invert else p
     case _ => approx power r
   }
   def eq(r: Real) = r match {
-    case r: Rat => enum * r.denom == r.enum * denom
+    case r: Rat => enu * r.deno == r.enu * deno
     case _ => approx eq r
   }
-  def zero = enum == 0 && denom != 0
-  def infinite = denom == 0
-  def negative = (enum > 0 && denom < 0) || (enum < 0 && denom > 0)
-  def integer = normalize.denom == 1
+  def zero = enu == 0 && deno != 0
+  def infinite = deno == 0
+  def negative = (enu > 0 && deno < 0) || (enu < 0 && deno > 0)
+  def integer = normalize.deno == 1
   def natural = integer && !negative
 }
 
@@ -1686,7 +1686,7 @@ object Operator {
     def simplify(bo: BaseOperator, as: List[Expression]): Expression = {
       val o = bo.operator
       val numArgs = as.length
-      def failNumArgs = throw IError(o + " applied to " + numArgs + " arguments")
+      def failNumArgs = throw IError(o.toString + " applied to " + numArgs + " arguments")
       o match {
         case pf: PrefixOperator =>
           if (numArgs != 1) failNumArgs
