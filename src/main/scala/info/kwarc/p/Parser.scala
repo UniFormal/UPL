@@ -200,7 +200,10 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   case class Error(msg: String) extends SError(makeRef(index), msg)
   private case class Abort() extends Exception
   def reportError(msg: String) = {
-    val e = Error(msg + "; found " + input.substring(index,Math.min(index+20,inputLength)))
+    val found =
+      if (index < inputLength - 1) input.substring(index,Math.min(index+20,inputLength))
+      else "no remaining input."
+    val e = Error(msg + "; found " + found)
     eh(e)
   }
   def fail(msg: String) = {
