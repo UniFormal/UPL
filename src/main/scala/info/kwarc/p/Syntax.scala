@@ -1,19 +1,31 @@
 package info.kwarc.p
 
+/**** TODO
+ * every declaration in a module can be open (= static) or closed (dynamic); hack with global flag can be undone
+ * the open/close flag of a module only defines the default
+ * static methods may be abstract
+ * static methods are inherited, i.e., kept during normalization
+ * static methods are accessed using global references, thus not affected by ownership/quotation, dereferencing uses a different method
+ * intro forms (e.g., for list making or monad return) are magic static methods that are found via the expected type
+ *
+ * every declaration in a module can be input or output
+ * regional input = parameters
+ * global input = environment variables etc.
+ */
+
+
 // ******* declarations *******
 
 /** parent of all structuring classes like module, symbol declarations */
 sealed abstract class Declaration extends SyntaxFragment with MaybeNamed {
   private[p] var subsumed = false // can be used to mark that this is redundant due to a later more specific one
   private[p] var subsuming = false // can be used to mark that this makes a previous declarations redundant
-  private[p] var global = false // true for declarations in open modules, which require OpenRef
   override def copyFrom(sf: SyntaxFragment): this.type = {
     super.copyFrom(sf)
     sf match {
       case d: Declaration =>
         subsuming = d.subsuming
         subsumed = d.subsumed
-        global = d.global
       case _ =>
     }
     this
@@ -33,6 +45,7 @@ sealed abstract class Declaration extends SyntaxFragment with MaybeNamed {
 }
 
 sealed abstract class NamedDeclaration extends Declaration with Named {
+  def modifiers: Modifiers
   def label = name
 }
 sealed abstract class UnnamedDeclaration extends Declaration {
@@ -74,6 +87,7 @@ case class Module(name: String, closed: Boolean, df: TheoryValue) extends NamedD
     s"$k $name {\n${decls.mkString("\n").indent(2)}}"
   }
   def kind = "theory"
+  def modifiers = Modifiers(closed, false, false)
   def decls = df.decls
   def children = decls
   override def childrenInContext = {
@@ -166,17 +180,21 @@ sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
     kind + " " + name + tpS + dfOS
   }
   def toRef = ClosedRef(name)
+  def modifiers: Modifiers
   def subsumedBy(that: SymbolDeclaration): Boolean = {
     this.kind == that.kind && this.name == that.name && this.tp == that.tp &&
-      (!this.defined || this.dfO == that.dfO)
+      (!this.defined || this.dfO == that.dfO) &&
+      modifiers == that.modifiers
   }
 }
+
+case class Modifiers(closed: Boolean, output: Boolean, mutable: Boolean)
 
 /** declares a type symbol
   * @param tp the upper type bound, [AnyType] if unrestricted, null if to be inferred during checking
   * @param args input (bound in both type bound and definition)
   */
-case class TypeDecl(name: String, tp: Type, dfO: Option[Type]) extends SymbolDeclaration {
+case class TypeDecl(name: String, tp: Type, dfO: Option[Type], modifiers: Modifiers) extends SymbolDeclaration {
   def kind = Keywords.typeDecl
   def tpSep = "<"
 }
@@ -184,10 +202,9 @@ case class TypeDecl(name: String, tp: Type, dfO: Option[Type]) extends SymbolDec
 /** declares a typed symbol
   * @param tp the type, null if to be inferred during checking
   */
-case class ExprDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean) extends SymbolDeclaration {
-  def kind = if (mutable) Keywords.mutableExprDecl else Keywords.exprDecl
+case class ExprDecl(name: String, tp: Type, dfO: Option[Expression], modifiers: Modifiers) extends SymbolDeclaration {
+  def kind = if (modifiers.mutable) Keywords.mutableExprDecl else Keywords.exprDecl
   def tpSep = ":"
-  def asExpression: VarDecl = VarDecl(name, tp, dfO, mutable)
 }
 
 // ***************** Objects **************************************
@@ -284,9 +301,17 @@ case class OpenRef(path: Path) extends Ref {
 
 /** regional reference: to a symbol from an included theory */
 case class ClosedRef(n: String) extends Ref {
+  override def toString = n
   def label = n
   def children = Nil
-  override def toString = n
+  def finite = false
+}
+
+/** local reference: to a variable */
+case class VarRef(name: String) extends Ref {
+  override def toString = name
+  def label = name
+  def children = Nil
   def finite = false
 }
 
@@ -934,7 +959,7 @@ case class Projection(tuple: Expression, index: Int) extends Expression {
 
 /** collections, introduction form for [[CollectionType]] */
 case class CollectionValue(elems: List[Expression], kind: CollectionKind) extends Expression {
-  override def toString = kind + elems.mkString("[",",","]")
+  override def toString = kind.toString + elems.mkString("[",",","]")
   def label = "collection"
   def children = elems
   /** the elements, normalized according to collection kind */
@@ -1111,51 +1136,51 @@ case class ApproxReal(value: Double) extends Real {
   def integer = false
   def natural = false
 }
-case class Rat(enum: BigInt, denom: BigInt) extends Real {
+case class Rat(enu: BigInt, deno: BigInt) extends Real {
   override def toString = {
     val n = normalize
-    if (n.integer) n.enum.toString else s"${n.enum}/${n.denom}"
+    if (n.integer) n.enu.toString else s"${n.enu}/${n.deno}"
   }
   def tp = NumberType(true, !integer, false, false, infinite) // TODO inferring Nat is often too narrow and breaks type inference later
-  def approx = ApproxReal(enum.toDouble/denom.toDouble)
-  val valid = denom > 0
+  def approx = ApproxReal(enu.toDouble/deno.toDouble)
+  val valid = deno > 0
   private[p] var _normal = false
   def normal = _normal
   def normalize: Rat = {
-    if (denom == 0) return Rat(enum.sign,0)
+    if (deno == 0) return Rat(enu.sign,0)
     if (normal) return this
-    val g = enum gcd denom
-    val eg = enum / g
-    val dg = denom / g
+    val g = enu gcd deno
+    val eg = enu / g
+    val dg = deno / g
     val r = if (dg < 0) Rat(-eg, -dg) else Rat(eg, dg)
     r._normal = true
     r
   }
-  def negate = Rat(-enum,denom)
-  def invert = Rat(denom,enum)
+  def negate = Rat(-enu,deno)
+  def invert = Rat(deno,enu)
   def plus(r: Real) = r match {
-    case r: Rat => Rat(enum * r.denom + r.enum * denom, denom * r.denom)
+    case r: Rat => Rat(enu * r.deno + r.enu * deno, deno * r.deno)
     case _ => approx plus r
   }
   def times(r: Real) = r match {
-    case r: Rat => Rat(enum * r.enum, denom * r.denom)
+    case r: Rat => Rat(enu * r.enu, deno * r.deno)
     case _ => approx times r
   }
   def power(r: Real) = r match {
     case r: Rat if r.integer =>
-      val n = r.normalize.enum.abs
-      val p = Rat(enum pow n.toInt, denom pow n.toInt)
+      val n = r.normalize.enu.abs
+      val p = Rat(enu pow n.toInt, deno pow n.toInt)
       if (r.negative) p.invert else p
     case _ => approx power r
   }
   def eq(r: Real) = r match {
-    case r: Rat => enum * r.denom == r.enum * denom
+    case r: Rat => enu * r.deno == r.enu * deno
     case _ => approx eq r
   }
-  def zero = enum == 0 && denom != 0
-  def infinite = denom == 0
-  def negative = (enum > 0 && denom < 0) || (enum < 0 && denom > 0)
-  def integer = normalize.denom == 1
+  def zero = enu == 0 && deno != 0
+  def infinite = deno == 0
+  def negative = (enu > 0 && deno < 0) || (enu < 0 && deno > 0)
+  def integer = normalize.deno == 1
   def natural = integer && !negative
 }
 
@@ -1191,8 +1216,8 @@ case class UndefinedValue(tp: Type) extends Expression {
 
 /** local variable declaration
   * @param mutable write access allowed at run time
-  * @param output the variable has no value (unless defined) and can only be written to.
-  *               Unnamed output variables are the target of return statements
+  * @param output the variable has no value (unless defined) and can only be written to
+  *               unnamed output variables are the target of return statements
   */
 case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean, output: Boolean) extends Expression with Named {
   def defined = dfO.isDefined
@@ -1210,7 +1235,6 @@ case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boo
   def children = tp :: dfO.toList
   def toRef = VarRef(name).copyFrom(this)
   def toSub = VarDecl.sub(name, toRef)
-  def asDeclaration: ExprDecl = ExprDecl(name, tp, dfO, mutable)
 }
 object VarDecl {
   def apply(n: String, tp: Type, dfO: Option[Expression] = None, mutable: Boolean = false): VarDecl = VarDecl(n, tp, dfO, mutable, false)
@@ -1226,13 +1250,6 @@ object VarDecl {
     def apply(i:Int) = prefix + i.toString
     def unapply(s: String) = if (s.startsWith(prefix)) Some(s.substring(prefixL)) else None
   }
-}
-
-/** local reference: to a variable */
-case class VarRef(name: String) extends Expression {
-  override def toString = name
-  def label = name
-  def children = Nil
 }
 
 /** assignment to mutable local variables */
@@ -1669,7 +1686,7 @@ object Operator {
     def simplify(bo: BaseOperator, as: List[Expression]): Expression = {
       val o = bo.operator
       val numArgs = as.length
-      def failNumArgs = throw IError(o + " applied to " + numArgs + " arguments")
+      def failNumArgs = throw IError(o.toString + " applied to " + numArgs + " arguments")
       o match {
         case pf: PrefixOperator =>
           if (numArgs != 1) failNumArgs

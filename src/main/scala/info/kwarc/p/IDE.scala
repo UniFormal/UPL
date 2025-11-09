@@ -214,8 +214,8 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
       case r: Ref => gc.lookupRef(r).getOrElse(return null) match {
         case sd: SymbolDeclaration => sd.toString
         case m: Module => "module"
+        case vd: VarDecl => vd.toString
       }
-      case VarRef(n) => gc.lookupLocal(n).get.toString
       case vd: VarDecl => vd.toString
       case bo: BaseOperator => bo.operator.symbol + ": " + bo.tp.toString
       case e: Expression if selection =>

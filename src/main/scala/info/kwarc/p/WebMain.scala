@@ -12,6 +12,12 @@ object WebMain {
     checker.checkProgram(prog)
   }
 
+  def checkIn(prog: Program, input: String) = {
+    val gc = GlobalContext(prog.voc)
+    val voc = Parser.text(SourceOrigin.anonymous, input, ErrorThrower)
+    checker.checkVocabulary(gc,voc,true)(voc)
+  }
+
   def runIn(prog: Program, expS: String) = {
     val parser = new Parser(SourceOrigin.anonymous,expS, ErrorThrower)
     val exp = parser.parseExpression(PContext.empty)
@@ -25,6 +31,8 @@ object WebMain {
     val r = runIn(prog, mnS)
     print(r)
   }
+
+  def emptyProgram = Program(Theory.empty, UnitValue)
 
   def print(sf: SyntaxFragment) = sf.toString
 }

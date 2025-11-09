@@ -35,7 +35,6 @@ class Checker(errorHandler: ErrorHandler) {
   private def expected(exp: String, found: String): String = s"expected $exp; found $found"
 
   def checkVocabulary(gc: GlobalContext, voc: TheoryValue, keepFull: Boolean)(implicit cause: SyntaxFragment) = {
-    voc.decls.foreach {d => d.global = true}
     val dsC = flattenCheckDeclarations(gc, voc.decls, FlattenParams(alsoCheck=true, mustBeConcrete=false, keepFull))
     TheoryValue(dsC).copyFrom(voc)
   }
@@ -56,9 +55,6 @@ class Checker(errorHandler: ErrorHandler) {
       case m:Module =>
         // checking will try to merge declarations of the same name, so no uniqueness check needed
         val envM = gc.add(m.copy(df = Theory.empty).copyFrom(m)).enter(m)
-        if (!m.closed) {
-          m.decls.foreach {_.global = true}
-        }
         val kf = true
         val declsC = flattenCheckDeclarations(envM, m.decls, FlattenParams(alsoCheck=true, mustBeConcrete=false, keepFull=kf))
         m.copy(df = Theory(declsC, Some(kf)))
@@ -226,15 +222,18 @@ class Checker(errorHandler: ErrorHandler) {
                 case (o, n) if o == n =>
                 // new module is redundant: skip (optimization for the common case of copies of declarations)
                 case (old: Module, nw: Module) =>
-                  if (old.closed != nw.closed) {
-                    reportError(s"modules for ${nw.name} of different openness")
-                  } else if (old.df != nw.df) {
+                  if (old.modifiers != nw.modifiers) {
+                    reportError(s"modules for ${nw.name} with different modifiers")
+                  }
+                  if (old.df != nw.df) {
                     // TODO: merge bodies
                     reportError(s"declaration for ${nw.name} already exists")
-                  } else {
-                    // new module is redundant: skip
                   }
+                  // new module is redundant: skip
                 case (old: SymbolDeclaration, nw: SymbolDeclaration) =>
+                  if (old.modifiers != nw.modifiers) {
+                    reportError(s"symbols for ${nw.name} with different modifiers")
+                  }
                   // now nw of the same name/kind as old
                   val comp = Compare(gcC, old, nw)
                   comp match {
@@ -252,9 +251,9 @@ class Checker(errorHandler: ErrorHandler) {
                       add(nw)
                     case Compare.Merged(tM, dM) =>
                       val merged = nw match {
-                        // TODO merges that involve mutable fields
-                        case ed: ExprDecl => ExprDecl(nw.name, tM, dM.asInstanceOf[Option[Expression]], ed.mutable)
-                        case td: TypeDecl => TypeDecl(nw.name, tM, dM.asInstanceOf[Option[Type]])
+                        // TODO merges that involve modifiers
+                        case ed: ExprDecl => ExprDecl(nw.name, tM, dM.asInstanceOf[Option[Expression]], ed.modifiers)
+                        case td: TypeDecl => TypeDecl(nw.name, tM, dM.asInstanceOf[Option[Type]], td.modifiers)
                       }
                       old.subsumed = true
                       merged.subsuming = true
@@ -365,6 +364,11 @@ class Checker(errorHandler: ErrorHandler) {
     */
   private def checkSymbolDeclaration(gc: GlobalContext, sd: SymbolDeclaration): SymbolDeclaration = {
     implicit val cause = sd
+    sd match {
+      case td: TypeDecl =>
+        if (td.modifiers.mutable) reportError("type declaration may not be mutable")
+      case ed: ExprDecl =>
+    }
     // resolveName finds names in global, contained regional, and local contexts, but we only want the current region and its parent
     val sdP = gc.resolveName(ClosedRef(sd.name)).flatMap {
       case (ClosedRef(_), dO) => dO
@@ -373,7 +377,7 @@ class Checker(errorHandler: ErrorHandler) {
     sdP match {
       // switch on inherited
       case Some(abs: SymbolDeclaration) =>
-        if (abs.kind != sd.kind) reportError("name is inherited but has kind " + abs.kind)
+        if (abs.kind != sd.kind || abs.modifiers != sd.modifiers) reportError("name is inherited but has kind " + abs.kind)
         // Concrete: error
         if (abs.defined && sd.defined && abs.dfO != sd.dfO) reportError("name is inherited and already defined differently")
         // Abstract: inherit type
@@ -436,7 +440,7 @@ class Checker(errorHandler: ErrorHandler) {
   /** checks a theory, preserving its structure */
   def checkTheory(gc: GlobalContext, thy: Theory, mustBeConcrete: Boolean = false)(implicit cause: SyntaxFragment): Theory = {
     if (thy.isFlat) return thy
-    val (thyR,ndO) = gc.resolveName(thy).getOrElse(fail("unknown identifier"))
+    val (thyR: Theory,ndO) = gc.resolveName(thy).getOrElse(fail("unknown identifier"))
     thyR match {
       case thy: TheoryValue =>
         val kf = false
@@ -1180,7 +1184,9 @@ class Checker(errorHandler: ErrorHandler) {
       case r: Ref =>
         sdCached match {
           case Some(ed: ExprDecl) => (exp, ed.tp)
-          case _ => fail("not an expression")
+          case Some(vd: VarDecl) => (exp, vd.tp)
+          case Some(_: TypeDecl) => fail("not an expression")
+          case _ => fail("undeclared identifier")
         }
       case This(l) =>
         if (l <= 0) fail("illegal level")
@@ -1207,11 +1213,6 @@ class Checker(errorHandler: ErrorHandler) {
             (OwnedExpr(ownerC, domC, eC), OwnedType(ownerC, domC, eI))
           case _ => fail("owner must be an instance")
         }
-      case VarRef(n) =>
-        val vd = gc.lookupLocal(n).getOrElse {
-          fail("undeclared variables")
-        }
-        (exp, vd.tp)
       case Instance(thy) =>
         val thyC = if (!alsoCheck) thy else checkTheory(gc, thy, true)
         (Instance(thyC), ClassType(thyC))
@@ -1255,11 +1256,11 @@ class Checker(errorHandler: ErrorHandler) {
                     val asE = pop match {
                       case _:PseudoInfixOperator =>
                         if (as.length != 2) reportError("single argument expected")
-                        as(1)
+                        List(as(1))
                       case _:PseudoCircumfixOperator =>
-                        CollectionKind.List(as.tail)
+                        List(CollectionKind.List(as.tail))
                     }
-                    popMagic.insert(dom, as.head, List(asE))
+                    popMagic.insert(dom, as.head, asE)
                   case _ => fail(s"magic function ${popMagic.name} not found in $aI")
                 }
             }
@@ -1510,7 +1511,7 @@ class Checker(errorHandler: ErrorHandler) {
       case _: BaseValue | _: VarRef => e
       case vd: VarDecl if vd.dfO.isEmpty => e
       case r: OpenRef => gc.lookupRef(r) match {
-        case Some(ed: ExprDecl) if !ed.mutable && ed.dfO.isEmpty => e
+        case Some(ed: ExprDecl) if !ed.modifiers.mutable && ed.dfO.isEmpty => e
         case _ => fail("defined function in pattern")(e)
       }
       case _: ExprOver => e
@@ -1550,13 +1551,11 @@ class Checker(errorHandler: ErrorHandler) {
       def isNot(m: String) = fail("must be " + m)(e)
       e match {
         case r:Ref => gc.lookupRef(r) match {
-          case Some(ed: ExprDecl) => if (ed.mutable) isNot("deterministic")
+          case Some(ed: ExprDecl) => if (ed.modifiers.mutable) isNot("deterministic")
+          case Some(vd: VarDecl) => if (vd.mutable) isNot("determinisitic")
           case _ =>
+            // this case suppresses errors for undeclared variables in ill-typed input
         }
-        case VarRef(n) =>
-          // this suppresses errors for undeclared variables in ill-typed input
-          if (gc.lookupO(n).exists(_.mutable))
-            isNot("determinisitic")
         case _: Instance => isNot("deterministic")
         case _: Assign => isNot("effect-free")
         // match ???
@@ -1584,7 +1583,7 @@ class Checker(errorHandler: ErrorHandler) {
         List(vd)
       case ClosedRef(n) => gc.lookupRegional(n) match {
         case Some(ed: ExprDecl) =>
-          if (!ed.mutable) fail("assignment to immutable field")
+          if (!ed.modifiers.mutable) fail("assignment to immutable field")
           List(target)
         case _ => fail("not an assignable field")
       }
@@ -1720,7 +1719,7 @@ class Checker(errorHandler: ErrorHandler) {
     val aK = a.skipUnknown
     val bK = b.skipUnknown
     (aK,bK) match {
-      case (_:ClosedRef | _:OpenRef | _: BaseType | ExceptionType | _: ClassType | _: ExprsOver, _) if aK == bK =>
+      case (_: Ref | _: BaseType | ExceptionType | _: ClassType | _: ExprsOver, _) if aK == bK =>
         // trivial cases first for speed
         Some(Nil)
       case (u: UnknownType, v: UnknownType) if u.container == v.container =>
@@ -1856,6 +1855,9 @@ object Checker {
     throw IError("impossible case")
   }
 }
+
+/** Shorthand to circumvent the need to create new instances */
+object ThrowingChecker extends Checker(ErrorThrower)
 
 class MagicFunctions(gc: GlobalContext) {
   class MagicFunction(val name: String) {

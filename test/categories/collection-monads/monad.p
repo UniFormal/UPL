@@ -2,22 +2,20 @@ module Monad {
 
     theory Monad {
 
-        type A
-        type B
-        type M[_]  // means M is a type constructor with one type argument, of kind * -> *
+        M: Type -> Type  // means M is a type constructor with one type argument, of kind * -> *
 
-        return: A -> M[A] // but want this for all types including B, not just A
+        return: (A:Type) -> A -> M(A) // but want this for all types including B, not just A
 
-        bind: M[A] -> (A -> M[B]) -> M[B]
+        bind: (A:Type,B:Type) -> M(A) -> (A -> M(B)) -> M(B)
 
     }
 
     OptionMonad = Monad {
-
+        realize Monad
         // X is an arbitrary type
         // type M[X] = Option[X]
         // scala sometimes does underscore magic
-        type M[_] = option[_]
+        M = X -> option[X]
 
         // do = ...
 

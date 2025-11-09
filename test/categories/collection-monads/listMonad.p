@@ -1,10 +1,7 @@
 module ListMonad {
 
     theory ListMonad {
-        type X
-        type Y
-
-        return: X -> list[X] = (x: X) -> [x]
+        return: (X:Type) ->  X -> list[X] = X -> (x: X) -> [x]
 
         // need append for bind
         append: (list[Y], list[Y]) -> list[Y]
@@ -16,8 +13,8 @@ module ListMonad {
         }
 
         // lists as nondeterministic computations
-        bind: list[X] -> (X -> list[Y]) -> list[Y]
-        bind = (lx: list[X]) -> (f: X -> list[Y]) -> {
+        bind: (X:Type,Y:Type) -> list[X] -> (X -> list[Y]) -> list[Y]
+        bind = (X,Y) -> (lx: list[X]) -> (f: X -> list[Y]) -> {
             lx match {
                 [] -> []
                 x -: xs -> append(f(x), bind(xs)(f))

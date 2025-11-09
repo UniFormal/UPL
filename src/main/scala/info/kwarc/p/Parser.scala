@@ -90,9 +90,9 @@ object Parser {
   val weakPostops = List("=","->","==","!=", "match", "catch")
   val conflictingInfixes = Operator.infixes.map(_.symbol).filter(o => weakPostops.exists(o.startsWith))
 
-  def file(f: File,eh: ErrorHandler) = {
+  def file(f: File,eh: ErrorHandler): TheoryValue = {
     val p = new Parser(f.toSourceOrigin, getFileContent(f), eh)
-    TheoryValue(p.parseAll(p.parseDeclarations))
+    TheoryValue(p.parseAll(p.parseDeclarations(false)))
   }
 
   def getFileContent(f: File) = {
@@ -105,7 +105,7 @@ object Parser {
     val ds = if (!so.isStandalone) {
       p.parseAll(p.parseExpressionOrDeclarations("_" + so.fragment.hashCode.abs))
     } else {
-      p.parseAll(p.parseDeclarations)
+      p.parseAll(p.parseDeclarations(false))
     }
     TheoryValue(ds)
   }
@@ -200,7 +200,10 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   case class Error(msg: String) extends SError(makeRef(index), msg)
   private case class Abort() extends Exception
   def reportError(msg: String) = {
-    val e = Error(msg + "; found " + input.substring(index,Math.min(index+20,inputLength)))
+    val found =
+      if (index < inputLength - 1) input.substring(index,Math.min(index+20,inputLength))
+      else "no remaining input."
+    val e = Error(msg + "; found " + found)
     eh(e)
   }
   def fail(msg: String) = {
@@ -365,29 +368,31 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
 
   def parseExpressionOrDeclarations(defaultName: String) = {
-    if (startsWithDeclaration) parseDeclarations
+    trim
+    if (atEnd) Nil else if (startsWithDeclaration) parseDeclarations(false)
     else {
       val e = parseExpression(PContext.empty)
-      List(ExprDecl(defaultName,Type.unknown(),Some(e),false))
+      List(ExprDecl(defaultName,Type.unknown(),Some(e),Modifiers(false,false,false)))
     }
   }
 
-  def parseDeclaration: Declaration = addRef {
+  def parseDeclaration(implicit closed: Boolean): Declaration = addRef {
+    val mods = Modifiers(closed, false, false)
     if (startsWithAny(closedModule,openModule)) parseModule
     else if (startsWithAny(include,totalInclude)) parseInclude
-    else if (startsWithS(typeDecl)) parseTypeDecl
-    else if (startsWithS(mutableExprDecl)) parseExprDecl(true)
+    else if (startsWithS(typeDecl)) parseTypeDecl(mods)
+    else if (startsWithS(mutableExprDecl)) parseExprDecl(mods.copy(mutable=true))
     else if (startsWithS(exprDecl)) {
       trim
       val n = parseWhile(c => !c.isWhitespace)
       if (n.isEmpty) fail("name expected")
-      parseExprDecl(false, Some(n))
+      parseExprDecl(mods, Some(n))
     }
-    else if (startsWithDeclaration) parseExprDecl(false)
+    else if (startsWithDeclaration) parseExprDecl(mods)
     else fail("declaration expected")
   }
 
-  def parseDeclarations: List[Declaration] = {
+  def parseDeclarations(implicit closed: Boolean): List[Declaration] = {
     var decls: List[Declaration] = Nil
     var break = false
     while (!break) {
@@ -411,7 +416,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     val name = parseName
     trim
     skip("{")
-    val decls = parseDeclarations
+    val decls = parseDeclarations(closed)
     trim
     skip("}")
     Module(name, closed, decls)
@@ -437,7 +442,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     case _ => fail("expected theory, found expression")
   }
 
-  def parseExprDecl(mutable: Boolean, nameAlreadyParsed: Option[String] = None): ExprDecl = {
+  def parseExprDecl(mods: Modifiers, nameAlreadyParsed: Option[String] = None): ExprDecl = {
     val name = nameAlreadyParsed getOrElse parseName
     val args = if (startsWith("(")) Some(parseBracketedContext(PContext.empty)) else None
     trim
@@ -452,10 +457,10 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       case None => (tp,vl)
       case Some(lc) => (FunType(lc,tp), vl map {v => Lambda(lc,v, true)})
     }
-    ExprDecl(name, atp, avl, mutable)
+    ExprDecl(name, atp, avl, mods)
   }
 
-  def parseTypeDecl: TypeDecl = {
+  def parseTypeDecl(mods: Modifiers): TypeDecl = {
     val name = parseName
     //val args = parseBracketedContext(PContext.empty)
     trim
@@ -465,7 +470,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       (parseType(PContext.empty), None)
     } else
       (Type.unbounded, None)
-    TypeDecl(name, tp, df)
+    TypeDecl(name, tp, df, mods)
   }
 
   def parseVarDecl(mutable: Boolean, nameMandatory: Boolean)(implicit ctxs: PContext): VarDecl = addRef {
@@ -552,7 +557,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           This(l)
         }
       } else if (startsWithS("§{")) {
-        val ds = parseDeclarations
+        val ds = parseDeclarations(true)
         trim
         skip("}")
         Instance(Theory(ds))
@@ -723,12 +728,12 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           }
         } else if (startsWithS("{")) {
           // conflict between M{decls} and exp{exp}
-          // we look back and ahead to see if it is the former, in which case looksLikeInstanceOf.isDefined
           // check if there was a Ref before
           def asRef(e: Expression): Option[Ref] = e match {
             case OwnedExpr(e,_,ClosedRef(n)) => asRef(e).map {
-              case r: OpenRef => OpenRef(r.path/n)
+              case OpenRef(p) => OpenRef(p/n)
               case ClosedRef(m) => OpenRef(Path(m) / n)
+              case VarRef(m) => OpenRef(Path(m) / n)
             }
             case r: Ref => Some(r)
             case _ => None
@@ -736,7 +741,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           asRef(exp) match {
             case Some(r) if startsWithDeclaration =>
               // p{decls}
-              val ds = parseDeclarations
+              val ds = parseDeclarations(true)
               val sds = ds.flatMap {
                 case sd: SymbolDeclaration => List(sd)
                 case _ => reportError("symbol declaration expected"); Nil
