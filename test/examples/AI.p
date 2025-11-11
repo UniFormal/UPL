@@ -113,6 +113,21 @@ module AI {
     criterion = n -> h(n.label)
   }
 
+  // // target informal syntax
+  // fun treeSearch(prob: SearchProblem, strat: SearchStrategy): Node? = {
+  //   fringe = strat.init(initials)
+  //   while (fringe nonEmpty) {
+  //      val node = fringe.takeNext()
+  //      if (node.label in goals) return [node]
+  //      else
+  //        for a in action
+  //          for s in transitions(node.label, a)
+  //            val n = makeNode(s, [node], node.cost+cost(a))
+  //            fringe = fringe.insert(n)
+  //  }
+  //  []
+  // }
+
   treeSearch: (SearchProblem, SearchStrategy) -> Node? = (prob,strat) -> {
     var fringe: strat.Fringe = strat.init(prob.initials)
     while (!strat.empty(fringe)) {
