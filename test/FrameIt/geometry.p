@@ -63,7 +63,7 @@ module geometry{
     side2: ray
       = (vertex, vectorFromTo(vertex)(p2))
 
-    angleMeasure: num = angle(a)(b)(c)
+    angleMeasure: num = angle(p1)(vertex)(p2)
   }
 
   theory RightTrinangle_AtC{
