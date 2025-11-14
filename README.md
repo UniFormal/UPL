@@ -31,5 +31,10 @@ It is easiest to open the UPL tool as an IntelliJ project via the scala.sbt file
 The sbt file uses Scala.js to compile to Javascript.
 In sbt, use 'compile' to compile (generating *.class file) or 'fastLinkJS' (additinally generating a main.js file).
 
-If you develop UPL, it is easier to skip installing the vsix file (but still generate it) and instead use 'Debug' in VSCode on the vscode-extension/extension folder, which will spawn a second VSCode window with the extension loaded.
+If you develop UPL, it is easier to skip installing the vsix file (but still generate it) and instead debug it in VSCode 
+1. Open the vscode-extension/extension folder (in VSCode)
+2. Open the extension.js file
+3. Press F5 (alternatively click the rider Run --> Start Debugging)
+4. Select Node.js
+5. This will spawn a second VSCode window with the extension loaded
 
