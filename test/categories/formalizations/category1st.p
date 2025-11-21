@@ -1,6 +1,6 @@
 module CatST {
 
-    // alternative formalization that uses only simple types
+    // formalization that uses only simple types
     theory CategoryST {
         type object
         type morphism
@@ -31,30 +31,22 @@ module CatST {
     // locally small categories: morphism between two objects form a set
     // hom-set: Category -> (object, object) -> set[morphism]
 
-    //emptyCat = CategoryST {
-        //type object = Null
-        //type morphism = Nothing
+    emptyCat = CategoryST {
+        type object = empty
+        type morphism = empty
         // no possibility of calling functions because there are no objects and morphisms
-        //domain = x -> ()
-        //codomain = x -> ()
-        //id = x -> ()
-        //id_fromto = ???
-        //compose = (f,g) -> ()
-        //compose_total = ???
-        //compose_fromto = ???
-        //neutLeft = ???
-        //neutRight = ???
-        //assoc = ???
-    //}
-
-    // Monoid as Category is a single-object category
-    theory Monoid {
-        include CategoryST
-        type object = ()
+        domain = x -> x
+        codomain = x -> x
+        id = x -> x
+        id_fromto = ???
+        compose = (f,g) -> f
+        compose_total = ???
+        compose_fromto = ???
+        neutLeft = ???
+        neutRight = ???
+        assoc = ???
     }
 
-    // singletonCat can become a Monoid
-    // singletonCat = Monoid {
     singletonCat = CategoryST {
         type object = ()
         type morphism = ()
@@ -72,6 +64,91 @@ module CatST {
         assoc = ???
     }
 
+    // Discrete Categories
+    theory DiscreteCategory {
+        include CategoryST
+        // only identity morphisms
+        id_only: |- forall a,f. fromTo(f,a,a)
+    }
+
+    singletonCatAsDiscrete = DiscreteCategory {
+        type object = ()
+        type morphism = ()
+        singleton_object: object = ()
+        singleton_morphism: morphism = ()
+        domain = x -> singleton_object
+        codomain = x -> singleton_object
+        id = x -> singleton_morphism
+        id_fromto = ???
+        compose = (f,g) -> singleton_morphism
+        compose_total = ???
+        compose_fromto = ???
+        neutLeft = ???
+        neutRight = ???
+        assoc = ???
+        id_only = ???
+    }
+
+    twoObjDiscrete = DiscreteCategory {
+         type object = int[0;2]
+         type morphism = int[0;2]
+         obj1: object = 0
+         obj2: object = 1
+         id1: morphism = 0
+         id2: morphism = 1
+         domain = x -> x
+         codomain = x -> x
+         id = x -> x
+         id_fromto = ???
+         compose = (f,g) -> f
+         compose_total = ???
+         compose_fromto = ???
+         neutLeft = ???
+         neutRight = ???
+         assoc = ???
+         id_only = ???
+                         }
+
+    // Two simple example categories
+    // 1. category with two objects and a single morphism between them
+
+    // 2. category with four objects, commuting square with extra diagonal morphism
+
+    // category of sets and functions
+    theory CatSet {
+        type X
+        type object = set[X]
+    }
+
+    singletonCatSetInt = CatSet {
+        type X = int
+        type morphism = ()
+        singleton_object: object = []
+        singleton_morphism: morphism = ()
+        domain = x -> singleton_object
+        codomain = x -> singleton_object
+        id = x -> singleton_morphism
+        id_fromto = ???
+        compose = (f,g) -> singleton_morphism
+        compose_total = ???
+        compose_fromto = ???
+        neutLeft = ???
+        neutRight = ???
+        assoc = ???
+        id_only = ???
+    }
+
+    // think about: category of groups and group homomorphisms Grp
+
+
+    // Monoid
+    // Monoid as Category is a single-object category
+    theory Monoid {
+        include CategoryST
+        type object = ()
+    }
+
+    // singletonCat can become a Monoid
     singletonCatAsMonoid = Monoid {
         type morphism = ()
         singleton_object: object = ()
@@ -88,9 +165,30 @@ module CatST {
         assoc = ???
     }
 
-    // Nat with add1 und add0
+    // a small one-object category with only isomorphisms is a group
+    theory Group {
+        include Monoid
+        only_isos: |- forall f. exists g. compose(f,g) == id(domain(f))
+    }
 
-    // Monoid
+    // singleton group
+    singletonGroup = Group {
+        type morphism = ()
+        singleton_object: object = ()
+        singleton_morphism: morphism = ()
+        domain = x -> singleton_object
+        codomain = x -> singleton_object
+        id = x -> singleton_morphism
+        id_fromto = ???
+        compose = (f,g) -> singleton_morphism
+        compose_total = ???
+        compose_fromto = ???
+        neutLeft = ???
+        neutRight = ???
+        assoc = ???
+        only_isos = ???
+    }
+
 
 
     test = {
