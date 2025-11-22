@@ -29,11 +29,35 @@ module FunST {
                 Fm(C.compose(m1, m2)) == D.compose(Fm(m1), Fm(m2))
     }
 
+    theory ConstantFunctor {
+        include FunctorST
+        c: D.object
+        Fo = o -> c
+        Fm = m -> D.id(c)
+    }
+
     theory EndofunctorST {
         // An endofunctor is a functor from a category to itself.
         include FunctorST
         // The source and target category are the same.
         D = C // def better than axiom
     }
+
+    theory IdentityFunctor {
+        include EndofunctorST
+        //Fo = o -> o
+        //Fm = m -> m
+    }
+
+    theory FunctorComposition {
+        include FunctorST
+        F: FunctorST
+        G: FunctorST
+        C = F.C
+        D = G.D
+        //Fo: F.C.object -> G.D.object
+    }
+
+    // opposite category
 
 }
