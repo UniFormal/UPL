@@ -45,8 +45,11 @@ module FunST {
 
     theory IdentityFunctor {
         include EndofunctorST
-        //Fo = o -> o
-        //Fm = m -> m
+        // Fo = o -> o
+        // Fm = m -> m
+        // produces errors:
+        // found: C{object}; expected: D{object} while checking o
+        // found: C{morphism}; expected: D{morphism} while checking m
     }
 
     theory FunctorComposition {
@@ -55,7 +58,13 @@ module FunST {
         G: FunctorST
         C = F.C
         D = G.D
-        //Fo: F.C.object -> G.D.object
+        Fo: C.object -> D.object
+        Fm: C.morphism -> D.morphism
+
+        // can prove from F, G
+        axiom_fromto = ???
+        law1 = ???
+        law2 = ???
     }
 
     // opposite category

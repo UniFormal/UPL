@@ -1,40 +1,33 @@
 module MonST {
 
     // make use of theory EndofunctorST from functorst.p
-    import test.categories.categoryst
-    import test.categories.functorst
+    //import test.categories.categoryst
+    //import test.categories.functorst
+
 
     theory MonadST {
         // Derivation from functors
         // A monad is an endofunctor T with 2 operations (natural transformations) join and return that
         // satisfy four laws.
 
-        include EndofunctorST
+        // include EndofunctorST
         // T = EndofunctorST {}
-        type monad
-        T: monad
+        T: FunST.EndofunctorST
+        I: FunST.IdentityFunctor {C = T.C}
+        TT: FunST.FunctorComposition {F = T, G = T}
+        // pure: NatTransST.NaturalTransformationST {F = I, G = T}
+        // produces errors:
+        // missing definition forC
+        //   val C : .CatST.CategoryST = ..{F}{C}
+        //   val C : .CatST.CategoryST while checking T
+        // clashing definitions for D
+        //   val D : .CatST.CategoryST = ..{F}{D}
+        //   val D : .CatST.CategoryST = C while checking T
+        //join: NatTransST.NaturalTransformationST {F = T, G = TT}
 
-        // join :: T (T a) -> T a
-        // mu :: T^2 -> T
-        join: (monad,monad) -> monad
+        // 1. condition: join . T join == join . join T     : T^3 -> T
 
-        // return :: a -> T a
-        // nu :: Id -> T (IdentityFunctor -> MonadEndofunctor)
-        unit: () -> monad
-
-        // f: a -> b
-        identity-unit: |- unit(f(x)) == map(f,unit(x))
-
-        // satisfies three identities
-        // 1. mu . (mu . Id) == mu . (Id . mu)
-        // Id is IdentityNaturalTransformation
-        identity1: |- join(fmap(join,mmma) == join(join(mmma) == ma
-
-        // 2. Id . T == T == mu . (nu . T)
-        identity2: |- join(map(unit,ma) == join(unit(ma)) == ma
-
-        // 3. T . Id == T == mu . (T . nu)
-        identity3: |- join(map(x -> map(f,x), mma)) == map(f, join(mma)) == mb
+        // 2. condition: join . T pure == join . pure T     : T -> T
 
     }
 }

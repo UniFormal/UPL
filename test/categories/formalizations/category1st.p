@@ -68,7 +68,7 @@ module CatST {
     theory DiscreteCategory {
         include CategoryST
         // only identity morphisms
-        id_only: |- forall a,f. fromTo(f,a,a)
+        id_only: |- forall f. domain(f) == codomain(f)
     }
 
     singletonCatAsDiscrete = DiscreteCategory {
@@ -107,12 +107,68 @@ module CatST {
          neutRight = ???
          assoc = ???
          id_only = ???
-                         }
+    }
 
     // Two simple example categories
     // 1. category with two objects and a single morphism between them
+    exCat1 = CategoryST {
+        type object = int
+        type morphism = int
+        obj1: object = 0
+        obj2: object = 1
+        id1: morphism = 0
+        id2: morphism = 1
+        mor1: morphism = 2
+        domain = x -> if (x==2) 0 else x
+        codomain = x -> x match {
+            2 -> 1
+            y -> y
+        }
+        id = x -> x
+        id_fromto = ???
+        compose = (f,g) -> (f,g) match {
+            (0, g) -> g
+            (f, 1) -> f
+            (f, g) -> 2
+        }
+        compose_total = ???
+        compose_fromto = ???
+        neutLeft = ???
+        neutRight = ???
+        assoc = ???
+    }
 
     // 2. category with four objects, commuting square with extra diagonal morphism
+    exCat2 = CategoryST {
+            type object = int
+            type morphism = (int,int)
+            obj1: object = 0
+            obj2: object = 1
+            obj3: object = 2
+            obj4: object = 3
+            id1: morphism = (0,0)
+            id2: morphism = (1,1)
+            id3: morphism = (2,2)
+            id4: morphism = (3,3)
+            f: morphism = (0,1)
+            g: morphism = (1,3)
+            h: morphism = (0,3)
+            i: morphism = (0,2)
+            j: morphism = (2,3)
+            domain = x -> x match { (d,c) -> d }
+            codomain = x -> x match { (d,c) -> c }
+            id = x -> (x,x)
+            id_fromto = ???
+            compose = (m1,m2) -> (m1,m2) match {
+                ((0,1), (1,3)) -> (0,3)
+                ((0,2), (2,3)) -> (0,3)
+            }
+            compose_total = ???
+            compose_fromto = ???
+            neutLeft = ???
+            neutRight = ???
+            assoc = ???
+        }
 
     // category of sets and functions
     theory CatSet {
@@ -148,7 +204,7 @@ module CatST {
         type object = ()
     }
 
-    // singletonCat can become a Monoid
+    // singleton category is a monoid
     singletonCatAsMonoid = Monoid {
         type morphism = ()
         singleton_object: object = ()
