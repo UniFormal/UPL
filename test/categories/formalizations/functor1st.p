@@ -67,6 +67,4 @@ module FunST {
         law2 = ???
     }
 
-    // opposite category
-
 }

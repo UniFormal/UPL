@@ -26,6 +26,51 @@ module NatTransST {
         // found: F{D}{morphism}; expected: G{D}{morphism} while checking F{Fm}(f)
     }
 
+    theory VerticalComposition {
+        include NaturalTransformationST
+
+        // two natural transformations alpha, beta with the same categories as domain and codomain
+        nt1: NaturalTransformationST
+        nt2: NaturalTransformationST { F = nt1.G }
+
+        // functors
+        F = nt1.F
+        // G = nt2.G
+        // produces errors:
+        // error :clashing definitions for C
+        // val C : .CatST.CategoryST = ..{F}{C}
+        // val C : .CatST.CategoryST = nt2{F}{C} while checking nt2{G}
+        // error :clashing definitions for D
+        // val D : .CatST.CategoryST = ..{F}{D}
+        // val D : .CatST.CategoryST = nt2{F}{D} while checking nt2{G}
+
+        // natural transformation
+        // composition: (alpha2 . alpha1)(a) = alpha2(a) . alpha(1)(a)
+        // identifier G unknown ...
+        // alpha = a -> G.D.compose(nt1.alpha(a), nt2.alpha(a))
+
+        // axioms
+    }
+
+    theory HorizontalComposition {
+        include NaturalTransformationST
+
+        // codomain of first nt is domain of second nt
+        nt1: NaturalTransformationST
+        nt2: NaturalTransformationST // { F.C = nt1.F.D }
+
+        // functors
+        F: FunST.FunctorComposition // {F = nt1.F, G = nt2.F}
+        // G: FunST.FunctorComposition // {F = nt1.G, G = nt2.G}
+        // produces errors: ...
+
+        // natural transformation
+        // alpha = a -> G.D.compose(nt2.F.Fm(nt1.alpha(a)), nt2.alpha(nt1.G.Fo(a)))
+
+        // axioms
+
+    }
+
 
 
 

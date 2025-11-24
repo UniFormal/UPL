@@ -109,6 +109,23 @@ module CatST {
          id_only = ???
     }
 
+    infiniteDiscrete = DiscreteCategory {
+         type object = int
+         type morphism = int
+         // can't enumerate the objects and morphisms as did above
+         domain = x -> x
+         codomain = x -> x
+         id = x -> x
+         id_fromto = ???
+         compose = (f,g) -> f
+         compose_total = ???
+         compose_fromto = ???
+         neutLeft = ???
+         neutRight = ???
+         assoc = ???
+         id_only = ???
+    }
+
     // Two simple example categories
     // 1. category with two objects and a single morphism between them
     exCat1 = CategoryST {
@@ -169,6 +186,8 @@ module CatST {
             neutRight = ???
             assoc = ???
         }
+
+    // opposite category
 
     // category of sets and functions
     theory CatSet {
@@ -250,7 +269,9 @@ module CatST {
     test = {
         val obj = singletonCat.singleton_object
         val mpm = singletonCat.singleton_morphism
-        obj == () & mpm == ()
+
+        val infDis1 = infiniteDiscrete.id(1)
+        obj == () & mpm == () & infDis1 == 1
     }
 
 }
