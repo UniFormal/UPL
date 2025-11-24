@@ -129,8 +129,8 @@ module CatST {
     // Two simple example categories
     // 1. category with two objects and a single morphism between them
     exCat1 = CategoryST {
-        type object = int
-        type morphism = int
+        type object = int // need int[0;2]
+        type morphism = int // and int[0;3]
         obj1: object = 0
         obj2: object = 1
         id1: morphism = 0
@@ -157,28 +157,45 @@ module CatST {
 
     // 2. category with four objects, commuting square with extra diagonal morphism
     exCat2 = CategoryST {
-            type object = int
-            type morphism = (int,int)
+            type object = int // int[0;4]
+            type morphism = int // int[0;9]
             obj1: object = 0
             obj2: object = 1
             obj3: object = 2
             obj4: object = 3
-            id1: morphism = (0,0)
-            id2: morphism = (1,1)
-            id3: morphism = (2,2)
-            id4: morphism = (3,3)
-            f: morphism = (0,1)
-            g: morphism = (1,3)
-            h: morphism = (0,3)
-            i: morphism = (0,2)
-            j: morphism = (2,3)
-            domain = x -> x match { (d,c) -> d }
-            codomain = x -> x match { (d,c) -> c }
-            id = x -> (x,x)
+            id1: morphism = 0
+            id2: morphism = 1
+            id3: morphism = 2
+            id4: morphism = 3
+            f: morphism = 4
+            g: morphism = 5
+            h: morphism = 6
+            i: morphism = 7
+            j: morphism = 8
+            domain = x -> x match {
+                4 -> 0
+                5 -> 1
+                6 -> 0
+                7 -> 0
+                8 -> 2
+            }
+            codomain = x -> x match {
+                4 -> 1
+                5 -> 3
+                6 -> 3
+                7 -> 2
+                8 -> 3
+            }
+            id = x -> x
             id_fromto = ???
             compose = (m1,m2) -> (m1,m2) match {
-                ((0,1), (1,3)) -> (0,3)
-                ((0,2), (2,3)) -> (0,3)
+                (4,5) -> 6
+                (7,8) -> 6
+                (0,m) -> m
+                (1,m) -> m
+                (2,m) -> m
+                (3,m) -> m
+                (m,n) -> n
             }
             compose_total = ???
             compose_fromto = ???
@@ -191,20 +208,25 @@ module CatST {
 
     // category of sets and functions
     theory CatSet {
+        include CategoryST
         type X
         type object = set[X]
+        type morphism = (set[X] -> set[X], set[X], set[X])
     }
 
-    singletonCatSetInt = CatSet {
+    CatSetInt = CatSet {
         type X = int
-        type morphism = ()
-        singleton_object: object = []
-        singleton_morphism: morphism = ()
-        domain = x -> singleton_object
-        codomain = x -> singleton_object
-        id = x -> singleton_morphism
+        domain = triple -> triple match {
+            (f, d, c) -> d
+        }
+        codomain = triple -> triple match {
+            (f, d, c) -> c
+        }
+        id = x -> ((y -> y), x, x)
         id_fromto = ???
-        compose = (f,g) -> singleton_morphism
+        compose = (t1,t2) -> (t1,t2) match {
+            ((f,d1,c1), (g,d2,c2)) -> (y -> g(f(y)),d1,c2)
+        }
         compose_total = ???
         compose_fromto = ???
         neutLeft = ???
@@ -212,6 +234,9 @@ module CatST {
         assoc = ???
         id_only = ???
     }
+
+    //singletonCatSetInt = CatSet {
+    //}
 
     // think about: category of groups and group homomorphisms Grp
 
