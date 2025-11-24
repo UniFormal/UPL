@@ -77,7 +77,8 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     if (le.checkedIsDirty) {
       if (le.errors.hasErrors) return le.parsed
       val ch = new Checker(le.errors)
-      val leC = ch.checkVocabulary(GlobalContext(vocC),le.parsed,true)(le.parsed)
+      val leC = try {ch.checkVocabulary(GlobalContext(vocC), le.parsed, true)(le.parsed) }
+        catch { case e: Throwable => println(s"Uncaught `$e` occurred while checking $so"); Theory.empty }
       le.checked = leC
       le.checkedIsDirty = false
     }
