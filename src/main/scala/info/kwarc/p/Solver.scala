@@ -111,12 +111,10 @@ object Solver {
 
 
      println("---------")
-     println("U:", unknowns)
-     println("K:", knowns)
-     println("R:", redundantP)
-     println("P:", props)
-
-
+     printAsTheory("Unknowns", unknowns)
+     printAsTheory("Knowns", knowns)
+     printAsTheory("Properties", props)
+     printAsTheory("Redundant", redundantP)
 
 
      // just for temporary testing: add one definition
@@ -179,6 +177,10 @@ object Solver {
         isolate(Property(l,r),Occurrence(rest))
     }
   }
+
+  def printAsTheory(name: String, theorylike: List[Any]): Unit = {
+    println(name + ":{\n" + theorylike.mkString("\n").indent(2) + "}")
+  }
 }
 
 case class Occurrence(path: List[Int]) {
@@ -188,10 +190,12 @@ object Occurrence {
   val root = Occurrence(Nil)
 }
 
-case class Unknown(name: String, tp: Type)
+case class Unknown(name: String, tp: Type){
+  override def toString = s"$name : $tp"}
 
 case class Known(name: String, df: Expression, isNew: Boolean) {
   val uses = Regionals(df)._1
+  override def toString = s"$name = $df"
 }
 
 case class Property(left: Expression, right: Expression) {
@@ -205,6 +209,8 @@ case class Property(left: Expression, right: Expression) {
     case ClosedRef(n) => Some(n)
     case _ => None
   }
+
+  override def toString = s"|- $left == $right"
 }
 
 abstract class InverseMethodData(fun: Path, argPos: Int) {
@@ -227,7 +233,7 @@ case class InverseUnary(fun: Path, inv: Path) extends InverseMethodData (fun, 1)
   //  }
   //}
 //}
-// TODO InveseBinaryRight
+// TODO InverseBinaryRight
 
  // TODO Pfad math. ...
 
