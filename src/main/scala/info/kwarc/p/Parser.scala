@@ -102,12 +102,14 @@ object Parser {
 
   def text(so: SourceOrigin, s: String, eh: ErrorHandler): TheoryValue = {
     val p = new Parser(so,s,eh)
-    val ds = if (!so.isStandalone) {
-      p.parseAll(p.parseExpressionOrDeclarations("_" + so.fragment.hashCode.abs))
-    } else {
-      p.parseAll(p.parseDeclarations(false))
+    p.addRef{
+      val ds = if (!so.isStandalone) {
+        p.parseAll(p.parseExpressionOrDeclarations("_" + so.fragment.hashCode.abs))
+      } else {
+        p.parseAll(p.parseDeclarations(false))
+      }
+      TheoryValue(ds)
     }
-    TheoryValue(ds)
   }
 
   def expression(so: SourceOrigin, s: String, eh: ErrorHandler): Expression = {
@@ -543,19 +545,20 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     while (true) {
       trim
       val expBeginAt = index
-      var exp: Expression = if (startsWithS(".")) {
-        if (!atEnd && isNameChar(next)) {
-          // .id is OpenRef
-          OpenRef(parsePath)
-        } else {
-          // . is this, .. is parent and so on
-          var l = 1
-          while (startsWithS(".")) {l += 1}
-          trim
-          // .a is this.a, ..a is parent.a, and so on; thus: if .id follows, we keep the last .
-          if (!atEnd && isNameChar(next)) index-=1
-          This(l)
-        }
+      var exp: Expression =
+        if (startsWithS(".")) {
+          if (!atEnd && isNameChar(next)) {
+            // .id is OpenRef
+            OpenRef(parsePath)
+          } else {
+            // . is this, .. is parent and so on
+            var l = 1
+            while (startsWithS(".")) {l += 1}
+            trim
+            // .a is this.a, ..a is parent.a, and so on; thus: if .id follows, we keep the last .
+            if (!atEnd && isNameChar(next)) index-=1
+            This(l)
+          }
       } else if (startsWithS("§{")) {
         val ds = parseDeclarations(true)
         trim
@@ -895,7 +898,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   private val typePostOps = List("->","?")
   def parseType(implicit ctxs: PContext): Type = addRef {
     val tpBegin = index
-    var tp = if (startsWith(".") && !startsWith("..")) {
+    var tp = addRef {
+      if (startsWith(".") && !startsWith("..")) {
         skip(".")
         OpenRef(parsePath)
       } else if (startsWithS("int")) {
@@ -908,7 +912,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           val u = if (startsWith("]")) None else Some(parseExpression)
           trim
           skip("]")
-          IntervalType(l,u)
+          IntervalType(l, u)
         } else
           NumberType.Int
       }
@@ -923,7 +927,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       else if (startsWithS("empty")) EmptyType
       else if (startsWithS("exn")) ExceptionType
       else if (startsWithS("any")) AnyType
-      else if (startsWithAny("[" :: CollectionKind.allKeywords :_*)) {
+      else if (startsWithAny("[" :: CollectionKind.allKeywords: _*)) {
         val kind = if (startsWith("[")) CollectionKind.List
         else CollectionKind.allKinds.find(k => startsWithS(k._1)).get._2
         skip("[")
@@ -962,18 +966,19 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           val tp = exp match {
             case r: Ref => r
             // The above falsely parses e.tp and e{tp} into OwnedExpr. We can turn only some of those into OwnedType:
-            case OwnedExpr(o,d,r: Ref) => OwnedType(o,d,r)
+            case OwnedExpr(o, d, r: Ref) => OwnedType(o, d, r)
             // Similarly, it parses M{ds} into Instance, which we can turn into ClassType.
             case Instance(thy) => ClassType(thy)
             // Any other expression, we coerce into a type.
             // This coercion should happen during type-checking (and it does for Refs and OwnedType(_,_,Ref)),
             // but because it changes Scala-type, we have to do it here already.
-            case _:VarRef | _:Application | _:Projection | _:ListElem => MagicFunctions.typeOf(exp,null)
+            case _: VarRef | _: Application | _: Projection | _: ListElem => MagicFunctions.typeOf(exp, null)
             case _ => reportError("type expected"); AnyType
           }
           tp.copyFrom(exp)
         }
       }
+    }
     trim
     // postfix/infix type operators
     while (typePostOps.exists(startsWith)) {
