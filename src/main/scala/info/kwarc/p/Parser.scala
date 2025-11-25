@@ -849,6 +849,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     }
   }
 
+  // TODO: Assign locations all newly created Applications, i.e. `eolast` and `e1o1e2`
   // a shift-reduce parser of e1 o1 ... en on last
   def disambiguateInfixOperators(eos: List[(Expression,InfixParsable,Location)], lastExp: Expression): Expression = {
     // invariant: eos last = shifted rest last
