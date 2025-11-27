@@ -102,6 +102,7 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
     proj.check(so, false)
     val pe = proj.get(so)
     val diags = pe.errors.getErrors.map {e =>
+      // TODO: Catch errors with e.loc == null
       val rg = range(doc,e.loc)
       new Diagnostic(rg,e.getMessage)
     }
