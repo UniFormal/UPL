@@ -62,6 +62,7 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     val le = get(so)
     le.errors.clear
     le.parsed = Parser.text(so, src, le.errors)
+    // TestLocationFields(Module.anonymous(le.parsed.decls))(GlobalContext(le.parsed.decls),())
     DependencyAnalyzer.update(le)
     le.checkedIsDirty = true
   }
@@ -77,8 +78,7 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     if (le.checkedIsDirty) {
       if (le.errors.hasErrors) return le.parsed
       val ch = new Checker(le.errors)
-      val leC = try {ch.checkVocabulary(GlobalContext(vocC), le.parsed, true)(le.parsed) }
-        catch { case e: Throwable => println(s"Uncaught `${e.getMessage}` occurred while checking $so"); Theory.empty }
+      val leC = ch.checkVocabulary(GlobalContext(vocC), le.parsed, true)(le.parsed)
       le.checked = leC
       le.checkedIsDirty = false
     }
@@ -120,30 +120,19 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
       false
   }
 
-  /** Try to run [[main]], and print the result.
-    *
-    * @return An [[Interpreter]] to run further [[Expression]]s in this project
-    */
-  def run(): Option[Interpreter] = run(main).map{t => t._1}
-
-  /** Generalization of [[run]]() to allow access to the evaluated [[Expression]].
-    * Also allows [[Expression]]s that aren't [[main]], because it's trivial and differentiates the signatures.
-    *
-    * @param expr The [[Expression]] to run. If [[None]], [[UnitValue]] is used instead
-    * @return The closest sensible equivalent of [[Interpreter.run]](expr)
-    */
-  def run(expr: Option[Expression]): Option[(Interpreter,Expression)] = {
+  /** initialize and run 'main' */
+  def run(): Option[Interpreter] = {
     if (checkErrors()) return None
     val voc = check(false)
     if (checkErrors()) return None
-    val e = expr.getOrElse(UnitValue)
+    val e = main.getOrElse(UnitValue)
     val ch = new Checker(ErrorThrower)
     try {
       val (eC, _) = ch.checkAndInferExpression(GlobalContext(voc), e)
       val prog = Program(voc, eC)
       val (ip, r) = Interpreter.run(prog)
       println(r)
-      Some(ip,r)
+      Some(ip)
     } catch {
       case e: PError =>
         println(e)

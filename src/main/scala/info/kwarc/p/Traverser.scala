@@ -426,3 +426,30 @@ object Regionals {
     (Util.distinct(tr.exps), Util.distinct(tr.types), Util.distinct(tr.theories))
   }
 }
+
+/** auxiliary code to test if  */
+object TestLocationFields extends StatelessTraverser {
+  def test(sf: SyntaxFragment) = {
+    if (sf != null && sf.loc == null)
+      println("missing location:" + sf.toStringShort)
+  }
+  override def apply(decl: Declaration)(implicit gc: GlobalContext, a: Unit) = {
+    test(decl)
+    applyDefault(decl)
+  }
+  override def apply(exp: Expression)(implicit gc: GlobalContext, a: Unit) = {
+    test(exp)
+    applyDefault(exp)
+  }
+  override def apply(tp: Type)(implicit gc: GlobalContext, a: Unit) = {
+    tp match {
+      case _: UnknownType =>
+      case _ => test(tp)
+    }
+    applyDefault(tp)
+  }
+  override def apply(thy: Theory)(implicit gc: GlobalContext, a: Unit) = {
+    test(thy)
+    applyDefault(thy)
+  }
+}
