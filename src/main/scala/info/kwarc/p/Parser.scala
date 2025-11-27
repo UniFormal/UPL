@@ -413,11 +413,14 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     val closed = skipEither(closedModule,openModule)
     val name = parseName
     trim
+    val dfBegin = index
     skip("{")
     val decls = parseDeclarations(closed)
     trim
     skip("}")
-    Module(name, closed, decls)
+    val df = TheoryValue(decls)
+    setRef(df,dfBegin)
+    Module(name, closed, df)
   }
 
   def parseInclude: Include = {
@@ -459,15 +462,18 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
 
   def parseTypeDecl(mods: Modifiers): TypeDecl = {
+    val begin = index
     val name = parseName
+    val unbounded = Type.unbounded // location of name for the default upper bound
+    setRef(unbounded, begin)
     //val args = parseBracketedContext(PContext.empty)
     trim
     val (tp,df) = if (startsWithS("=")) {
-      (Type.unbounded,Some(parseType(PContext.empty)))
+      (unbounded,Some(parseType(PContext.empty)))
     } else if (startsWithS("<")) {
       (parseType(PContext.empty), None)
     } else
-      (Type.unbounded, None)
+      (unbounded, None)
     TypeDecl(name, tp, df, mods)
   }
 
@@ -556,10 +562,12 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           This(l)
         }
       } else if (startsWithS("§{")) {
+        val begin = index
         val ds = parseDeclarations(true)
         trim
         skip("}")
-        Instance(Theory(ds))
+        val thy = setRef(Theory(ds),begin)
+        Instance(thy)
       } else if (startsWithS("{")) {
         var cs: List[Expression] = Nil
         var ctxL = ctxs.setAllowStatement(true)
@@ -618,8 +626,9 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       } else if (Operator.prefixes.exists(o => startsWith(o.symbol))) {
         val o = Operator.prefixes.find(o => startsWith(o.symbol)).get
         skip(o.symbol)
+        val bo = setRef(BaseOperator(o,Type.unknown()), expBeginAt)
         val e = parseExpression
-        Application(BaseOperator(o,Type.unknown()),List(e))
+        Application(bo,List(e))
       } else if (startsWithS("\"")) {
         val s = parseWhile(_ != '"')
         skip("\"")
@@ -671,9 +680,10 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         skip("`")
         Eval(e)
       } else if (!atEnd && Parsable.circumfixClose(next).isDefined) {
+        val begin = index
         val open = parseWhile(Parsable.isCircumfixChar)
         val op = new PseudoCircumfixOperator(open)
-        val bo = BaseOperator(op,Type.unknown())
+        val bo = setRef(BaseOperator(op,Type.unknown()), begin)
         val es = parseExpressions("", op.close)
         Application(bo, es)
       } else {
@@ -740,12 +750,14 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           asRef(exp) match {
             case Some(r) if startsWithDeclaration =>
               // p{decls}
+              val incl = Include(r).copyFrom(exp)
               val ds = parseDeclarations(true)
               val sds = ds.flatMap {
                 case sd: SymbolDeclaration => List(sd)
                 case _ => reportError("symbol declaration expected"); Nil
               }
-              exp = Instance(Theory(Include(r)::sds)).copyFrom(exp)
+              val thy = setRef(Theory(incl::sds), incl.loc.from)
+              exp = Instance(thy)
             case _ =>
               // in e{q}, q is a closed expression in a different theory
               val e = parseExpression(ctxs.push())
@@ -788,7 +800,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
               val b = parseExpression(doAllowS)
               MatchCase(null,exp,b)
             case Some(ins) =>
-              val ctx = LocalContext.make(ins)
+              val ctx = LocalContext.make(ins).copyFrom(exp)
               val b = parseExpression(doAllowS.append(ctx))
               Lambda(ctx,b,false)
           }
@@ -912,13 +924,12 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       } else
         NumberType.Int
     }
-    //else if (startsWith("float")) {skip("float"); FloatType}
-    //else if (startsWith("char")) {skip("char"); CharType}
     else if (startsWithS("nat")) NumberType.Nat
     else if (startsWithS("rat")) NumberType.Rat
     else if (startsWithS("comp")) NumberType.RatComp
     else if (startsWithS("float")) NumberType.Float
     else if (startsWithS("string")) StringType
+    //else if (startsWithS("char")) CharType
     else if (startsWithS("bool")) BoolType
     else if (startsWithS("empty")) EmptyType
     else if (startsWithS("exn")) ExceptionType
@@ -977,16 +988,15 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     trim
     // postfix/infix type operators
     while (typePostOps.exists(startsWith)) {
+      setRef(tp,tpBegin)
       if (startsWithS("->")) {
         val (ctxR,ins) = tp match {
           case ProdType(ys) => (ctxs.append(ys),ys)
-          case y => (ctxs, LocalContext(VarDecl.anonymous(y)))
+          case y => (ctxs, LocalContext(VarDecl.anonymous(y).copyFrom(y)))
         }
-        setRef(ins,tpBegin)
         val out = parseType(ctxR) // makes -> right-associative and dependent
-        tp = FunType(ins,out)
+        tp = FunType(ins.copyFrom(tp),out)
       } else if (startsWithS("?")) {
-        setRef(tp, tpBegin)
         tp = CollectionType(tp, CollectionKind.Option)
       }
     }

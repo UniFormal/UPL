@@ -62,6 +62,7 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     val le = get(so)
     le.errors.clear
     le.parsed = Parser.text(so, src, le.errors)
+    // the following line can be used during debugging to find missing locations in parsed content
     // TestLocationFields(Module.anonymous(le.parsed.decls))(GlobalContext(le.parsed.decls),())
     DependencyAnalyzer.update(le)
     le.checkedIsDirty = true
