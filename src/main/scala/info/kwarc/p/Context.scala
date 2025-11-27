@@ -110,7 +110,7 @@ object LocalContext {
     case _                   => Nil
   }
   def collect(exp: List[Expression]): List[VarDecl] = exp.flatMap(collect)
-  def collectContext(e: Expression) = LocalContext(collect(e))
+  def collectContext(e: Expression) = LocalContext.make(collect(e))
 }
 
 /** substitution (for an omitted context) into a target context
@@ -118,8 +118,7 @@ object LocalContext {
  * represented as decls == VarDecl.sub(n_l,e_n), ...
  */
 case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
-  override def toString =
-    decls.reverseIterator.map(vd => vd.name + "/" + vd.dfO.get).mkString(", ")
+  override def toString = decls.reverseIterator.map(vd => vd.name + "/" + vd.dfO.get).mkString(", ")
   def label = "substitution"
   def children = decls.map(_.dfO.get)
 
@@ -131,8 +130,7 @@ case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
   def take(n: Int) = Substitution(decls.drop(decls.length-n))
 
   /** this : G -> target   --->  this, n/e : G, n:_ -> target */
-  def append(n: String, e: Expression) =
-    copy(decls = VarDecl.sub(n, e) :: decls)
+  def append(n: String, e: Expression) = copy(decls = VarDecl.sub(n, e) :: decls)
 
   /** this : G -> target   --->  this, n/vd.name : G, n:_ -> target, vd */
   def appendRename(n: String, vd: VarDecl) = Substitution(
@@ -140,8 +138,7 @@ case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
   )
 
   /** substitution is no-op */
-  def isIdentity =
-    decls.forall(d => d.anonymous || d.dfO.contains(VarRef(d.name)))
+  def isIdentity = decls.forall(d => d.anonymous || d.dfO.contains(VarRef(d.name)))
 
   /** if this is an injective renaming, the inverse */
   def inverse: Option[Substitution] = {

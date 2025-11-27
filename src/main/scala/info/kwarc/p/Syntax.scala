@@ -986,6 +986,9 @@ case class Quantifier(univ: Boolean, vars: LocalContext, body: Expression) exten
   def children = vars.children ::: List(body)
   override def childrenInContext = vars.childrenInContext ::: List((None,Some(vars),body))
 }
+object Quantifier {
+  def optional(u: Boolean, vs: LocalContext, bd: Expression) = if (vs.empty) bd else Quantifier(u,vs,bd)
+}
 
 /** typed equality, possibly negated */
 case class Equality(positive: Boolean, tp: Type, left: Expression, right: Expression) extends Expression {
@@ -1003,6 +1006,16 @@ case class Assert(formula: Expression) extends Expression {
   def label = "assert"
   def children = List(formula)
 }
+
+/*
+case class Using(hints: List[Expression]) extends Expression {
+  override def toString = "using " + hints.mkString(", ")
+  def label = "using"
+  def children = hints
+}
+
+case class ProofElim(elim: Expression, cases: List[List[VarDecl]]) extends Expression
+*/
 
 /** base values, introduction forms of [[BaseType]] */
 sealed abstract class BaseValue(val value: Any, val tp: BaseType) extends Expression {
@@ -1501,10 +1514,10 @@ case object Not extends PrefixOperator("!") {
 
 /** implication a => b is the same as comparision a <= b; but we need a separate operator to get the right notation */
 case object Implies extends InfixOperator("=>", -20, RightAssociative) with Connective {
-  def apply(args: List[Expression]): Expression = args match {
-    case Nil      => BoolValue(false)
-    case e :: Nil => e
-    case _ => Implies(And(args.init), args.last)
+  def apply(args: List[Expression]): Expression = apply(args.tail, args.last)
+  def apply(ass: List[Expression], conc: Expression): Expression = ass match {
+    case Nil => conc
+    case _ => Implies(And(ass), conc)
   }
   override def isDynamic = true
 }

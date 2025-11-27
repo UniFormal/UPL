@@ -1,7 +1,6 @@
 package info.kwarc.p
 
 import SyntaxFragment.matchC
-
 import Checker._
 
 // TODO: pure computations during checking (maybe: rewriting as a special case of matching; maybe rewriting on user-declared types)
@@ -1067,20 +1066,27 @@ class Checker(errorHandler: ErrorHandler) {
           checkSubtype(gc,UnitType,tpN)
         }
         var i = 0
+        var expTp = tpN
         val esC = es.map {e =>
           i += 1
-          if (i == numExprs) {
-            // the last expression in the block determines the type
-            checkExpression(gcL, e, tpN)
-          } else {
-            // other expressions can have any type
+          if (i < numExprs) {
+            // intial expressions can have any type
             val (eC,_) = inferExpression(gcL,e)(true)
             // remember variables for later expressions
             val eDs = LocalContext.collectContext(eC)
             if (!eDs.namesUnique)
               reportError("clashing names declared in expression")
             gcL = gcL.append(eDs)
+            // undefined variables are introduction forms and change the expected type
+            eC match {
+              case eC @ VarDecl(_,_,None, false,false) =>
+                expTp = applyIntros(gcL, List(eC), expTp)
+              case _ =>
+            }
             eC
+          } else {
+            // the last expression determines the type
+            checkExpression(gcL, e, expTp)
           }
         }
         Block(esC)
@@ -1104,6 +1110,42 @@ class Checker(errorHandler: ErrorHandler) {
     }
     eC.copyFrom(exp)
     eC
+  }
+
+  private def applyIntros(gc: GlobalContext, vds: List[VarDecl], tp: Type)(implicit cause: SyntaxFragment): Type = {
+    tp match {
+      case ProofType(f) =>
+        f match {
+          case Quantifier(true, needs, bd) =>
+            (vds,needs.variables.reverse) match {
+              case (vd::rest, need::needs) =>
+                val equated = equateTypes(gc,vd.tp,need.tp)(None)
+                if (!equated) fail("introduction form does not match expected type")
+                val tpR = ProofType(Quantifier.optional(true,LocalContext.make(needs),bd))
+                val subs = Substitution.empty.appendRename(need.name, vd)
+                val tpRS = Substituter(gc,subs,tpR)
+                applyIntros(gc.append(vd), rest, tpRS)
+              case (Nil,_) =>
+                tp
+              case (l,Nil) =>
+                applyIntros(gc,l,ProofType(bd))
+            }
+          case Application(BaseOperator(Implies,_), args) =>
+            val conc = args.last
+            (vds, args.init) match {
+              case (vd::rest,hyp::hyps) =>
+                val equated = equateTypes(gc, vd.tp, ProofType(hyp))(None)
+                if (!equated) fail("introduction form does not match expected type")
+                val tpR = ProofType(Implies(hyps,conc))
+                applyIntros(gc.append(vd), rest, tpR)
+              case (Nil, l) => tp
+              case (l,Nil) =>
+                applyIntros(gc,l,ProofType(conc))
+            }
+          case _ => fail("cannot apply introduction rule for formula " + f)
+        }
+      case _ => fail("cannot apply introduction rule for type " + tp)
+    }
   }
 
   /** infers by checking against an unknown type, useful to share code between the cases for inferExpression and checkExpression */

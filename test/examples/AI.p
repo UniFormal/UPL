@@ -67,6 +67,8 @@ module AI {
 
   makeNode = (l,p,c) -> Node {label = l, parent = p, cost = c}
 
+  // MK: Fringe has insert, Strategy has Fringe <: AbstractFringe, init; Fringe has insert, takeNext
+  // cost, heuristic as half-open symbols
   theory SearchStrategy {
     type Fringe = [Node]
     empty: Fringe -> bool = l -> l == []
