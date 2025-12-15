@@ -88,7 +88,7 @@ object Solver {
                // TODO umformungen
                case Some(_) | None => {
                  val iso = findIsolatable(p.left, Occurrence.root.path).filter(n => n._1 == u.name)
-                 // TODO InverseMethods an iso erweitern
+                 Console.println(iso)
                  //Console.println(InverseMethods.all.foreach(m => m.apply(p.left, p.right)))
                  iso match {
                    case Nil =>
@@ -112,7 +112,7 @@ object Solver {
 
      println("---------")
      println("U:", unknowns)
-     println("K:", knowns)
+     println("K:", knowns.flatMap(k => List(k, "\r\n")))
      println("R:", redundantP)
      println("P:", props)
 
@@ -156,7 +156,7 @@ object Solver {
     case Application(BaseOperator(op,_), as) =>
       op.isolatableArguments.flatMap(i => findIsolatable(as(i), i::traversed))
     case Application(OpenRef(p), as) =>
-      Nil
+      InverseMethods.findIsolatable(p, as, traversed)
       // TODO InverseMethods.all.filter(im => im.fun.eq(p)).flatMap(im => ())
     case Tuple(es) =>
       Range(0,es.length).toList.flatMap(i => findIsolatable(es(i), i::traversed))
@@ -172,7 +172,7 @@ object Solver {
       case i :: rest =>
         val lrO = prop.left match {
           case Application(BaseOperator(op, _), as) => op.isolate(i, as, prop.right)
-          // TODO case Application(OpenRef(p), as) => InverseMethods.
+          case Application(OpenRef(p), as) => InverseMethods.isolate(i, p, prop)
           case _ => None
         }
         val (l,r) = lrO.get
@@ -209,12 +209,23 @@ case class Property(left: Expression, right: Expression) {
 
 abstract class InverseMethodData(fun: Path, argPos: Int) {
   def apply(l: Expression, r: Expression): Option[(Expression,Expression)]
+  def findIsolatable(p: Path, args: List[Expression], traversed: List[Int]): List[(String, Occurrence)]
 }
 
-case class InverseUnary(fun: Path, inv: Path) extends InverseMethodData (fun, 1) {
+case class InverseUnary(fun: Path, inv: Path) extends InverseMethodData (fun, 0) {
   def apply(l: Expression, r: Expression): Option[(Expression,Expression)] = {
     l match {
-      case Application(OpenRef(q), List(a)) if fun == q => Some((a,Application(OpenRef(inv), List(r))))
+      case Application(OpenRef(q), List(a)) if fun.toString().equals(q.toString) => Some((a,Application(OpenRef(inv), List(r))))
+      case _ => None
+    }
+  }
+
+  def findIsolatable(p: Path, args: List[Expression], traversed: List[Int]): List[(String, Occurrence)] = {
+    if (fun.toString().equals(p.toString())) {
+      Solver.findIsolatable(args(0), 0 :: traversed)
+    }
+    else {
+      Nil
     }
   }
 }
@@ -229,26 +240,27 @@ case class InverseUnary(fun: Path, inv: Path) extends InverseMethodData (fun, 1)
 //}
 // TODO InveseBinaryRight
 
- // TODO Pfad math. ...
-
 object InverseMethods {
   val all = List(
-    InverseUnary(Path("sin"), Path("asin")),
-    InverseUnary(Path("cos"), Path("acos")),
-    InverseUnary(Path("tan"), Path("atan")),
-    InverseUnary(Path("asin"), Path("sin")),
-    InverseUnary(Path("acos"), Path("cos")),
-    InverseUnary(Path("atan"), Path("tan")),
-    InverseUnary(Path("exp"), Path("ln")),
-    InverseUnary(Path("sqrt"), Path("pow2")),
-    InverseUnary(Path("pow2"), Path("sqrt"))
+    InverseUnary(Path("Math.sin"), Path("Math.asin")),
+    InverseUnary(Path("Math.cos"), Path("Math.acos")),
+    InverseUnary(Path("Math.tan"), Path("Math.atan")),
+    InverseUnary(Path("Math.asin"), Path("Math.sin")),
+    InverseUnary(Path("Math.acos"), Path("Math.cos")),
+    InverseUnary(Path("Math.atan"), Path("Math.tan")),
+    InverseUnary(Path("Math.exp"), Path("Math.ln")),
+    InverseUnary(Path("Math.sqrt"), Path("Math.pow2")),
+    InverseUnary(Path("Math.pow2"), Path("Math.sqrt")),
+    InverseUnary(Path("Math.toDegrees"), Path("Math.toRadians"))
   )
 
-  def findIsolatable(): Unit = {
-    // TODO
+  def findIsolatable(fun: Path, args: List[Expression], traversed: List[Int]): List[(String,Occurrence)] = {
+    Console.println("fI: ", fun, args)
+    all.flatMap(f => f.findIsolatable(fun, args, traversed))
   }
 
-  def isolate(p: Path): Unit = {
+  def isolate(i: Int, p: Path, prop: Property): Option[(Expression, Expression)] = {
+    all.filter(f => f.fun.toString.equals(p.toString())).head.apply(prop.left, prop.right)
     //val iu = all.filter(f => f.fun.eq(p))
     //iu match {
     //  case Nil =>

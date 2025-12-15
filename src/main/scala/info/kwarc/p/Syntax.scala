@@ -1550,7 +1550,8 @@ case object Power extends InfixOperator("^", 20, RightAssociative) {
   override def isolatableArguments = List(0, 1)
   override def isolate(pos: Int, args: List[Expression], result: Expression) = {
     if (pos == 0) Some((args(0), Power(result, Divide(IntValue(1), args(1))))) // TODO args(1) != 0, result >= 0
-    //if (pos == 1) Some((args(1), )) // TODO Some((args(1), log(result, args(1))))
+    // TODO result und args(0) >= 0
+    else if (pos == 1) Some((args(1), Divide(Application(OpenRef(Path(List("Math", "ln"))), List(result)), Application(OpenRef(Path(List("Math", "ln"))), List(args(0))))))
     else None
   }
 }

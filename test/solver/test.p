@@ -118,7 +118,12 @@ module SolverTest {
   }
 
   theory Test3 {
-    t: EqualSidedTriangle
-    t.a = 5.0
+    include EqualSidedTriangle
+    a = 5.0
+  }
+
+  theory Test4 {
+    a: float
+    ax: |- 2 ^ a == 8
   }
 }

@@ -21,16 +21,16 @@ module Math {
     ceil = (x:float) -> {}
 
     // trigonometry
-    //sin = (x:float) -> {}
-    sin : float -> float
+    sin = (x:float) -> {x}
+    //sin : float -> float
     asin = (x:float) -> {}
 
-    //cos = (x:float) -> {}
-    cos : float -> float
+    cos = (x:float) -> {x}
+    //cos : float -> float
     acos = (x:float) -> {}
 
-    //tan = (x:float) -> {}
-    tan : float -> float
+    tan = (x:float) -> {x}
+    //tan : float -> float
     atan = (x:float) -> {}
     // JS Math atan2 --> atan of y/x ----> [-PI, PI]
     atan2 = (y:float, x:float) -> {}
@@ -41,10 +41,11 @@ module Math {
 
     // exp, log
     exp = (x:float) -> {}
-    log = (x:float) -> {}
+    ln = (x:float) -> {}
     log10 = (x:float) -> {}
     log2 = (x:float) -> {}
-    pow = (b:float, e:float) -> {}
+    // TODO log als binäre funktion
+    //pow = (b:float, e:float) -> {}
     pow2 = (b:float) -> {return b*b}
 
     // sqrt
