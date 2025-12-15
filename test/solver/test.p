@@ -29,6 +29,12 @@ module SolverTest {
     ax: |- 1 * (c + a) == b
   }
 
+  theory Ssa{
+    a: float
+    b: float
+    gamma: float
+  }
+
 
   theory Triangle {
 
@@ -117,13 +123,28 @@ module SolverTest {
     gamma = pi/2.0
   }
 
+  
+
   theory Test3 {
+    a: float
+    ax: |- 2 ^ a == 8
+  }
+
+  theory Test4 {
+    include Triangle
+    t = Ssa{a=5.0, b=5.0, gamma = Math.PI/2.0}
+    a = t.a
+    b = t.b
+    gamma = t.gamma
+  }
+
+  theory Test5 {
     include EqualSidedTriangle
     a = 5.0
   }
 
-  theory Test4 {
-    a: float
-    ax: |- 2 ^ a == 8
+  theory Test6 {
+    //t: EqualSidedTriangle
+    //t.a = 5.0
   }
 }

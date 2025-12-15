@@ -57,52 +57,48 @@
   <script type="text/javascript">
 
     function addToProject() {
-      const pS = document.getElementById("projIn").value
-      const out = document.getElementById("projOut")
-      if(FrameIT.addToSiTh(pS)){
-        out.removeAttribute("error")
-        out.value = FrameIT.showSiTh
+      const decls = document.getElementById("projIn").value
+      const projOut = document.getElementById("projOut")
+      if(FrameIT.tryAdd(decls)){
+        projOut.removeAttribute("error")
+        projOut.value = FrameIT.showSiTh
       }
       else {
-        out.value = FrameIT.SiThErrors
-        out.setAttribute("error","true")
+        projOut.setAttribute("error","true")
+        projOut.value = FrameIT.SiThErrors
       }
-      out.dispatchEvent(new Event('input', { bubbles: true }));
+      projOut.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
     function reset() {
-      const pS = document.getElementById("projIn").value
-      const out = document.getElementById("projOut")
-      FrameIT.resetSiTh()
-      out.removeAttribute("error")
-      out.value = FrameIT.showSiTh
-      out.dispatchEvent(new Event('input', { bubbles: true }));
+      const projOut = document.getElementById("projOut")
+      FrameIT.resetLevel()
+      projOut.removeAttribute("error")
+      projOut.value = FrameIT.showSiTh
+      projOut.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
     function evalUPL() {
+      const exprs = document.getElementById("in").value
+      const evalOut = document.getElementById("out")
       // an empty line can be used to separate multiple expressions
-      const eS = document.getElementById("in").value.split("\n\n")
-      const out = document.getElementById("out")
-      if (prog === null){
-        out.value = "No context to evaluate in, use \"check\" first.\n(Checking an empty program is possible)."
-        out.setAttribute("error","true")
-        return
-      }
-      out.removeAttribute("error")
-      out.value = ""
+      const eS = exprs.split("\n\n")
+      evalOut.removeAttribute("error")
+      evalOut.value = ""
       eS.forEach(expr => {
+        console.log(expr)
+        evalOut.value += FrameIT.eval(expr) + "\n\n"
         try {
-          out.value += UPL.print(UPL.runIn(prog, expr)) + "\n\n"
 
         } catch (error) {
-          out.value = error.name +" : "+ error.message + "\n\n"
-          out.setAttribute("error","true")
+          evalOut.value = error.name +" : "+ error.message + "\n\n"
+          evalOut.setAttribute("error","true")
           console.error(error)
         }
       });
       // remove the unnecessary linebreaks at the end
-      out.value = out.value.trim()
-      out.dispatchEvent(new Event('input', { bubbles: true }));
+      evalOut.value = evalOut.value.trim()
+      evalOut.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
     // clone the value to the wrapper, so it can adapt the size
@@ -117,17 +113,17 @@
       <textarea id="projIn" oninput="replicateValue(this)">x = 1</textarea>
     </div>
     <div class="col">
-      <button onclick="addToProject()">Add</button>
-      <button onclick="reset()">Reset</button>
+      <button id="button_add" onclick="addToProject()">Add</button>
+      <button id="button_reset" onclick="reset()">Reset</button>
     </div>
     <div class="grow-wrap">
       <textarea id="projOut" oninput="replicateValue(this)"></textarea>
     </div>
   </div><div class="row">
     <div class="grow-wrap">
-      <textarea id="in" oninput="replicateValue(this)">M.x</textarea>
+      <textarea id="in" oninput="replicateValue(this)">SiTh{x=1}.x+1</textarea>
     </div>
-    <button onclick="evalUPL()">Evaluate</button>
+    <button id="button_eval" onclick="evalUPL()">Evaluate</button>
     <div class="grow-wrap">
       <textarea id="out" oninput="replicateValue(this)"></textarea>
     </div>

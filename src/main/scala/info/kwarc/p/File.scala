@@ -103,8 +103,8 @@ object File {
     }
   }
 
-  def readPropertiesFromString(s: String): mutable.Map[String, String] = {
-    val properties = new scala.collection.mutable.ListMap[String, String]
+  def readPropertiesFromString(s: String): Util.ListMap[String, String] = {
+    val properties = new Util.ListMap[String, String]
     s.split("\n") foreach {line =>
       // usually continuation lines start with a space but we ignore those
       val tline = line.trim
@@ -114,13 +114,15 @@ object File {
           // make sure line contains colon and the key is non-empty
           val key = tline.substring(0, p).trim
           val value = tline.substring(p + 1).trim
-          properties(key) = properties.get(key) match {
+          val newValue = properties(key) match {
             case None => value
             case Some(old) => old + " " + value
           }
+          properties.update(key,newValue)
         }
       }
     }
+    properties.compact
     properties
   }
 }

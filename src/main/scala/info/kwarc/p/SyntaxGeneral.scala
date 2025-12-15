@@ -2,11 +2,12 @@ package info.kwarc.p
 
 /** parent of all classes in the AST */
 trait SyntaxFragment {
-  private[p] var loc: Location =
-    null // set by parser to remember location in source
+  private[p] var loc: Location = null // set by parser to remember location in source
 
-  /** at max 10 characters */
-  def toStringShort: String = if (toString.length <= 10) toString else toString.take(7) + "..."
+  def toStringShort: String = {
+    val s = toString
+    s.take(Math.min(20,s.length))
+  }
 
   /** moves over mutable fields, may be called after performing traversals
    * if the resulting expression is "the same" as the original in some sense
@@ -141,6 +142,7 @@ case class Location(origin: SourceOrigin, from: Int, to: Int) {
   override def toString = s"$origin#$from:$to"
   def contains(that: Location): Boolean = this.origin == that.origin && this.from <= that.from && that.to <= this.to
   def contains(that: Int): Boolean = contains(Location.single(origin, that))
+  def extendTo(l: Location) = copy(to=l.to)
 }
 
 object Location {

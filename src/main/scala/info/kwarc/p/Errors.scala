@@ -33,7 +33,10 @@ class ErrorCollector extends ErrorHandler {
   private var errors: List[SError] = Nil
   def hasErrors = errors.nonEmpty
   def getErrors = errors.reverse
-  def apply(e: SError) = errors ::= e
+  def apply(e: SError) = {
+    if (e.loc == null) throw IError(s"SError without valid Location. Original error message:\n$e")
+    errors ::= e
+  }
   def clear = {errors = Nil}
 }
 

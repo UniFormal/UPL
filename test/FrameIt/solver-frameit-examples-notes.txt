@@ -1,0 +1,66 @@
+
+theory Triangle {
+  a: float
+  b: float
+  c: float
+  alpha: float
+  beta: float
+  gamma: float
+  sinelaw: |- ...
+  ...
+  cosinelaw:  |- ...
+  ...
+  anglesum: |- ...
+}
+
+// input for Solver:
+theory TriangleExample {
+  include Triangle
+  a = 5
+  alpha = 0.5pi
+  beta = 0.7pi
+}
+
+theory DoubleTriangle {
+  a1: float
+  b1: float
+  c1: float
+  a2: float
+  b2: float
+  c2: float
+  alpha: float
+  beta: float
+  gamma: float
+  sinelaw: |- ...
+  ...
+  cosinelaw:  |- ...
+  ...
+  anglesum: |- ...
+  strahlensatz: |- b1/b2 == c1/c2
+  ...
+}
+
+theory Example {
+  include DoubleTriangle
+  a = 1
+  ...
+}
+
+// distance is tricky
+theory LocatedTriangle {
+  include Triangle
+  A: point
+  B: point
+  C: point
+  adef: |- a == dist(B,C)
+  ...
+  alphadef: |- alpha == angle(B,A,C)
+}
+
+theory TwoTrianglesExample {
+  d1: LocatedTriangle
+  d2: LocatedTriangle
+  samecorner: |- d1.A == d2.A
+  sameangle: |- d1.alpha == d2.alpha
+  collinear: |- d1.B.y == d2.B.y
+}

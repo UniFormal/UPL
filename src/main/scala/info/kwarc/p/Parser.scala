@@ -92,7 +92,7 @@ object Parser {
 
   def file(f: File,eh: ErrorHandler) = {
     val p = new Parser(f.toSourceOrigin, getFileContent(f), eh)
-    TheoryValue(p.parseAll(p.parseDeclarations))
+    TheoryValue(p.parseAll(p.parseDeclarations(false)))
   }
 
   def getFileContent(f: File) = {
@@ -105,7 +105,7 @@ object Parser {
     val ds = if (!so.isStandalone) {
       p.parseAll(p.parseExpressionOrDeclarations("_" + so.fragment.hashCode.abs))
     } else {
-      p.parseAll(p.parseDeclarations)
+      p.parseAll(p.parseDeclarations(false))
     }
     TheoryValue(ds)
   }
@@ -200,7 +200,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   case class Error(msg: String) extends SError(makeRef(index), msg)
   private case class Abort() extends Exception
   def reportError(msg: String) = {
-    val e = Error(msg + "; found " + input.substring(index,Math.min(index+20,inputLength)))
+    val found = input.substring(index,Math.min(index+20,inputLength))
+    val e = Error(msg + "; found " + (if (found.isEmpty) "[nothing]" else found))
     eh(e)
   }
   def fail(msg: String) = {
@@ -365,29 +366,31 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
 
   def parseExpressionOrDeclarations(defaultName: String) = {
-    if (startsWithDeclaration) parseDeclarations
+    trim
+    if (atEnd) Nil else if (startsWithDeclaration) parseDeclarations(false)
     else {
       val e = parseExpression(PContext.empty)
-      List(ExprDecl(defaultName,Type.unknown(),Some(e),false))
+      List(ExprDecl(defaultName,Type.unknown(),Some(e),Modifiers(false,false,false)))
     }
   }
 
-  def parseDeclaration: Declaration = addRef {
+  def parseDeclaration(implicit closed: Boolean): Declaration = addRef {
+    val mods = Modifiers(closed, false, false)
     if (startsWithAny(closedModule,openModule)) parseModule
     else if (startsWithAny(include,totalInclude)) parseInclude
-    else if (startsWithS(typeDecl)) parseTypeDecl
-    else if (startsWithS(mutableExprDecl)) parseExprDecl(true)
+    else if (startsWithS(typeDecl)) parseTypeDecl(mods)
+    else if (startsWithS(mutableExprDecl)) parseExprDecl(mods.copy(mutable=true))
     else if (startsWithS(exprDecl)) {
       trim
       val n = parseWhile(c => !c.isWhitespace)
       if (n.isEmpty) fail("name expected")
-      parseExprDecl(false, Some(n))
+      parseExprDecl(mods, Some(n))
     }
-    else if (startsWithDeclaration) parseExprDecl(false)
+    else if (startsWithDeclaration) parseExprDecl(mods)
     else fail("declaration expected")
   }
 
-  def parseDeclarations: List[Declaration] = {
+  def parseDeclarations(implicit closed: Boolean): List[Declaration] = {
     var decls: List[Declaration] = Nil
     var break = false
     while (!break) {
@@ -410,11 +413,14 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     val closed = skipEither(closedModule,openModule)
     val name = parseName
     trim
+    val dfBegin = index
     skip("{")
-    val decls = parseDeclarations
+    val decls = parseDeclarations(closed)
     trim
     skip("}")
-    Module(name, closed, decls)
+    val df = TheoryValue(decls)
+    setRef(df,dfBegin)
+    Module(name, closed, df)
   }
 
   def parseInclude: Include = {
@@ -437,7 +443,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     case _ => fail("expected theory, found expression")
   }
 
-  def parseExprDecl(mutable: Boolean, nameAlreadyParsed: Option[String] = None): ExprDecl = {
+  def parseExprDecl(mods: Modifiers, nameAlreadyParsed: Option[String] = None): ExprDecl = {
     val name = nameAlreadyParsed getOrElse parseName
     val args = if (startsWith("(")) Some(parseBracketedContext(PContext.empty)) else None
     trim
@@ -452,20 +458,23 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       case None => (tp,vl)
       case Some(lc) => (FunType(lc,tp), vl map {v => Lambda(lc,v, true)})
     }
-    ExprDecl(name, atp, avl, mutable)
+    ExprDecl(name, atp, avl, mods)
   }
 
-  def parseTypeDecl: TypeDecl = {
+  def parseTypeDecl(mods: Modifiers): TypeDecl = {
+    val begin = index
     val name = parseName
+    val unbounded = Type.unbounded // location of name for the default upper bound
+    setRef(unbounded, begin)
     //val args = parseBracketedContext(PContext.empty)
     trim
     val (tp,df) = if (startsWithS("=")) {
-      (Type.unbounded,Some(parseType(PContext.empty)))
+      (unbounded,Some(parseType(PContext.empty)))
     } else if (startsWithS("<")) {
       (parseType(PContext.empty), None)
     } else
-      (Type.unbounded, None)
-    TypeDecl(name, tp, df)
+      (unbounded, None)
+    TypeDecl(name, tp, df, mods)
   }
 
   def parseVarDecl(mutable: Boolean, nameMandatory: Boolean)(implicit ctxs: PContext): VarDecl = addRef {
@@ -533,6 +542,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     val allowS = ctxs.allowStatement
     val doAllowS = ctxs.setAllowStatement(true)
     val doNotAllowS = ctxs.setAllowStatement(false)
+    // seen.reverse = (e1,o1,l1)::... represents having parsed "e1 o1 ..." where l1 is the location of o1
     var seen: List[(Expression,InfixParsable,Location)] = Nil
     val allExpBeginAt = index
     while (true) {
@@ -552,10 +562,12 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           This(l)
         }
       } else if (startsWithS("§{")) {
-        val ds = parseDeclarations
+        val begin = index
+        val ds = parseDeclarations(true)
         trim
         skip("}")
-        Instance(Theory(ds))
+        val thy = setRef(Theory(ds),begin)
+        Instance(thy)
       } else if (startsWithS("{")) {
         var cs: List[Expression] = Nil
         var ctxL = ctxs.setAllowStatement(true)
@@ -614,8 +626,9 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       } else if (Operator.prefixes.exists(o => startsWith(o.symbol))) {
         val o = Operator.prefixes.find(o => startsWith(o.symbol)).get
         skip(o.symbol)
+        val bo = setRef(BaseOperator(o,Type.unknown()), expBeginAt)
         val e = parseExpression
-        Application(BaseOperator(o,Type.unknown()),List(e))
+        Application(bo,List(e))
       } else if (startsWithS("\"")) {
         val s = parseWhile(_ != '"')
         skip("\"")
@@ -667,9 +680,10 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         skip("`")
         Eval(e)
       } else if (!atEnd && Parsable.circumfixClose(next).isDefined) {
+        val begin = index
         val open = parseWhile(Parsable.isCircumfixChar)
         val op = new PseudoCircumfixOperator(open)
-        val bo = BaseOperator(op,Type.unknown())
+        val bo = setRef(BaseOperator(op,Type.unknown()), begin)
         val es = parseExpressions("", op.close)
         Application(bo, es)
       } else {
@@ -723,12 +737,12 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           }
         } else if (startsWithS("{")) {
           // conflict between M{decls} and exp{exp}
-          // we look back and ahead to see if it is the former, in which case looksLikeInstanceOf.isDefined
           // check if there was a Ref before
           def asRef(e: Expression): Option[Ref] = e match {
             case OwnedExpr(e,_,ClosedRef(n)) => asRef(e).map {
-              case r: OpenRef => OpenRef(r.path/n)
+              case OpenRef(p) => OpenRef(p/n)
               case ClosedRef(m) => OpenRef(Path(m) / n)
+              case VarRef(m) => OpenRef(Path(m) / n)
             }
             case r: Ref => Some(r)
             case _ => None
@@ -736,12 +750,14 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           asRef(exp) match {
             case Some(r) if startsWithDeclaration =>
               // p{decls}
-              val ds = parseDeclarations
+              val incl = Include(r).copyFrom(exp)
+              val ds = parseDeclarations(true)
               val sds = ds.flatMap {
                 case sd: SymbolDeclaration => List(sd)
                 case _ => reportError("symbol declaration expected"); Nil
               }
-              exp = Instance(Theory(Include(r)::sds)).copyFrom(exp)
+              val thy = setRef(Theory(incl::sds), incl.loc.from)
+              exp = Instance(thy)
             case _ =>
               // in e{q}, q is a closed expression in a different theory
               val e = parseExpression(ctxs.push())
@@ -756,9 +772,9 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       } // end while
       trim
       if (!allowWeakPostops) return exp
+      setRef(exp, expBeginAt)
       if (startsWithAny(Parser.weakPostops:_*) && !startsWithAny(Parser.conflictingInfixes:_*)) {
         exp = disambiguateInfixOperators(seen.reverse,exp)
-        setRef(exp,allExpBeginAt)
         val expWP = if (startsWithS("=")) {
           val df = parseExpression
           Assign(exp,df)
@@ -784,7 +800,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
               val b = parseExpression(doAllowS)
               MatchCase(null,exp,b)
             case Some(ins) =>
-              val ctx = LocalContext.make(ins)
+              val ctx = LocalContext.make(ins).copyFrom(exp)
               val b = parseExpression(doAllowS.append(ctx))
               Lambda(ctx,b,false)
           }
@@ -797,7 +813,6 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         } else exp
         return expWP
       } else {
-        setRef(exp, expBeginAt)
         val opBegin = index
         parseInfixO(Operator.infixes) match {
           case None =>
@@ -860,6 +875,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           val bo = BaseOperator(o,Type.unknown())
           bo.loc = l
           val eolast = Application(bo,List(e,last))
+          eolast.loc = e.loc.extendTo(last.loc)
           shifted = shifted.tail
           last = eolast
         case (e2,o2,l2) :: tl =>
@@ -875,6 +891,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
               val bo1 = BaseOperator(o1,Type.unknown())
               bo1.loc = l1
               val e1o1e2 = Application(bo1,List(e1,e2))
+              e1o1e2.loc = e1.loc.extendTo(e2.loc)
               shifted = (e1o1e2,o2,l2) :: shifted.tail
               rest = tl
             } else if (o1.precedence < o2.precedence || associateRight) {
@@ -891,96 +908,95 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   def parseType(implicit ctxs: PContext): Type = addRef {
     val tpBegin = index
     var tp = if (startsWith(".") && !startsWith("..")) {
-        skip(".")
-        OpenRef(parsePath)
-      } else if (startsWithS("int")) {
+      skip(".")
+      OpenRef(parsePath)
+    } else if (startsWithS("int")) {
+      trim
+      if (startsWithS("[")) {
         trim
-        if (startsWithS("[")) {
-          trim
-          val l = if (startsWith(";")) None else Some(parseExpression)
-          trim
-          skipT(";")
-          val u = if (startsWith("]")) None else Some(parseExpression)
-          trim
-          skip("]")
-          IntervalType(l,u)
-        } else
-          NumberType.Int
-      }
-      //else if (startsWith("float")) {skip("float"); FloatType}
-      //else if (startsWith("char")) {skip("char"); CharType}
-      else if (startsWithS("nat")) NumberType.Nat
-      else if (startsWithS("rat")) NumberType.Rat
-      else if (startsWithS("comp")) NumberType.RatComp
-      else if (startsWithS("float")) NumberType.Float
-      else if (startsWithS("string")) StringType
-      else if (startsWithS("bool")) BoolType
-      else if (startsWithS("empty")) EmptyType
-      else if (startsWithS("exn")) ExceptionType
-      else if (startsWithS("any")) AnyType
-      else if (startsWithAny("[" :: CollectionKind.allKeywords :_*)) {
-        val kind = if (startsWith("[")) CollectionKind.List
-        else CollectionKind.allKinds.find(k => startsWithS(k._1)).get._2
-        skip("[")
-        val y = parseType
+        val l = if (startsWith(";")) None else Some(parseExpression)
+        trim
+        skipT(";")
+        val u = if (startsWith("]")) None else Some(parseExpression)
+        trim
         skip("]")
-        CollectionType(y, kind)
-      } else if (startsWith("(")) {
-        val ys = parseBracketedContext
-        ys.decls match {
-          case Nil => UnitType
-          case List(vd) if vd.anonymous => vd.tp
-          case _ => ProdType(ys)
-        }
-      } else if (startsWithS("|-")) {
-        // TODO: this awkwardly parses c: |- F = p as c : |- (F = p) and then fails with a confusing error
-        val e = parseExpression
-        ProofType(e)
-      } else {
-        // conflict between types that start with a name and those starting with an expression, i.e., e{tp} or e.tp
-        val backtrackPoint = index
-        val n = parseName
-        trim
-        if (n == "_") {
-          Type.unknown()
-        } else if (n != "" && !atEnd && typePostOps.exists(startsWith)) {
-          // looks like a type that starts with a name
-          ClosedRef(n)
-        } else {
-          // We reuse expression parsing for 3 reasons:
-          // - reuse the code for parsing Refs
-          // - owned types starts with an expression
-          // - expr-to-type coercion allows expressions in type-positions
-          // Setting noWeakPostops avoids parsing -> and other operators, which we want to handle ourselves.
-          index = backtrackPoint
-          val exp = parseExpression(ctxs.noWeakPostops)
-          val tp = exp match {
-            case r: Ref => r
-            // The above falsely parses e.tp and e{tp} into OwnedExpr. We can turn only some of those into OwnedType:
-            case OwnedExpr(o,d,r: Ref) => OwnedType(o,d,r)
-            // Similarly, it parses M{ds} into Instance, which we can turn into ClassType.
-            case Instance(thy) => ClassType(thy)
-            // Any other expression, we coerce into a type.
-            // This coercion should happen during type-checking (and it does for Refs and OwnedType(_,_,Ref)),
-            // but because it changes Scala-type, we have to do it here already.
-            case _:VarRef | _:Application | _:Projection | _:ListElem => MagicFunctions.typeOf(exp,null)
-            case _ => reportError("type expected"); AnyType
-          }
-          tp.copyFrom(exp)
-        }
+        IntervalType(l, u)
+      } else
+        NumberType.Int
+    }
+    else if (startsWithS("nat")) NumberType.Nat
+    else if (startsWithS("rat")) NumberType.Rat
+    else if (startsWithS("comp")) NumberType.RatComp
+    else if (startsWithS("float")) NumberType.Float
+    else if (startsWithS("string")) StringType
+    //else if (startsWithS("char")) CharType
+    else if (startsWithS("bool")) BoolType
+    else if (startsWithS("empty")) EmptyType
+    else if (startsWithS("exn")) ExceptionType
+    else if (startsWithS("any")) AnyType
+    else if (startsWithAny("[" :: CollectionKind.allKeywords: _*)) {
+      val kind = if (startsWith("[")) CollectionKind.List
+      else CollectionKind.allKinds.find(k => startsWithS(k._1)).get._2
+      skip("[")
+      val y = parseType
+      skip("]")
+      CollectionType(y, kind)
+    } else if (startsWith("(")) {
+      val ys = parseBracketedContext
+      ys.decls match {
+        case Nil => UnitType
+        case List(vd) if vd.anonymous => vd.tp
+        case _ => ProdType(ys)
       }
+    } else if (startsWithS("|-")) {
+      // TODO: this awkwardly parses c: |- F = p as c : |- (F = p) and then fails with a confusing error
+      val e = parseExpression
+      ProofType(e)
+    } else {
+      // conflict between types that start with a name and those starting with an expression, i.e., e{tp} or e.tp
+      val backtrackPoint = index
+      val n = parseName
+      trim
+      if (n == "_") {
+        Type.unknown()
+      } else if (n != "" && !atEnd && typePostOps.exists(startsWith)) {
+        // looks like a type that starts with a name
+        ClosedRef(n)
+      } else {
+        // We reuse expression parsing for 3 reasons:
+        // - reuse the code for parsing Refs
+        // - owned types starts with an expression
+        // - expr-to-type coercion allows expressions in type-positions
+        // Setting noWeakPostops avoids parsing -> and other operators, which we want to handle ourselves.
+        index = backtrackPoint
+        val exp = parseExpression(ctxs.noWeakPostops)
+        val tp = exp match {
+          case r: Ref => r
+          // The above falsely parses e.tp and e{tp} into OwnedExpr. We can turn only some of those into OwnedType:
+          case OwnedExpr(o, d, r: Ref) => OwnedType(o, d, r)
+          // Similarly, it parses M{ds} into Instance, which we can turn into ClassType.
+          case Instance(thy) => ClassType(thy)
+          // Any other expression, we coerce into a type.
+          // This coercion should happen during type-checking (and it does for Refs and OwnedType(_,_,Ref)),
+          // but because it changes Scala-type, we have to do it here already.
+          case _: VarRef | _: Application | _: Projection | _: ListElem => MagicFunctions.typeOf(exp, null)
+          case _ => reportError("type expected"); AnyType
+        }
+        tp.copyFrom(exp)
+      }
+    }
     trim
     // postfix/infix type operators
     while (typePostOps.exists(startsWith)) {
+      setRef(tp,tpBegin)
       if (startsWithS("->")) {
         val (ctxR,ins) = tp match {
           case ProdType(ys) => (ctxs.append(ys),ys)
-          case y => (ctxs, LocalContext(VarDecl.anonymous(y)))
+          case y => (ctxs, LocalContext(VarDecl.anonymous(y).copyFrom(y)))
         }
         val out = parseType(ctxR) // makes -> right-associative and dependent
-        tp = FunType(ins,out)
+        tp = FunType(ins.copyFrom(tp),out)
       } else if (startsWithS("?")) {
-        setRef(tp, tpBegin)
         tp = CollectionType(tp, CollectionKind.Option)
       }
     }

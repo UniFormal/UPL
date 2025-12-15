@@ -13,14 +13,18 @@ import SyntaxFragment.matchC
   */
 abstract class Traverser[A] {
   def apply(p: Path)(implicit gc: GlobalContext, a: A): Path = matchC(p) {p => p}
+  def apply(r: Ref)(implicit gc: GlobalContext, a: A): Ref = matchC(r) {
+    case VarRef(n) => VarRef(n)
+    case ClosedRef(n) => ClosedRef(n)
+    case OpenRef(p) => OpenRef(apply(p))
+  }
 
   /** must satisfy apply(thy.toValue) == apply(thy).toValue */
   def apply(thy: Theory)(implicit gc: GlobalContext, a: A): Theory = applyDefault(thy)
 
   protected final def applyDefault(thy: Theory)(implicit gc: GlobalContext, a: A) = matchC(thy) {
     case null => null
-    case ClosedRef(n) => ClosedRef(n)
-    case OpenRef(p) => OpenRef(apply(p))
+    case r: Ref => apply(r)
     case OwnedTheory(o,d,t) =>
       val tT = apply(t)(gc.push(d,Some(o)), a)
       OwnedTheory(apply(o), apply(d), tT)
@@ -64,10 +68,10 @@ abstract class Traverser[A] {
       Module(n, op, TheoryValue(dsT))
     case Include(dm,df, r) =>
       Include(apply(dm), df map apply, r)
-    case TypeDecl(n, bd, dfO) =>
-      TypeDecl(n, apply(bd), dfO map apply)
-    case ExprDecl(n, tp, dfO, m) =>
-      ExprDecl(n, apply(tp), dfO map apply, m)
+    case TypeDecl(n, bd, dfO, ms) =>
+      TypeDecl(n, apply(bd), dfO map apply, ms)
+    case ExprDecl(n, tp, dfO, ms) =>
+      ExprDecl(n, apply(tp), dfO map apply, ms)
   }
 
   def apply(tp: Type)(implicit gc: GlobalContext, a: A): Type = matchC(tp)(applyDefault _)
@@ -83,8 +87,7 @@ abstract class Traverser[A] {
         else null
         UnknownType(g,cont, subT)
       }
-    case ClosedRef(n) => ClosedRef(n)
-    case OpenRef(p) => OpenRef(apply(p))
+    case r: Ref => apply(r)
     case OwnedType(e, d, o) => OwnedType(apply(e), apply(d), apply(o)(gc.push(d,Some(e)),a))
     case b: BaseType => b
     case ExceptionType => tp
@@ -103,9 +106,7 @@ abstract class Traverser[A] {
   protected final def applyDefault(exp: Expression)(implicit gc: GlobalContext, a: A): Expression = exp match {
     case null => null
     case _: BaseValue => exp
-    case _: VarRef => exp
-    case ClosedRef(n) => ClosedRef(n)
-    case OpenRef(p) => OpenRef(apply(p))
+    case r: Ref => apply(r)
     case This(l) => This(l)
     case OwnedExpr(o, d, e) => OwnedExpr(apply(o), apply(d), apply(e)(gc.push(d,Some(o)),a))
     case BaseOperator(o,tp) => BaseOperator(o, apply(tp))
@@ -328,7 +329,7 @@ object Simplify extends StatelessTraverser {
     val expR = applyDefault(exp) // first, recursively simplify subexpressions
     matchC(expR) {
       case r: Ref => gc.lookupRef(r) match {
-        case Some(ed: ExprDecl) if !ed.mutable && ed.dfO.isDefined => apply(ed.dfO.get)
+        case Some(ed: ExprDecl) if !ed.modifiers.mutable && ed.dfO.isDefined => apply(ed.dfO.get)
         case _ => expR
       }
       case Application(bo: BaseOperator, args) => Operator.simplify(bo, args)
@@ -423,5 +424,32 @@ object Regionals {
       case o: Theory => tr(o)(gc,())
     }
     (Util.distinct(tr.exps), Util.distinct(tr.types), Util.distinct(tr.theories))
+  }
+}
+
+/** auxiliary code to test if  */
+object TestLocationFields extends StatelessTraverser {
+  def test(sf: SyntaxFragment) = {
+    if (sf != null && sf.loc == null)
+      println("missing location:" + sf.toStringShort)
+  }
+  override def apply(decl: Declaration)(implicit gc: GlobalContext, a: Unit) = {
+    test(decl)
+    applyDefault(decl)
+  }
+  override def apply(exp: Expression)(implicit gc: GlobalContext, a: Unit) = {
+    test(exp)
+    applyDefault(exp)
+  }
+  override def apply(tp: Type)(implicit gc: GlobalContext, a: Unit) = {
+    tp match {
+      case _: UnknownType =>
+      case _ => test(tp)
+    }
+    applyDefault(tp)
+  }
+  override def apply(thy: Theory)(implicit gc: GlobalContext, a: Unit) = {
+    test(thy)
+    applyDefault(thy)
   }
 }

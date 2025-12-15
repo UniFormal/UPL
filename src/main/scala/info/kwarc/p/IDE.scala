@@ -102,6 +102,7 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
     proj.check(so, false)
     val pe = proj.get(so)
     val diags = pe.errors.getErrors.map {e =>
+      // TODO: Catch errors with e.loc == null
       val rg = range(doc,e.loc)
       new Diagnostic(rg,e.getMessage)
     }
@@ -214,8 +215,8 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
       case r: Ref => gc.lookupRef(r).getOrElse(return null) match {
         case sd: SymbolDeclaration => sd.toString
         case m: Module => "module"
+        case vd: VarDecl => vd.toString
       }
-      case VarRef(n) => gc.lookupLocal(n).get.toString
       case vd: VarDecl => vd.toString
       case bo: BaseOperator => bo.operator.symbol + ": " + bo.tp.toString
       case e: Expression if selection =>

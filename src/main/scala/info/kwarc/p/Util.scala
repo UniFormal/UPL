@@ -38,6 +38,14 @@ object Util {
       entries ::= (a,b)
     }
     def isEmpty = entries.isEmpty
+    /** remove outdated entries */
+    def compact = {
+      var seen: List[A] = Nil
+      entries = entries.filter {e =>
+        seen ::= e._1
+        !seen.tail.contains(e._1)
+      }
+    }
     def clear() = {entries = Nil}
   }
 }
