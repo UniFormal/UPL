@@ -38,6 +38,8 @@ module M {
   f3 : int -> int = x -> x+1
   // _ can be used to omit a type explicitly that should be inferred.
   f4 : int -> _ = x -> x+1
+  // arguments may also be declared right after the name, in which they apply to type and definiens
+  f5(x: int): int = x+1
 
   // Terms may also be {}-blocks. These are sequences of terms that evaluate to their last element.
   factorial = (x:int) -> {

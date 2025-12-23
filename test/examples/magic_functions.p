@@ -1,10 +1,10 @@
 module Magic {
   theory A {
     x: int
-    // magic infix operator: a ++ n becomes a._++_(n); here: add n to x
-    val _++_ = (y: int) -> A{x=..x+y}
-    // magic circumfix operator: 〈a,b,c〉 becomes a.〈_〉(list[b,c]); here: sum a.x + b.x + ...
-    val 〈_〉 = (as: list[A]) -> {
+    // magic infix operator: a ++ n becomes a._infix_++(n); here: add n to x
+    val _infix_++ = (y: int) -> A{x=..x+y}
+    // magic circumfix operator: 〈a,b,c〉 becomes a._circumfix_〈_〉(list[b,c]); here: sum a.x + b.x + ...
+    val _circumfix_〈_〉 = (as: list[A]) -> {
       var i = x
       for (u in as) i = i+u.x
       A{x=i}

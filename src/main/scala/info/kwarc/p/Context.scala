@@ -198,7 +198,8 @@ object RegionalContext {
  * @param physical iff this represents a named module, whether it is closed; in that case, region.theory is just an include of that module
  */
 case class RegionalContextFrame(region: RegionalContext, transparent: Boolean, physical: Option[Boolean]) {
-  def isGlobal = physical contains false
+  def isPhysicalOpen = physical contains false
+  def isPhysicalClosed = physical contains true
 }
 
 /** program-level context: provides the vocabulary and the stack of regional+local contexts
@@ -247,12 +248,16 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     None
   }
 
-  /** lookup in the innermost region */
-  def lookupRegional(name: String, noRecurse: Boolean = false): Option[NamedDeclaration] = {
-    val tv = if (inPhysicalTheory) parentDecl.df else {theory match {
+  private def getCurrentTheoryValue = {
+    if (inPhysicalTheory) parentDecl.df else {theory match {
       case r:Ref => lookupModule(r).df
       case thy => thy.toValue
     }}
+  }
+
+  /** lookup in the innermost region */
+  def lookupRegional(name: String, noRecurse: Boolean = false): Option[NamedDeclaration] = {
+    val tv = getCurrentTheoryValue
     // look in the current module for a primitive or previously merged declaration
     tv.lookupO(name) match {
       case Some(nd: NamedDeclaration) if nd.modifiers.closed => return Some(nd)
@@ -281,7 +286,35 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     foundAbstract
   }
 
-  def lookupGlobal(p: Path) = voc.lookupPath(p)
+  def lookupRegionalByNotation(tp: Type, pop: PseudoOperator): Option[ExprDecl] = {
+    val tv = getCurrentTheoryValue
+    var candidates: List[ExprDecl] = Nil
+    tv.decls.foreach {
+      case ed: ExprDecl =>
+        if (ed.ntO.exists(nt => nt.fixity == pop.fixity && nt.symbol == pop.symbol)) {
+          candidates ::= ed
+          ed.tp match {
+            case FunType(ins, _) =>
+              if (ins.variables.last.tp == tp)
+                return Some(ed)
+            case _ =>
+          }
+        }
+      case _ =>
+    }
+    // if only 1 declaration for the fixity exists, use it even if the types don't match
+    if (candidates.length == 1)
+      candidates.headOption
+    else
+      None
+  }
+
+  def lookupGlobal(p: Path) = {
+    voc.lookupPath(p) match {
+      case Some(d: SymbolDeclaration) if d.modifiers.closed => None
+      case pL => pL
+    }
+  }
 
   def lookupRef(r: Ref) = r match {
     case OpenRef(p) => lookupGlobal(p)
@@ -416,7 +449,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     }
     // try finding n declared regionally in current or included module
     var gcO: Option[GlobalContext] = Some(this)
-    while (gcO.exists(!_.regions.head.isGlobal)) {
+    while (gcO.exists(!_.regions.head.isPhysicalOpen)) {
       val gc = gcO.get
       gc.lookupRegional(n).foreach {d =>
         val level = regions.length - gc.regions.length + 1

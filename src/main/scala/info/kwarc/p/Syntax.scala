@@ -87,7 +87,7 @@ case class Module(name: String, closed: Boolean, df: TheoryValue) extends NamedD
     s"$k $name {\n${decls.mkString("\n").indent(2)}}"
   }
   def kind = "theory"
-  def modifiers = Modifiers(closed, false, false)
+  def modifiers = Modifiers(closed, false)
   def decls = df.decls
   def children = decls
   override def childrenInContext = {
@@ -180,6 +180,7 @@ sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
     kind + " " + name + tpS + dfOS
   }
   def toRef = ClosedRef(name)
+  def ntO: Option[Notation]
   def modifiers: Modifiers
   def subsumedBy(that: SymbolDeclaration): Boolean = {
     this.kind == that.kind && this.name == that.name && this.tp == that.tp &&
@@ -188,7 +189,11 @@ sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
   }
 }
 
-case class Modifiers(closed: Boolean, output: Boolean, mutable: Boolean)
+/** modifiers of declarations; not every modifiers is legal for every declaration */
+case class Modifiers(closed: Boolean, mutable: Boolean) {
+  override def toString = (if (closed) Keywords.closedDecl else Keywords.openDecl) + " " +
+    (if (mutable) Keywords.mutableExprDecl + " " else "")
+}
 
 /** declares a type symbol
   * @param tp the upper type bound, [AnyType] if unrestricted, null if to be inferred during checking
@@ -197,12 +202,13 @@ case class Modifiers(closed: Boolean, output: Boolean, mutable: Boolean)
 case class TypeDecl(name: String, tp: Type, dfO: Option[Type], modifiers: Modifiers) extends SymbolDeclaration {
   def kind = Keywords.typeDecl
   def tpSep = "<"
+  def ntO = None
 }
 
 /** declares a typed symbol
   * @param tp the type, null if to be inferred during checking
   */
-case class ExprDecl(name: String, tp: Type, dfO: Option[Expression], modifiers: Modifiers) extends SymbolDeclaration {
+case class ExprDecl(name: String, tp: Type, dfO: Option[Expression], ntO: Option[Notation], modifiers: Modifiers) extends SymbolDeclaration {
   def kind = if (modifiers.mutable) Keywords.mutableExprDecl else Keywords.exprDecl
   def tpSep = ":"
 }
@@ -1346,6 +1352,11 @@ case class Return(exp: Expression, thrw: Boolean) extends Expression {
 
 // *********************************** Operators *****************************
 
+abstract class InferenceCallbacks {
+  def union(ts: List[Type]): Type
+  def unknown(): Type
+}
+
 /** parent class of all operators
   *
   * Operators carry concrete syntax and typing information so that their processing is controlled by the operator,
@@ -1377,12 +1388,17 @@ sealed abstract class Operator {
   def isPseudo = false
 }
 
-abstract class InferenceCallbacks {
-  def union(ts: List[Type]): Type
-  def unknown(): Type
+/** operators that must be defined through magic functions */
+sealed trait PseudoOperator extends Operator {
+  override def isPseudo = true
+  def fixity: Fixity
+  def magicName: String
+  def types = Nil
+  def invertible = false
 }
 
-sealed trait InfixParsable extends Operator {
+sealed trait GeneralInfixOperator extends Operator {
+  val symbol: String
   override def arity = Some(2)
   def precedence: Int
   def assoc: Associativity
@@ -1396,36 +1412,85 @@ sealed trait InfixParsable extends Operator {
     case _ => None
   }
 }
+class PseudoInfixOperator(val symbol: String) extends PseudoOperator with GeneralInfixOperator {
+  override def toString = magicName
+  def fixity = Infix
+  def magicName = "_infix_" + symbol
+  def precedence = -10
+  def assoc = NotAssociative
+}
 
-sealed trait CircumfixParsable extends PseudoOperator
-class PseudoCircumfixOperator(val symbol: String) extends PseudoOperator with CircumfixParsable {
+/** symbol expr */
+class PseudoPrefixOperator(val symbol: String) extends PseudoOperator {
+  override def toString = magicName
+  def fixity = Prefix
+  def magicName = "_prefix_" + symbol
+}
+
+/** expr symbol */
+class PseudoPostfixOperator(val symbol: String) extends PseudoOperator {
+  override def toString = magicName
+  def fixity = Postfix
+  def magicName = "_postfix_" + symbol
+}
+
+/** bracketing: comma-separated expressions enclosed in symbol and its mirror image */
+class PseudoCircumfixOperator(val symbol: String) extends PseudoOperator {
   def open = symbol
   def close: String = symbol.map(c => Parsable.circumfixClose(c).getOrElse(c)).reverse
-  def magicName = open + "_" + close
+  def fixity = Circumfix
+  def magicName = "_circumfix_" + open + "_" + close
+}
+
+/** binding: symbol bindings . body */
+class PseudoBindfixOperator(val symbol: String) extends PseudoOperator {
+  override def toString = magicName
+  def fixity = Bindfix
+  def magicName = "_bindfix_" + symbol
 }
 
 object Parsable {
-  val symbols = List(Character.CURRENCY_SYMBOL, Character.MATH_SYMBOL, Character.OTHER_SYMBOL)
+  val symbols = List(Character.CURRENCY_SYMBOL, Character.MATH_SYMBOL, Character.DASH_PUNCTUATION, Character.OTHER_SYMBOL)
   def isInfixChar(c: Char) = (symbols contains c.getType) || (c.getType == Character.OTHER_PUNCTUATION && !"\"';:,.".contains(c))
+  def isPrefixChar(c: Char) = isInfixChar(c)
+  // right-pointing tacks and similar, not used yet, but could be used for precedences
+  def isTurnstileLike(c: Char) = {
+    c == 0x22A2 || (c >= 0x22A6 && c <= 0x22AF) || c == 0x2AE2 || c == 0x2AE6 || c == 0x27DD
+  }
+
   /** the matching closing bracket, if any
    *
    *  '‚' and '„' are open punctuation without corresponding closing punctuation
    *  some horizontal brackets have partners that are their vertical mirrors
    *  '[' and '{' have legacy codepoints
-   *  all other open punctuation has the mirror image right afterwards
+   *  square brackets with ticks in corners (0x298D-0x2990) have their mirror images in the wrong order
+   *  all other open punctuation has the closing mirror image right afterwards
    */
-  def circumfixClose(c: Char) = {
+  def circumfixClose(c: Char): Option[Char] = {
     if (c.getType != Character.START_PUNCTUATION || !c.isMirrored) None
     else if (c == '[') Some(']')
     else if (c == '{') Some('}')
+    else if (c == 0x298D) Some(0x2990)
+    else if (c == 0x298F) Some(0x298E)
     else Some((c+1).toChar)
   }
-  def isCircumfixChar(c: Char) = isInfixChar(c) || circumfixClose(c).isDefined
+  def isCircumfixStart(c: Char) = circumfixClose(c).isDefined
+  def isCircumfixChar(c: Char) = isInfixChar(c) || isCircumfixStart(c)
+
+  /** binder symbols cannot be defined based on Unicode classes
+   *  we take all symbols called "N-Ary" in their Unicode name plus the quantifiers */
+  val bindChars =
+    // n-ary
+    List(0x2140,0x220F,0x2210,0x2211,0x22C0,0x22C1,0x22C2,0x22C3,0x2A00,0x2A01,0x2A02,0x2A03,0x2A04,0x2A05,0x2A06,0x2A09,0x2AFF) :::
+    // quantifiers
+    List(0x2200,0x2203,0x2204)
+  def isBindfixStart(c: Char) = bindChars contains c
+  def isBindfixChar(c: Char) = isInfixChar(c) || isBindfixStart(c)
 }
 
 /** operators with binary infix notation (flexary flag not supported yet) */
 sealed abstract class InfixOperator(val symbol: String, val precedence: Int, val assoc: Associativity = NotAssociative)
-  extends InfixParsable {
+  extends GeneralInfixOperator {
   def apply(l: Expression, r: Expression) = makeExpr(List(l, r))
   def unapply(e: Expression) = e match {
     case Application(BaseOperator(op,_), List(l,r)) if op == this => Some((l,r))
@@ -1666,20 +1731,6 @@ case object Snoc extends InfixOperator(":-", -10) with CollectionOperator {
   override def invertible = true
 }
 
-sealed trait PseudoOperator extends Operator {
-  override def isPseudo = true
-  def magicName: String
-  def types = Nil
-  def invertible = false
-}
-
-class PseudoInfixOperator(val symbol: String) extends PseudoOperator with InfixParsable {
-  override def toString = magicName
-  def magicName = "_" + symbol + "_"
-  def precedence = -10
-  def assoc = NotAssociative
-}
-
 /** equality is a language primitive, not an operator,
  * but parsing is easiest if it is treated as a PseudoOperator and convert it into [Equality] later
  */
@@ -1687,7 +1738,7 @@ case object Equal extends PseudoInfixOperator("==")
 case object Inequal extends PseudoInfixOperator("!=")
 
 object Operator {
-    val infixes: List[InfixParsable] = List(
+    val infixes: List[GeneralInfixOperator] = List(
       Plus, Minus, Times, Divide, Power,
       Minimum, Maximum,
       And, Or, Implies,

@@ -193,10 +193,10 @@ object ValueFact {
   ////// Useful conversions.
   import scala.language.implicitConversions
   implicit def varDeclAsDecl(expr: VarDecl): ExprDecl = expr match {
-    case VarDecl(name, tp, dfO, mutable, output) => ExprDecl(name, tp, dfO, Modifiers(false, output, mutable))
+    case VarDecl(name, tp, dfO, mutable, output) => ExprDecl(name, tp, dfO, None, Modifiers(false, mutable))
   }
   implicit def exprDeclAsExpr(decl: ExprDecl): VarDecl = decl match {
-    case ExprDecl(name, tp, dfO, Modifiers(closed, output, mutable)) => VarDecl(name, tp, dfO, mutable, output)
+    case ed: ExprDecl => VarDecl(ed.name, ed.tp, ed.dfO, ed.modifiers.mutable)
   }
   //////
 
@@ -207,9 +207,9 @@ object ValueFact {
       left = Application(func, args),
       right = FloatValue(value)
     ))
-    val modifiers = Modifiers(closed = false, output = false, mutable = false)
-    //VarDecl(name, tp, dfO = None, mutable = false, output = false)
-    ExprDecl(name, tp, dfO = None, modifiers)
+    val modifiers = Modifiers(closed = false, mutable = false)
+    //VarDecl(name, tp, dfO = None, mutable = false)
+    ExprDecl(name, tp, dfO = None, None, modifiers)
   }
 
   def unapply(decl: ExprDecl): Option[(ClosedRef, List[Expression], Double)] = {

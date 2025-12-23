@@ -6,26 +6,26 @@ module Logic {
      type term
      type prop
 
-     conj: (prop,prop) -> prop
-     neg: prop -> prop
-     all: (term -> prop) -> prop
-     equal: (term,term) -> prop
+     conj: (prop,prop) -> prop # infix ∧
+     neg: prop -> prop  # prefix ¬ 
+     all: (term -> prop) -> prop # bindfix ∀
+     equal: (term,term) -> prop # infix ≐
 
-     thm: prop -> bool
+     thm: prop -> bool # prefix ⊦
      contra = forall F. thm(F)
 
-     conjI:  |- forall F,G. thm(F) & thm(G) => thm(conj(F,G))
-     conjEl: |- forall F,G. thm(conj(F,G)) => thm(F)
-     conjEr: |- forall F,G. thm(conj(F,G)) => thm(G)
+     conjI:  |- forall F,G. ⊦F & ⊦G => ⊦(F∧G)
+     conjEl: |- forall F,G. ⊦(F∧G) => ⊦F
+     conjEr: |- forall F,G. ⊦(F∧G) => ⊦G
 
-     negI: |- forall F. (thm(F) => contra) => thm(neg(F))
-     negE: |- forall F. thm(neg(F)) => thm(F) => contra
+     negI: |- forall F. (⊦F => contra) => ⊦ ¬F
+     negE: |- forall F. ⊦ ¬F => ⊦F => contra
 
-     allI: |- forall F. (forall X. thm(F(X))) => thm(all(F))
-     allE: |- forall F. thm(all(F)) => forall X. thm(F(X))
+     allI: |- forall F. (forall X. ⊦F(X)) => ⊦all(F)
+     allE: |- forall F. ⊦all(F) => forall X. ⊦F(X)
 
-     eqI: |- forall X. thm(equal(X,X))
-     eqE: |- forall X,Y. thm(equal(X,Y)) => forall P. thm(P(X)) => thm(P(Y))
+     eqI: |- forall X. ⊦(X≐X)
+     eqE: |- forall X,Y. ⊦(X≐Y) => forall P. ⊦P(X) => ⊦P(Y)
   }
 
   theory Nat {

@@ -74,7 +74,7 @@ package info.kwarc.p
   * @param allowWeakPostops if false, force bracketing of infix operators in expressions
   *                    this is mutable to allow toggling it back for subexpressions
   */
-case class PContext(contexts: List[LocalContext], allowStatement: Boolean, var allowWeakPostops: Boolean) {
+case class PContext(contexts: List[LocalContext], allowStatement: Boolean, var allowWeakPostops: Boolean, var allowAssignment: Boolean) {
   def append(vd: VarDecl): PContext = append(LocalContext(vd))
   def append(ctx: LocalContext): PContext = copy(contexts = contexts.head.append(ctx)::contexts.tail)
   def pop() = copy(contexts = contexts.tail).append(contexts.head) // TODO: type not correct (but irrelevant anyway)
@@ -83,11 +83,11 @@ case class PContext(contexts: List[LocalContext], allowStatement: Boolean, var a
   def noWeakPostops = copy(allowWeakPostops = false)
 }
 object PContext {
-  def empty = PContext(List(LocalContext.empty), false, true)
+  def empty = PContext(List(LocalContext.empty), false, true, false)
 }
 
 object Parser {
-  val weakPostops = List("=","->","==","!=", "match", "catch")
+  val weakPostops = List("=", "->", "match", "catch")
   val conflictingInfixes = Operator.infixes.map(_.symbol).filter(o => weakPostops.exists(o.startsWith))
 
   def file(f: File,eh: ErrorHandler) = {
@@ -344,6 +344,17 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   def isNameChar(c: Char) = c.isLetterOrDigit || c == '_'
 
   def parseName = {trim; parseWhile(isNameChar)}
+  def parseNameExtended = {
+    trim
+    var allowNameChars = true
+    var allowSpecialChars = false
+    parseWhile {c =>
+      val good = c == '_' ||  (allowNameChars && isNameChar(c)) || (allowSpecialChars && !isNameChar(c) && !c.isWhitespace)
+      allowSpecialChars = c == '_' || !isNameChar(c) // special chars may follow _ or other special chars
+      allowNameChars = c == '_' || isNameChar(c) // name chars may follow _ or other name chars
+      good
+    }
+  }
 
   def parsePath: Path = addRef {
     val ns = parseList(parseName, ".", " ")
@@ -370,24 +381,29 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     if (atEnd) Nil else if (startsWithDeclaration) parseDeclarations(false)
     else {
       val e = parseExpression(PContext.empty)
-      List(ExprDecl(defaultName,Type.unknown(),Some(e),Modifiers(false,false,false)))
+      List(ExprDecl(defaultName,Type.unknown(),Some(e), None, Modifiers(false,false)))
     }
   }
 
   def parseDeclaration(implicit closed: Boolean): Declaration = addRef {
-    val mods = Modifiers(closed, false, false)
+    var mods = Modifiers(closed, false)
+    while (startsWithAny(modifiers:_*)) {
+      if (startsWithS(openDecl)) mods = mods.copy(closed = false)
+      else if (startsWithS(closedDecl)) mods = mods.copy(closed = true)
+      else fail("illegal modifier")
+    }
     if (startsWithAny(closedModule,openModule)) parseModule
     else if (startsWithAny(include,totalInclude)) parseInclude
     else if (startsWithS(typeDecl)) parseTypeDecl(mods)
     else if (startsWithS(mutableExprDecl)) parseExprDecl(mods.copy(mutable=true))
     else if (startsWithS(exprDecl)) {
       trim
-      val n = parseWhile(c => !c.isWhitespace)
+      val n = parseNameExtended
       if (n.isEmpty) fail("name expected")
       parseExprDecl(mods, Some(n))
     }
-    else if (startsWithDeclaration) parseExprDecl(mods)
-    else fail("declaration expected")
+    else parseExprDecl(mods)
+    // else fail("declaration expected")
   }
 
   def parseDeclarations(implicit closed: Boolean): List[Declaration] = {
@@ -444,21 +460,31 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
 
   def parseExprDecl(mods: Modifiers, nameAlreadyParsed: Option[String] = None): ExprDecl = {
-    val name = nameAlreadyParsed getOrElse parseName
+    var declarationFound = false
+    val name = nameAlreadyParsed getOrElse parseNameExtended
     val args = if (startsWith("(")) Some(parseBracketedContext(PContext.empty)) else None
     trim
     val tp = if (startsWithS(":")) {
+      declarationFound = true
       parseType(PContext.empty)
     } else Type.unknown()
     trim
     val vl = if (startsWithS("=")) {
+      declarationFound = true
       Some(parseExpression(PContext.empty))
     } else None
+    val nt = if (startsWithS("#")) {
+      Some(parseNotation)
+    } else None
+    if (!declarationFound) {
+      fail("declaration expected")
+    }
+    // bind arguments in type and definiens
     val (atp,avl) = args match {
       case None => (tp,vl)
       case Some(lc) => (FunType(lc,tp), vl map {v => Lambda(lc,v, true)})
     }
-    ExprDecl(name, atp, avl, mods)
+    ExprDecl(name, atp, avl, nt, mods)
   }
 
   def parseTypeDecl(mods: Modifiers): TypeDecl = {
@@ -514,6 +540,23 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     }
   }
 
+  def parseNotation = {
+    val fix = if (startsWithS("infix")) {
+      Infix
+    } else if (startsWithS("prefix")) {
+      Prefix
+    } else if (startsWithS("postfix")) {
+      Postfix
+    } else if (startsWithS("circumfix")) {
+      Circumfix
+    } else if (startsWithS("bindfix")) {
+      Bindfix
+    } else {
+      fail("fixity expected")
+    }
+    val sym = parseWhile(! _.isWhitespace)
+    Notation(fix, sym)
+  }
 
   def parseExpressions(open: String, close: String)(implicit ctxs: PContext) = {
     skip(open)
@@ -538,12 +581,14 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   // needed because addRef does not work with return-statements
   private def parseExpressionInner(implicit ctxs: PContext): Expression = {
     val allowWeakPostops = ctxs.allowWeakPostops
+    val allowAssignment = ctxs.allowAssignment
     ctxs.allowWeakPostops = true // only active for one level
+    ctxs.allowAssignment = true
     val allowS = ctxs.allowStatement
     val doAllowS = ctxs.setAllowStatement(true)
     val doNotAllowS = ctxs.setAllowStatement(false)
     // seen.reverse = (e1,o1,l1)::... represents having parsed "e1 o1 ..." where l1 is the location of o1
-    var seen: List[(Expression,InfixParsable,Location)] = Nil
+    var seen: List[(Expression,GeneralInfixOperator,Location)] = Nil
     val allExpBeginAt = index
     while (true) {
       trim
@@ -623,12 +668,6 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         val thrw = skipEither("throw","return")
         val r = parseExpression
         Return(r,thrw)
-      } else if (Operator.prefixes.exists(o => startsWith(o.symbol))) {
-        val o = Operator.prefixes.find(o => startsWith(o.symbol)).get
-        skip(o.symbol)
-        val bo = setRef(BaseOperator(o,Type.unknown()), expBeginAt)
-        val e = parseExpression
-        Application(bo,List(e))
       } else if (startsWithS("\"")) {
         val s = parseWhile(_ != '"')
         skip("\"")
@@ -646,9 +685,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         BoolValue(false)
       } else if (startsWithS("???")) {
         UndefinedValue(Type.unknown())
-      } else if (!atEnd && (next.isDigit || next == '-')) {
+      } else if (!atEnd && next.isDigit) {
         val begin = index
-        if (next == '-') skip("-")
         var seenDot = false
         while (!atEnd && (next.isDigit || (!seenDot && next == '.'))) {
           if (next == '.') seenDot = true
@@ -679,13 +717,33 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         val e = parseExpression(ctxs.pop())
         skip("`")
         Eval(e)
-      } else if (!atEnd && Parsable.circumfixClose(next).isDefined) {
+      } else if (!atEnd && Parsable.isCircumfixStart(next)) {
         val begin = index
         val open = parseWhile(Parsable.isCircumfixChar)
         val op = new PseudoCircumfixOperator(open)
         val bo = setRef(BaseOperator(op,Type.unknown()), begin)
         val es = parseExpressions("", op.close)
         Application(bo, es)
+      } else if (!atEnd && Parsable.isBindfixStart(next)) {
+        // binder operators are parsed as unary operators applied to Lambda
+        val begin = index
+        val binder = parseWhile(Parsable.isBindfixChar)
+        val op = new PseudoBindfixOperator(binder)
+        val bo = setRef(BaseOperator(op,Type.unknown()), begin)
+        val vars = parseContext(true)
+        trim;
+        skip(".")
+        val body = parseExpression
+        val arg = Lambda(vars,body,false)
+        arg.loc = vars.loc extendTo body.loc
+        Application(bo, List(arg))
+      } else if (!atEnd && Parsable.isPrefixChar(next)) {
+        // prefix is default if no specialized fixity applies like circumfix or bindfix
+        val po = parsePrefix(Operator.prefixes)
+        // prefix operators bind stronger than all infix operators
+        // TODO support operators like object-level turnstiles, which bind weaker than object-level infixes but stronger than UPL infixes
+        val e = parseExpression(ctxs.noWeakPostops)
+        Application(po, List(e))
       } else {
         //  symbol/variable/module reference
         val n = parseName
@@ -765,7 +823,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           }
           skip("}")
         } else if (startsWithS("°")) {
-          // Andrews' dot
+          // function application with Andrews' dot
           val a = parseExpression
           exp = Application(exp,List(a))
         }
@@ -775,7 +833,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       setRef(exp, expBeginAt)
       if (startsWithAny(Parser.weakPostops:_*) && !startsWithAny(Parser.conflictingInfixes:_*)) {
         exp = disambiguateInfixOperators(seen.reverse,exp)
-        val expWP = if (startsWithS("=")) {
+        val expWP = if (allowAssignment && startsWithS("=")) {
           val df = parseExpression
           Assign(exp,df)
         } else if (startsWithS("->")) {
@@ -840,7 +898,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     }
   }
 
-  def parseInfixO(os: List[InfixParsable]): Option[InfixParsable] = {
+  def parseInfixO(os: List[GeneralInfixOperator]): Option[GeneralInfixOperator] = {
     val found = os.find {o => startsWith(o.symbol) && nextAfter(o.length).forall(!Parsable.isInfixChar(_))}
     found match {
       case Some(f) =>
@@ -856,10 +914,17 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     }
   }
 
-  // a shift-reduce parser of e1 o1 ... en on last
-  def disambiguateInfixOperators(eos: List[(Expression,InfixParsable,Location)], lastExp: Expression): Expression = {
+  def parsePrefix(os: List[Operator]): BaseOperator = {
+    val begin = index
+    val sym = parseWhile(Parsable.isPrefixChar)
+    val op = os.find(_.symbol == sym).getOrElse(new PseudoPrefixOperator(sym))
+    setRef(BaseOperator(op, Type.unknown()), begin)
+  }
+
+// a shift-reduce parser of e1 o1 ... en on last
+  def disambiguateInfixOperators(eos: List[(Expression,GeneralInfixOperator,Location)], lastExp: Expression): Expression = {
     // invariant: eos last = shifted rest last
-    var shifted: List[(Expression, InfixParsable, Location)] = Nil
+    var shifted: List[(Expression, GeneralInfixOperator, Location)] = Nil
     var rest = eos
     var last = lastExp
     // shift: shifted.reverse | hd tl last ---> shifted hd | tl last
@@ -949,8 +1014,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         case _ => ProdType(ys)
       }
     } else if (startsWithS("|-")) {
-      // TODO: this awkwardly parses c: |- F = p as c : |- (F = p) and then fails with a confusing error
-      val e = parseExpression
+      val e = parseExpression(ctxs.copy(allowAssignment = false))
       ProofType(e)
     } else {
       // conflict between types that start with a name and those starting with an expression, i.e., e{tp} or e.tp
@@ -979,7 +1043,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           // Any other expression, we coerce into a type.
           // This coercion should happen during type-checking (and it does for Refs and OwnedType(_,_,Ref)),
           // but because it changes Scala-type, we have to do it here already.
-          case _: VarRef | _: Application | _: Projection | _: ListElem => MagicFunctions.typeOf(exp, null)
+          case _: VarRef | _: Application | _: Projection | _: ListElem => UnivType(exp, null)
           case _ => reportError("type expected"); AnyType
         }
         tp.copyFrom(exp)
@@ -1014,5 +1078,8 @@ object Keywords {
   val varDecl = "val"
   val mutableVarDecl = "var"
   val typeDecl = "type"
-  val allDeclKeywords = List(openModule,closedModule,include,totalInclude,mutableExprDecl,typeDecl)
+  val openDecl = "open"
+  val closedDecl = "closed"
+  val modifiers = List(openDecl,closedDecl)
+  val allDeclKeywords = List(openModule,closedModule,include,totalInclude,mutableExprDecl,typeDecl):::modifiers
 }

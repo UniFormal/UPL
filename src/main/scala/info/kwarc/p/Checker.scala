@@ -250,8 +250,10 @@ class Checker(errorHandler: ErrorHandler) {
                       add(nw)
                     case Compare.Merged(tM, dM) =>
                       val merged = nw match {
-                        // TODO merges that involve modifiers
-                        case ed: ExprDecl => ExprDecl(nw.name, tM, dM.asInstanceOf[Option[Expression]], ed.modifiers)
+                        // TODO merges that involve modifiers, notations
+                        case ed: ExprDecl =>
+                          val ntO = nw.ntO orElse old.ntO
+                          ExprDecl(nw.name, tM, dM.asInstanceOf[Option[Expression]], ntO, ed.modifiers)
                         case td: TypeDecl => TypeDecl(nw.name, tM, dM.asInstanceOf[Option[Type]], td.modifiers)
                       }
                       old.subsumed = true
@@ -369,7 +371,7 @@ class Checker(errorHandler: ErrorHandler) {
       case ed: ExprDecl =>
     }
     // resolveName finds names in global, contained regional, and local contexts, but we only want the current region and its parent
-    val sdP = gc.resolveName(ClosedRef(sd.name)).flatMap {
+    val sdP = if (!sd.modifiers.closed) None else gc.resolveName(ClosedRef(sd.name)).flatMap {
       case (ClosedRef(_), dO) => dO
       case _ => None
     }
@@ -402,7 +404,19 @@ class Checker(errorHandler: ErrorHandler) {
         // Other: error
         fail("name is inherited but not a symbol")
       case None =>
-        // No: check declaration without inherited type
+        // No: check declaration without inherited info
+        if (gc.regions.head.physical.isEmpty) {
+          // restrictions for anonymous theories
+          if (!sd.modifiers.closed) reportError("open declaration in anonymous theory")
+          if (sd.modifiers.mutable) reportError("mutable declaration in anonymous theory")
+        }
+        if (gc.regions.head.isPhysicalClosed && !sd.modifiers.closed) {
+          // This corresponds to static fields. We may allow this in the future.
+          // But it's not totally which context to check the static declarations in.
+          // We might have to remove all closed theories from the context.
+          // But the resulting semantics would be not quite symmetric to closed declarations in open theories.
+          reportError("closed declaration in open theory not supported at this point")
+        }
         sd match {
           case td: TypeDecl =>
             val tpC = checkType(gc,td.tp)
@@ -644,10 +658,10 @@ class Checker(errorHandler: ErrorHandler) {
           case (rC: Ref, ed: ExprDecl) =>
             // expression ref, try to coerce to type
             Normalize(gc,ed.tp) match {
-              case ClassType(d) => gc.push(d).lookupRegional(MagicFunctions.asType) match {
+              case ClassType(d) => gc.push(d).lookupRegional(UnivType.name) match {
                 case Some(_: TypeDecl) =>
                   PurityChecker(gc,rC.asInstanceOf[Expression])
-                  MagicFunctions.typeOf(rC,d)
+                  UnivType(rC,d)
                 case _ => fail("no type coercion in type")
               }
               case _ => fail("expression cannot be coerced to a type")
@@ -1292,18 +1306,37 @@ class Checker(errorHandler: ErrorHandler) {
               case pop: PseudoOperator =>
                 if (as.isEmpty) fail("cannot elaborate unapplied magic operator: " + pop.symbol)
                 val (_,aI) = inferExpressionNorm(gc,as.head)(false)
-                val popMagic = new mf.MagicFunction(pop.magicName)
                 aI match {
-                  case popMagic(dom,_) =>
-                    val asE = pop match {
-                      case _:PseudoInfixOperator =>
-                        if (as.length != 2) reportError("single argument expected")
-                        List(as(1))
-                      case _:PseudoCircumfixOperator =>
-                        List(CollectionKind.List(as.tail))
+                  case ClassType(_) | UnivType(_,_) =>
+                    val popMagic = new mf.MagicFunction(pop.magicName)
+                    val (primaryArg, primaryArgType, otherArgs) = aI match {
+                      case _:ClassType => (as.head,aI,as.tail)
+                      case UnivType(str,dom) => (str, ClassType(dom), as)
                     }
-                    popMagic.insert(dom, as.head, asE)
-                  case _ => fail(s"magic function ${popMagic.name} not found in $aI")
+                    // TODO: alternatively find a notation in dom
+                    primaryArgType match {
+                      case popMagic(dom, _) =>
+                        val otherArgsM = pop match {
+                          case _: PseudoPrefixOperator | _: PseudoPostfixOperator =>
+                            if (as.length != 1) reportError("no argument expected")
+                            otherArgs
+                          case _: PseudoInfixOperator =>
+                            if (as.length != 2) reportError("single argument expected")
+                            otherArgs
+                          case _: PseudoCircumfixOperator =>
+                            List(CollectionKind.List(otherArgs))
+                        }
+                        popMagic.insert(dom, primaryArg, otherArgsM)
+                      case _ => fail(s"magic function ${popMagic.name} not found in $aI")
+                    }
+                  case _:ClosedRef | _:UnknownType =>
+                    gc.lookupRegionalByNotation(aI, pop) match {
+                      case Some(ed) =>
+                        Application(ed.toRef, as)
+                      case None =>
+                        fail("no constant with appropriate notation found: " + pop.symbol)
+                    }
+                  case _ => fail("cannot elaborate notation: " + pop.symbol)
                 }
             }
             return inferExpression(gc, expE.copyFrom(exp))
@@ -1925,10 +1958,17 @@ class MagicFunctions(gc: GlobalContext) {
   /** `this` */
   object evaluation extends MagicFunction("eval")
 }
-object MagicFunctions {
-  val asType = "univ"
+
+/** magic function to see an expression as a type */
+object UnivType {
+  val name = "univ"
+  val univ = ClosedRef(name)
   /** this when Type expected */
-  def typeOf(e: Expression, dom: Theory) = OwnedType(e,dom, ClosedRef(asType))
+  def apply(e: Expression, dom: Theory) = OwnedType(e,dom, univ)
+  def unapply(tp: Type) = tp match {
+    case OwnedType(o,d,univ) => Some((o,d))
+    case _ => None
+  }
 }
 
 /*

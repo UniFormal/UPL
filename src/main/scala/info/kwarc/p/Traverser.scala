@@ -70,8 +70,8 @@ abstract class Traverser[A] {
       Include(apply(dm), df map apply, r)
     case TypeDecl(n, bd, dfO, ms) =>
       TypeDecl(n, apply(bd), dfO map apply, ms)
-    case ExprDecl(n, tp, dfO, ms) =>
-      ExprDecl(n, apply(tp), dfO map apply, ms)
+    case ExprDecl(n, tp, dfO, ntO, ms) =>
+      ExprDecl(n, apply(tp), dfO map apply, ntO, ms)
   }
 
   def apply(tp: Type)(implicit gc: GlobalContext, a: A): Type = matchC(tp)(applyDefault _)
