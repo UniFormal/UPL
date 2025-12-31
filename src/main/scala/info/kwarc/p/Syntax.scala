@@ -189,6 +189,11 @@ sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
   }
 }
 
+/** unifies ExprDecl and VarDecl */
+trait TypedDeclaration extends Named {
+  def tp: Type
+}
+
 /** modifiers of declarations; not every modifiers is legal for every declaration */
 case class Modifiers(closed: Boolean, mutable: Boolean) {
   override def toString = (if (closed) Keywords.closedDecl else Keywords.openDecl) + " " +
@@ -208,7 +213,7 @@ case class TypeDecl(name: String, tp: Type, dfO: Option[Type], modifiers: Modifi
 /** declares a typed symbol
   * @param tp the type, null if to be inferred during checking
   */
-case class ExprDecl(name: String, tp: Type, dfO: Option[Expression], ntO: Option[Notation], modifiers: Modifiers) extends SymbolDeclaration {
+case class ExprDecl(name: String, tp: Type, dfO: Option[Expression], ntO: Option[Notation], modifiers: Modifiers) extends SymbolDeclaration with TypedDeclaration {
   def kind = if (modifiers.mutable) Keywords.mutableExprDecl else Keywords.exprDecl
   def tpSep = ":"
 }
@@ -1238,7 +1243,7 @@ case class UndefinedValue(tp: Type) extends Expression {
   * @param output the variable has no value (unless defined) and can only be written to
   *               unnamed output variables are the target of return statements
   */
-case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean, output: Boolean) extends Expression with Named {
+case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean, output: Boolean) extends Expression with TypedDeclaration {
   def defined = dfO.isDefined
   def keyword = if (mutable) Keywords.mutableVarDecl else Keywords.varDecl
   override def toString = {

@@ -508,7 +508,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     val backtrackPoint = index
     val n = parseName
     trim
-    if (!startsWithAny(":","=") && !nameMandatory && !mutable) {
+    if (!startsWithAny(":", "=") && !nameMandatory && !mutable) {
       // n is not actually a variable name, treat this as anonymous var decl
       index = backtrackPoint
       val tp = parseType(noStatements)
@@ -520,12 +520,19 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       val df = if (startsWithS("=")) {
         Some(parseExpression(noStatements))
       } else None
-      VarDecl(n,tp,df,mutable)
+      VarDecl(n, tp, df, mutable)
     }
   }
 
   def parseContext(namesMandatory: Boolean)(implicit ctxs: PContext): LocalContext = addRef {
-    val vds = parseList(parseVarDecl(false, namesMandatory), ",", ")")
+    val btp = index
+    var vds = parseList(parseVarDecl(false, namesMandatory), ",", ")")
+    // conflict between parsing a single name n as "":n or n:???
+    // heuristic: only allow the latter if no other variable is named
+    if (!namesMandatory && vds.exists(!_.anonymous) && vds.exists(vd => vd.anonymous && vd.tp.isInstanceOf[ClosedRef])) {
+      index = btp
+      vds = parseList(parseVarDecl(false, true), ",", ")")
+    }
     LocalContext.make(vds)
   }
 

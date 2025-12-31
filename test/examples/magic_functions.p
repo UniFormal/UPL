@@ -14,3 +14,11 @@ module Magic {
   a = A{x=1}
   test = (a++2).x == 3 & 〈a,a,a〉.x == 3
 }
+
+module Collections {
+   theory Magma {
+     type univ
+     op: (univ,univ) -> univ # infix ∘
+   }
+   ishom: (M:Magma,N: Magma,M -> N) -> bool = (M,N,f) -> forall x,y. f(x)∘f(y)==f(x∘y)
+}

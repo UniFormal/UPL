@@ -655,8 +655,8 @@ class Checker(errorHandler: ErrorHandler) {
           case (rC: Ref, _: TypeDecl) =>
             // type ref
             rC
-          case (rC: Ref, ed: ExprDecl) =>
-            // expression ref, try to coerce to type
+          case (rC: Ref, ed: TypedDeclaration) =>
+            // expression ref (by a symbol or a variable), try to coerce to type
             Normalize(gc,ed.tp) match {
               case ClassType(d) => gc.push(d).lookupRegional(UnivType.name) match {
                 case Some(_: TypeDecl) =>
@@ -1206,6 +1206,36 @@ class Checker(errorHandler: ErrorHandler) {
     (eC, Normalize(gc,eI))
   }
 
+  /** experimental code for checking a list of expressions in such a way that failing expressions are retried if others made progress
+   * This can be useful in cases where one expression solves an unknown that another one needs */
+  class PartiallyInfered(exp: Expression, var expC: Expression, var tp: Type, val errors: ErrorCollector, var tried: Boolean) {
+    def retry() = {
+      if (errors.hasErrors) tried = false
+    }
+  }
+  def inferExpressions(gc: GlobalContext, exps: List[Expression]): List[(Expression,Type)] = {
+    val pis = exps.map(e => new PartiallyInfered(e,e,null,new ErrorCollector,false))
+    var done = false
+    while (!done) {
+      pis.find(!_.tried) match {
+        case Some(pi) =>
+          pi.errors.clear
+          val (eC, eI) = new Checker(pi.errors).inferExpression(gc, pi.expC)(true)
+          val progress = ??? // TODO check if unknowns were solved
+          if (progress) {
+            pis.foreach(_.retry())
+            pi.expC = eC
+            pi.tp = eI
+          }
+          pi.tried = true
+        case None =>
+          done = true
+      }
+    }
+    // TODO report errors
+    pis.map(pi => (pi.expC, pi.tp))
+  }
+
   /** checks an expression and infers its type
     *
     * This defers to [[checkExpression]] if it knows the expected type.
@@ -1307,13 +1337,9 @@ class Checker(errorHandler: ErrorHandler) {
                 if (as.isEmpty) fail("cannot elaborate unapplied magic operator: " + pop.symbol)
                 val (_,aI) = inferExpressionNorm(gc,as.head)(false)
                 aI match {
-                  case ClassType(_) | UnivType(_,_) =>
+                  case _: ClassType =>
                     val popMagic = new mf.MagicFunction(pop.magicName)
-                    val (primaryArg, primaryArgType, otherArgs) = aI match {
-                      case _:ClassType => (as.head,aI,as.tail)
-                      case UnivType(str,dom) => (str, ClassType(dom), as)
-                    }
-                    // TODO: alternatively find a notation in dom
+                    val (primaryArg, primaryArgType, otherArgs) = (as.head,aI,as.tail)
                     primaryArgType match {
                       case popMagic(dom, _) =>
                         val otherArgsM = pop match {
@@ -1325,9 +1351,18 @@ class Checker(errorHandler: ErrorHandler) {
                             otherArgs
                           case _: PseudoCircumfixOperator =>
                             List(CollectionKind.List(otherArgs))
+                          case _: PseudoBindfixOperator =>
+                            fail("cannot elaborate bindfix operator")
                         }
                         popMagic.insert(dom, primaryArg, otherArgsM)
                       case _ => fail(s"magic function ${popMagic.name} not found in $aI")
+                    }
+                  case OwnedType(o,d,r:ClosedRef) =>
+                    gc.push(d,Some(o)).lookupRegionalByNotation(r,pop) match {
+                      case Some(ed) =>
+                        Application(OwnedExpr(o,d,ed.toRef), as)
+                      case None =>
+                        fail("no constant with appropriate notation found in type: " + pop.symbol)
                     }
                   case _:ClosedRef | _:UnknownType =>
                     gc.lookupRegionalByNotation(aI, pop) match {
@@ -1738,7 +1773,8 @@ class Checker(errorHandler: ErrorHandler) {
   def inferOperator(gc: GlobalContext,op: Operator, ins: List[Type], out: Option[Type])(implicit cause: Expression): FunType = {
     op.arity.foreach {a =>
       if (ins.length != a)
-        fail("wrong number of arguments")}
+        fail("wrong number of arguments")
+    }
     val insS = ins.map(_.skipUnknown)
     val outS = out.map(_.skipUnknown).getOrElse(Type.unknown(gc))
     val cbs = new infCBs(gc)
@@ -1964,7 +2000,7 @@ object UnivType {
   val name = "univ"
   val univ = ClosedRef(name)
   /** this when Type expected */
-  def apply(e: Expression, dom: Theory) = OwnedType(e,dom, univ)
+  def apply(e: Expression, dom: Theory) = OwnedType(e,dom, univ.copyFrom(e)).copyFrom(e)
   def unapply(tp: Type) = tp match {
     case OwnedType(o,d,univ) => Some((o,d))
     case _ => None
