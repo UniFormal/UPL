@@ -1421,7 +1421,7 @@ class PseudoInfixOperator(val symbol: String) extends PseudoOperator with Genera
   override def toString = magicName
   def fixity = Infix
   def magicName = "_infix_" + symbol
-  def precedence = -10
+  def precedence = 0
   def assoc = NotAssociative
 }
 
@@ -1739,8 +1739,12 @@ case object Snoc extends InfixOperator(":-", -10) with CollectionOperator {
 /** equality is a language primitive, not an operator,
  * but parsing is easiest if it is treated as a PseudoOperator and convert it into [Equality] later
  */
-case object Equal extends PseudoInfixOperator("==")
-case object Inequal extends PseudoInfixOperator("!=")
+case object Equal extends PseudoInfixOperator("==") {
+  override def precedence = -10
+}
+case object Inequal extends PseudoInfixOperator("!=") {
+  override def precedence = -10
+}
 
 object Operator {
     val infixes: List[GeneralInfixOperator] = List(

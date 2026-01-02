@@ -286,7 +286,8 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     foundAbstract
   }
 
-  def lookupRegionalByNotation(tp: Type, pop: PseudoOperator): Option[ExprDecl] = {
+  /** looks up a symbol in the current region by notation and types */
+  def lookupRegionalByNotation(pop: PseudoOperator, tpIn1: Option[Type], tpOut: Option[Type]): Option[ExprDecl] = {
     val tv = getCurrentTheoryValue
     var candidates: List[ExprDecl] = Nil
     tv.decls.foreach {
@@ -294,9 +295,9 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
         if (ed.ntO.exists(nt => nt.fixity == pop.fixity && nt.symbol == pop.symbol)) {
           candidates ::= ed
           ed.tp match {
-            case FunType(ins, _) =>
-              if (ins.variables.last.tp == tp)
-                return Some(ed)
+            case ft:FunType =>
+              val matches = tpIn1.forall(_ == ft.ins.variables.last.tp) && tpOut.forall(_ == ft.out)
+              if (matches) return Some(ed)
             case _ =>
           }
         }

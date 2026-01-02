@@ -199,10 +199,13 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   override def toString = input.substring(index)
   case class Error(msg: String) extends SError(makeRef(index), msg)
   private case class Abort() extends Exception
-  def reportError(msg: String) = {
-    val found = input.substring(index,Math.min(index+20,inputLength))
+  def reportErrorAt(msg: String, at: Int) = {
+    val found = input.substring(at,Math.min(index+20,inputLength))
     val e = Error(msg + "; found " + (if (found.isEmpty) "[nothing]" else found))
     eh(e)
+  }
+  def reportError(msg: String) = {
+    reportErrorAt(msg,index)
   }
   def fail(msg: String) = {
     reportError(msg)
@@ -503,7 +506,21 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     TypeDecl(name, tp, df, mods)
   }
 
-  def parseVarDecl(mutable: Boolean, nameMandatory: Boolean)(implicit ctxs: PContext): VarDecl = addRef {
+  /** counts how many extra : a VarDecl has */
+  private class ColonCounter {var extras: Int = 0}
+  // a variable declaration, possibly using multiple colons (0 for :, 1 for :: etc.)
+  def parseMultiVarDecl(mutable: Boolean, nameMandatory: Boolean)(implicit ctxs: PContext): (VarDecl,Int) = {
+    val cc = new ColonCounter
+    val vd = parseVarDecl(mutable, nameMandatory, cc)
+    (vd,cc.extras)
+  }
+  // variable declaration with a single :
+  def parseVarDecl(mutable: Boolean, nameMandatory: Boolean)(implicit ctxs: PContext): VarDecl = {
+    val (vd,extras) = parseMultiVarDecl(mutable, nameMandatory)
+    if (extras > 0) reportErrorAt("too many :", vd.loc.from)
+    vd
+  }
+  private def parseVarDecl(mutable: Boolean, nameMandatory: Boolean, colonCounter: ColonCounter)(implicit ctxs: PContext): VarDecl = addRef {
     val noStatements = ctxs.setAllowStatement(false)
     val backtrackPoint = index
     val n = parseName
@@ -515,6 +532,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       VarDecl.anonymous(tp)
     } else {
       val tp = if (startsWithS(":")) {
+        while (startsWithS(":")) colonCounter.extras += 1
         parseType(noStatements)
       } else Type.unknown()
       val df = if (startsWithS("=")) {
@@ -526,14 +544,36 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
 
   def parseContext(namesMandatory: Boolean)(implicit ctxs: PContext): LocalContext = addRef {
     val btp = index
-    var vds = parseList(parseVarDecl(false, namesMandatory), ",", ")")
+    var vds = parseList(parseMultiVarDecl(false, namesMandatory), ",", ")")
     // conflict between parsing a single name n as "":n or n:???
     // heuristic: only allow the latter if no other variable is named
-    if (!namesMandatory && vds.exists(!_.anonymous) && vds.exists(vd => vd.anonymous && vd.tp.isInstanceOf[ClosedRef])) {
+    if (!namesMandatory && vds.exists(!_._1.anonymous) && vds.exists(vd => vd._1.anonymous && vd._1.tp.isInstanceOf[ClosedRef])) {
       index = btp
-      vds = parseList(parseVarDecl(false, true), ",", ")")
+      vds = parseList(parseMultiVarDecl(false, true), ",", ")")
     }
-    LocalContext.make(vds)
+    // number of previous (i.e., later since we revert the list) declaration into which a type should be copied
+    var previousType: Type = null
+    var useMultiType = 0
+    val vdsR = Util.reverseMap(vds) {case (vd,i) =>
+      if (useMultiType>0) {
+        useMultiType -= 1
+        if (vd.tp.known || i > 0) {
+          reportErrorAt("omitted type expected due to subsequent ::", vd.loc.from)
+          vd
+        } else {
+          vd.copy(tp = previousType)
+        }
+      } else {
+        previousType = vd.tp
+        useMultiType = i
+        vd
+      }
+    }
+    if (useMultiType > 0) {
+      reportErrorAt("declaration with omitted type expected due to subsequent ::", vds.head._1.loc.from)
+    }
+    // no need to call make because we've already reversed the list
+    LocalContext(vdsR)
   }
 
   def parseBracketedContext(implicit ctxs: PContext): LocalContext = {

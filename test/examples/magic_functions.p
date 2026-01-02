@@ -20,5 +20,5 @@ module Collections {
      type univ
      op: (univ,univ) -> univ # infix ∘
    }
-   ishom: (M:Magma,N: Magma,M -> N) -> bool = (M,N,f) -> forall x,y. f(x)∘f(y)==f(x∘y)
+   ishom(M,N:: Magma, f:M -> N) = forall x,y. f(x∘y)==f(x)∘f(y)
 }

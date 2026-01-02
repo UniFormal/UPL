@@ -40,6 +40,11 @@ module M {
   f4 : int -> _ = x -> x+1
   // arguments may also be declared right after the name, in which they apply to type and definiens
   f5(x: int): int = x+1
+  
+  // multiple variables in a row can be given the same type using multiple :s
+  fm(v:bool,w,x,y:::int,z:bool) = w+x+y
+  // that also works if the types are omitted
+  fm2(v,x,y::_) = fm(v,x,x,x,v) // types of x and y are the same; type of v is infered separately
 
   // Terms may also be {}-blocks. These are sequences of terms that evaluate to their last element.
   factorial = (x:int) -> {
