@@ -2002,7 +2002,7 @@ object UnivType {
   /** this when Type expected */
   def apply(e: Expression, dom: Theory) = OwnedType(e,dom, univ.copyFrom(e)).copyFrom(e)
   def unapply(tp: Type) = tp match {
-    case OwnedType(o,d,univ) => Some((o,d))
+    case OwnedType(o,d,`univ`) => Some((o,d))
     case _ => None
   }
 }
