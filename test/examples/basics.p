@@ -107,7 +107,7 @@ module M {
   foreach : ([int], int -> ()) -> () = (l,f) -> {for (i in l) f(i); ()}
   map = (l: [int]) -> f -> {
     var r: [int] = []
-    for (x in l) {r = f(x) -: r}
+    for (x in l) {r = r :- f(x)}
     r
   }
   // pattern-matching is written 'l match {pattern -> body, ...}'
@@ -185,6 +185,7 @@ module M {
   test = {
     M.sum([1,2,3]) == 6 &
     M.factorial(3) == 6 &
+    M.map([1,2,3])(x -> x+1) == [2,3,4] &
     M.map2([1,2,3])(x -> x+1) == [2,3,4] &
     divide(5,0) == 0 &
     dynamicBinding &
