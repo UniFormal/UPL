@@ -333,6 +333,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   // updates to stack of regional contexts
 
   /** push a physical region */
+  // TODO this fails when traversing into a theory inside an anonymous theory; it's not clear what should happen in that case
   def enter(m: Module) = pushFrame(RegionalContext(currentParent / m.name), true, Some(m.closed))
   /** push an anonymous region */
   def enter(t: Theory): GlobalContext = pushFrame(RegionalContext(t.toValue), true, None)

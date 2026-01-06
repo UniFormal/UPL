@@ -78,7 +78,22 @@ class Checker(errorHandler: ErrorHandler) {
             }
         }
       case sd: SymbolDeclaration =>
-        checkSymbolDeclaration(gc, sd)
+        val sdC = checkSymbolDeclaration(gc, sd)
+        // TODO move this check till later when all types are infered
+        sdC match {
+          case ed: ExprDecl => ed.ntO foreach {nt =>
+            ed.tp match {
+              case FunType(ins,out) => (ins(0).tp,out) match {
+                case (ClosedRef(_),_) =>
+                case (_,ClosedRef(_)) =>
+                case _ => reportError("notations can only be inferred if the input or output type is declared in the same theory")
+              }
+              case _ => reportError("notations only allowed for constants of function type")
+            }
+          }
+          case _ =>
+        }
+        sdC
         // purity checks?
     }
     declC.copyFrom(decl)
@@ -131,6 +146,7 @@ class Checker(errorHandler: ErrorHandler) {
       // take off the first among the todos
       val current = todo.head
       val d = current.decls.head
+      implicit val cause = d // more fine-granular error cause
       todo = current.tail :: todo.tail
       // check it if necessary (already merges with declarations of the same name that are already present)
       val dC = if (current.alsoCheck) checkDeclaration(gcC, d) else d
@@ -182,7 +198,7 @@ class Checker(errorHandler: ErrorHandler) {
               } else if (nw.defined && old.defined) {
                 // if both are defined, it's either redundant or an error (realizations don't matter)
                 if (nw.dfO != old.dfO) {
-                  reportError(s"definitions of includes not compatible")(nw)
+                  reportError(s"definitions of includes not compatible")
                 }
                 false
               } else {
@@ -264,7 +280,7 @@ class Checker(errorHandler: ErrorHandler) {
                       add(merged.copyFrom(nw)) // nw is more likely to have the definition
                     case Compare.Clashing =>
                       // declarations incompatible; further comparison needed
-                      reportError("declaration clash")(nw)
+                      reportError("declaration clash")
                   }
                 case _ => throw IError("unexpected declarations")
               }
@@ -372,6 +388,9 @@ class Checker(errorHandler: ErrorHandler) {
       case td: TypeDecl =>
         if (td.modifiers.mutable) reportError("type declaration may not be mutable")
       case ed: ExprDecl =>
+        ed.ntO foreach {nt =>
+          if (!ed.modifiers.closed) reportError("notations only allowed in theories")
+        }
     }
     // resolveName finds names in global, contained regional, and local contexts, but we only want the current region and its parent
     val sdP = if (!sd.modifiers.closed) None else gc.resolveName(ClosedRef(sd.name)).flatMap {
@@ -957,6 +976,7 @@ class Checker(errorHandler: ErrorHandler) {
           }
           case _ => fail("illegal type")(tp) // impossible if tp is checked
         }
+        case ct: ClassType => ct // We don't recurse into the domain; later checks must be able to handle non-normal domains.
         case OwnedType(own,dom,t) =>
           // we must reinfer the domain because the fields in the cached domain may have acquired definitions
           // when the object was moved into another region
@@ -1348,8 +1368,12 @@ class Checker(errorHandler: ErrorHandler) {
           reg.physical match {
             case Some(false) => fail("parent is not a closed theory")
             case _ =>
-              val thy = reg.region.theory
-              val thyS = OwnersSubstitutor.applyTheory(gc, reg.region.theory, -(l - 1))
+              // TODO how to handle This if the parent is an anonyomous theory?
+              val thy = reg.region.theory match {
+                case PhysicalTheory(p,_) => OpenRef(p)
+                case t => t
+              }
+              val thyS = OwnersSubstitutor.applyTheory(gc, thy, -(l - 1))
               (exp, ClassType(thyS))
           }
         case MatchCase(ctx, p, b) =>

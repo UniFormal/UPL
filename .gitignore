@@ -16,3 +16,4 @@ sbt.xml
 /.bloop
 /.metals
 /.vscode
+/test/examples/AAA_dummy.p
