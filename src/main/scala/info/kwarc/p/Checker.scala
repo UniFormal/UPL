@@ -1994,7 +1994,7 @@ class Checker(errorHandler: ErrorHandler) {
     var consI = cons
     var i = 0
     val last = as.length
-    (as.decls zip bs.decls).reverse.map {case (a,b) =>
+    (as.decls zip bs.decls).reverse.foreach {case (a,b) =>
       i += 1
       val std = if (i != last && flipSubtypingExceptLast) subTypeDirection.map(!_) else subTypeDirection
       matchTypes(a.tp, b.tp, consI)(gc, std) match {
