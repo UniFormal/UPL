@@ -472,13 +472,25 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       parseType(PContext.empty)
     } else Type.unknown()
     trim
-    val vl = if (startsWithS("=")) {
-      declarationFound = true
-      Some(parseExpression(PContext.empty))
-    } else None
-    val nt = if (startsWithS("#")) {
-      Some(parseNotation)
-    } else None
+    var vl: Option[Expression] = None
+    var nt: Option[Notation] = None
+    def parseDef = {
+      if (startsWithS("=")) {
+        declarationFound = true
+        vl = Some(parseExpression(PContext.empty))
+      }
+    }
+    def parseNot = {
+      if (startsWithS("#")) {
+        nt = Some(parseNotation)
+      }
+    }
+    // c # ... = ...
+    parseNot
+    parseDef
+    // c = ... # ...
+    // TODO this does not work yet because # is parsed as a postfix operator in the definiens
+    if (vl.isEmpty && nt.isDefined) parseDef
     if (!declarationFound) {
       fail("declaration expected")
     }

@@ -10,9 +10,11 @@ src contains the sources of the UPL tool, in particular:
 
 # Language examples
 
-'test' contains UPL examples for the UPL language.
+'test/examples' contains examples for the UPL language geared towards introducing the language.
 Start with 'basics.p', which explains a lot of the basic syntax.
 'all.pp' is an example of a UPL project file.
+
+See the README there for more explanations of the files.
 
 # Build UPL itself
 
