@@ -4,6 +4,15 @@ package info.kwarc.p
 trait SyntaxFragment {
   private[p] var loc: Location = null // set by parser to remember location in source
 
+  def withLocation(l: Location): this.type = {
+    loc = l
+    this
+  }
+  def withLocationFromTo(f: SyntaxFragment,t:SyntaxFragment): this.type = {
+    val l = if (f.loc == null) t.loc else if (t.loc == null) f.loc else f.loc extendTo t.loc
+    withLocation(l)
+  }
+
   def toStringShort: String = {
     val s = toString
     s.take(Math.min(20,s.length))

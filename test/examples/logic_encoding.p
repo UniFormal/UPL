@@ -1,39 +1,54 @@
 module Logic {
 
-  // needed: parameters of type yields dependent types; parameters of terms are implicit arguments
-
+  // a formalization of first-order logic with natural deduction
   theory FOL {
+     // type (non-terminal symbol) for terms
      type term
+     // type (non-terminal symbol) for propositions
      type prop
 
-     conj: (prop,prop) -> prop # infix ∧
-     neg: prop -> prop  # prefix ¬ 
-     all: (term -> prop) -> prop # bindfix ∀
-     equal: (term,term) -> prop # infix ≐
+     // connectives (productions) with their types and concrete syntax
+     conj:  (prop,prop) -> prop    # infix ∧
+     neg:   prop -> prop           # prefix ¬ 
+     all:   (term -> prop) -> prop # bindfix ∀
+     equal: (term,term) -> prop    # infix ≐
 
-     thm: prop -> bool # prefix ⊦
-     contra = forall F. thm(F)
+     // even though -> is UPL's function space, higher-order abstract syntax works
+     // because we cannot pattern-match on expressions of type term inside the theory
 
-     conjI:  |- forall F,G. ⊦F & ⊦G => ⊦(F∧G)
-     conjEl: |- forall F,G. ⊦(F∧G) => ⊦F
-     conjEr: |- forall F,G. ⊦(F∧G) => ⊦G
+     // the judgment of being a theorem/provable
+     // We use Isabelle-style thm: prop -> bool instead of LF-style prf: prop -> type because UPL's support for dependent types is still limited
+     // bool, &, =>, and forall are UPL's logic corresponding to LF's type, -->, and Pi
+     thm: prop -> bool             # prefix ⊦
+     // a property expressing inconsistency: all propositions are theorems
+     contra = forall F. ⊦F
 
-     negI: |- forall F. (⊦F => contra) => ⊦ ¬F
-     negE: |- forall F. ⊦ ¬F => ⊦F => contra
+     // the ND proof rules for each connective
+     // "c :--- F" is syntactic sugar for c: |- Forall F, where
+     //   "Forall" takes the universal closure, i.e., it forall-binds all free variables
+     //   "|-" forms the type of UPL proofs
 
-     allI: |- forall F. (forall X. ⊦F(X)) => ⊦all(F)
-     allE: |- forall F. ⊦all(F) => forall X. ⊦F(X)
+     conjI:---  ⊦F & ⊦G => ⊦(F∧G)
+     conjEl:--- ⊦(F∧G) => ⊦F
+     conjEr:--- Forall ⊦(F∧G) => ⊦G
 
-     eqI: |- forall X. ⊦(X≐X)
-     eqE: |- forall X,Y. ⊦(X≐Y) => forall P. ⊦P(X) => ⊦P(Y)
+     negI:--- (⊦F => contra) => ⊦ ¬F
+     negE:--- ⊦ ¬F => ⊦F => contra
+
+     allI:--- (forall X. ⊦F(X)) => ⊦ ∀X. F(X)
+     allE:--- ⊦ (∀X. F(X)) => forall X. ⊦F(X)
+
+     eqI:--- ⊦(X≐X)
+     eqE:--- ⊦(X≐Y) => forall P. ⊦P(X) => ⊦P(Y)
   }
 
+  // an example theory for the natural numbers
   theory Nat {
     include FOL
     zero: term
-    succ: term -> term
-    plus: (term,term) -> term
-    plus_zero: |- forall x. thm(equal(plus(x,zero), x))
-    plus_succ: |- forall x,n. thm(equal(plus(x,succ(n)), succ(plus(x,n))))
+    succ: term -> term # prefix $
+    plus: (term,term) -> term # infix ++
+    plus_zero: |- ⊦ ∀x. x ++ zero ≐ x
+    plus_succ: |- ⊦ ∀x,n. x ++ $n ≐ $(x++n)
   }
 }

@@ -467,7 +467,12 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     val name = nameAlreadyParsed getOrElse parseNameExtended
     val args = if (startsWith("(")) Some(parseBracketedContext(PContext.empty)) else None
     trim
-    val tp = if (startsWithS(":")) {
+    val tp = if (startsWithS(":---")) {
+      // sugar for declaring an axiom: c:--- F ---->  c: |- Forall F
+      declarationFound = true
+      val e = parseExpression(PContext.empty)
+      ProofType(Quantifier(true, null, e))
+    } else if (startsWithS(":")) {
       declarationFound = true
       parseType(PContext.empty)
     } else Type.unknown()
@@ -699,6 +704,9 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         skipT(".")
         val body = parseExpression
         Quantifier(univ,vars,body)
+      } else if (startsWithS("Forall")) {
+        val body = parseExpression
+        Quantifier(true,null,body) // universal closure: Forall e --> forall ???. e
       } else if (allowS && startsWithS("while")) {
         val c = parseBracketedExpression
         val b = parseExpression(doAllowS)
@@ -791,7 +799,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         val bo = setRef(BaseOperator(op,Type.unknown()), begin)
         val vars = parseContext(true)
         trim;
-        skip(".")
+        skipT(".")
         val body = parseExpression
         val arg = Lambda(vars,body,false)
         arg.loc = vars.loc extendTo body.loc

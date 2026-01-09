@@ -346,6 +346,43 @@ sealed trait OwnedObject extends Object {
   override def childrenInContext = List((None, None, owner), (None, None, ownerDom), (Some(ownerDom), None, owned))
 }
 
+object OwnedObject {
+  def unapply(o: Object) = o match {
+    case OwnedType(o,d,t) => Some((o,d,t))
+    case OwnedExpr(o,d,e) => Some((o,d,e))
+    case OwnedTheory(o,d,thy) => Some((o,d,thy))
+    case _ => None
+  }
+}
+
+/** matches any object, owned or not */
+object FlatOwnedObject {
+  type Owners = List[(Expression,Theory)]
+  /** a{b{c{x}}} --->  (List(a,b,c),x) */
+  def unapply(o: Object): Option[(Owners,Object)] = {
+    Some(collectOwners(o))
+  }
+  def collectOwners(o: Object): (Owners,Object) = o match {
+    case OwnedObject(owner, dom, obj) =>
+      val (l,x) = collectOwners(obj)
+      ((owner, dom)::l, x)
+    case x => (Nil,x)
+  }
+  /** (a,b,c),x --> a{b{c{x}}} */
+  def makeExpr(owners: Owners, x: Expression): Expression = owners match {
+    case (o,d)::tl => OwnedExpr(o,d,makeExpr(tl,x))
+    case Nil => x
+  }
+  def makeType(owners: Owners, x: Type): Type = owners match {
+    case (o,d)::tl => OwnedType(o,d,makeType(tl,x))
+    case Nil => x
+  }
+  def makeTheory(owners: Owners, x: Theory): Theory = owners match {
+    case (o,d)::tl => OwnedTheory(o,d,makeTheory(tl,x))
+    case Nil => x
+  }
+}
+
 object OwnedReference {
   def apply(o: Expression, d: Theory, nd: NamedDeclaration): OwnedObject = {
     val n = nd.name
@@ -1400,6 +1437,7 @@ sealed trait PseudoOperator extends Operator {
   def magicName: String
   def types = Nil
   def invertible = false
+  def interpret(meaning: Expression, args: List[Expression]) = Application(meaning, args)
 }
 
 sealed trait GeneralInfixOperator extends Operator {
@@ -1452,6 +1490,18 @@ class PseudoBindfixOperator(val symbol: String) extends PseudoOperator {
   override def toString = magicName
   def fixity = Bindfix
   def magicName = "_bindfix_" + symbol
+
+  override def interpret(meaning: Expression, args: List[Expression]) = {
+    args match {
+      case List(l @ Lambda(vd -: rest, bd, mr)) if !rest.empty =>
+        // curry multiple bindings into single ones
+        // TODO support non-associative binders like exists-unique
+        val bdI = interpret(meaning, List(Lambda(rest, bd, false)))
+        val lI = Lambda(LocalContext(vd), bdI, mr).withLocationFromTo(vd,bd)
+        super.interpret(meaning, List(lI))
+      case e => super.interpret(meaning, args)
+    }
+  }
 }
 
 object Parsable {

@@ -22,8 +22,8 @@ abstract class Context[A] extends SyntaxFragment with HasChildren[VarDecl] {
   /** helps create copies with a different local context */
   def copyLocal(lc: LocalContext): A
 
-  /** copies and appends some local declarations */
-  def append(c: LocalContext) = copyLocal(LocalContext(c.variables ::: decls))
+  /** copies and appends some local declarations (c may be null) */
+  def append(c: LocalContext) = copyLocal(LocalContext((if (c == null) Nil else c.variables) ::: decls))
   def append(vd: VarDecl): A = append(LocalContext(vd))
 
   /** the prefix of this containing the first n local declarations (counting from outer-most) */
@@ -31,7 +31,13 @@ abstract class Context[A] extends SyntaxFragment with HasChildren[VarDecl] {
 
   /** the prefix of this without the last n local declarations (counting from outer-most) */
   def dropLast(n: Int) = copyLocal(LocalContext(decls.drop(n)))
+  def split = (decls.last, LocalContext(decls.init))
   def getOutput = local.decls.find(vd => vd.name == "" && vd.output).map(_.tp)
+}
+
+object -: {
+  def unapply(l: LocalContext): Option[(VarDecl,LocalContext)] =
+    if (!l.empty) Some(l.split) else None
 }
 
 /** object-level context: relative to a vocabulary and a choice of theory in it
@@ -342,6 +348,10 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   /** push a referenced region (transparent if no owner) */
   def push(t: Theory, owner: Option[Expression] = None): GlobalContext =
     pushFrame(RegionalContext(t, owner), owner.isEmpty, None)
+  def push(owners: FlatOwnedObject.Owners): GlobalContext = owners match {
+    case Nil => this
+    case hd::tl => push(hd._2,Some(hd._1)).push(tl)
+  }
   /** push an instransparent referenced region */
   def pushQuoted(t: Theory): GlobalContext =
     pushFrame(RegionalContext(t, None), false, None)

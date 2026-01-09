@@ -1424,9 +1424,15 @@ class Checker(errorHandler: ErrorHandler) {
           (Equality(pos, tpC, lC, rC), BoolType)
         case Quantifier(q, vars, bd) =>
           val eC = if (alsoCheck) {
-            val varsC = checkLocal(gc, vars, false, false)
+            val varsE = if (vars != null) vars else {
+              // infer unknown context by creating a new variable for every unbound name
+              val names = FreeVariables.infer(gc,exp)
+              val vds = names.map(n => VarDecl(n,Type.unknown(gc)))
+              LocalContext.make(vds)
+            }
+            val varsC = checkLocal(gc, varsE, false, false)
             val bdC = checkExpressionPure(gc.append(varsC), bd, BoolType)
-            Quantifier(q, varsC, bdC)
+            if (varsC.empty) bdC else Quantifier(q, varsC, bdC)
           } else exp
           (eC, BoolType)
         case Assert(f) =>
@@ -1624,11 +1630,12 @@ class Checker(errorHandler: ErrorHandler) {
   def elaboratePseudo(gc: GlobalContext, pop: PseudoOperator, args: List[Expression], etp: Option[Type])(implicit cause: SyntaxFragment): Expression = {
     // first try via the expected type, no failure
     etp match {
-      case Some(OwnedType(o,d,r: ClosedRef)) =>
-        val gcI = gc.push(d, Some(o))
-        gcI.lookupRegionalByNotation(pop, None, Some(r)) match {
+      case Some(FlatOwnedObject(owners, a:Type)) if isMatchableForElaboration(a) =>
+        val gcI = gc.push(owners)
+        gcI.lookupRegionalByNotation(pop, None, Some(a)) match {
           case Some(ed) =>
-            return Application(OwnedExpr(o, d, ed.toRef), args)
+            val popE = FlatOwnedObject.makeExpr(owners, ed.toRef)
+            return pop.interpret(popE,args)
           case None =>
         }
       case _ =>
@@ -1658,23 +1665,29 @@ class Checker(errorHandler: ErrorHandler) {
             popMagic.insert(dom, primaryArg, otherArgsM)
           case _ => fail(s"magic function ${popMagic.name} not found in $aI")
         }
-      case OwnedType(o, d, r: ClosedRef) =>
-        val gcI = gc.push(d, Some(o))
-        gcI.lookupRegionalByNotation(pop, Some(r), None) match {
+      case FlatOwnedObject(owners, a:Type) if isMatchableForElaboration(a) =>
+        val gcI = gc.push(owners)
+        gcI.lookupRegionalByNotation(pop, Some(a), None) match {
           case Some(ed) =>
-            Application(OwnedExpr(o, d, ed.toRef), args)
+            val popE = FlatOwnedObject.makeExpr(owners, ed.toRef)
+            pop.interpret(popE, args)
           case None =>
             fail("no constant with appropriate notation found in type: " + pop.symbol)
         }
-      case _: ClosedRef | _: UnknownType =>
+      case _: UnknownType =>
         gc.lookupRegionalByNotation(pop, Some(aI), None) match {
           case Some(ed) =>
-            Application(ed.toRef, args)
+            val popE = ed.toRef
+            pop.interpret(popE, args)
           case None =>
             fail("no constant with appropriate notation found: " + pop.symbol)
         }
       case _ => fail("cannot elaborate notation: " + pop.symbol)
     }
+  }
+  def isMatchableForElaboration(tp: Type) = tp match {
+    case _:ClosedRef | _:BaseType => true
+    case _ => false
   }
 
     /** checks a Boolean that may export bindings to sibling expressions
