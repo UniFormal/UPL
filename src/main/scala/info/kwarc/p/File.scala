@@ -125,4 +125,34 @@ object File {
     properties.compact
     properties
   }
+
+  /**
+   * convenience method for writing a string into a file
+   *
+   * @param f the destination file
+   * @param content the string to write
+   */
+  def write(f: File, content: String): Unit = {
+    WriteLineWise(f) { w =>
+      w.write(content)
+    }
+  }
+
+  /** convenience method to obtain a typical (buffered, UTF-8) writer for a file */
+  def Writer(f: File): BufferedWriter = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(f.toJava),
+    java.nio.charset.Charset.forName("UTF-8")))
+
+  /** convenience method to write to a file line by line
+   * @param f the file
+   * @param proc a function that takes a BufferedWriter to perform write operations
+   */
+  def WriteLineWise(f: File)(proc: BufferedWriter => Unit) = {
+    val w = Writer(f)
+    try {
+      proc(w)
+    } finally {
+      w.flush()
+      w.close()
+    }
+  }
 }

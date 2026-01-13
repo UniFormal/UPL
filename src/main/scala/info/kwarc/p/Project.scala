@@ -190,6 +190,9 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     val ipO = run()
     if (dropToRepl) ipO foreach {ip => repl(ip)}
   }
+
+
+
 }
 
 object Project {
@@ -226,6 +229,18 @@ object Project {
     val p = new Project(es,mainE)
     p.entries.foreach {e => p.update(e.source, Parser.getFileContent(File(e.source.toString)))}
     p
+  }
+
+  def toIsabelleFiles(proj: Project): Unit = {
+
+    val files = proj.entries.map(pe => File(pe.toString).setExtension("thy"))
+
+    val isabelleStrings = proj.entries.map(pe => Isabelle.toIsabelleCode(pe.parsed))
+
+    //(0 to files.length).foreach { i => File.write(files.head , isabelleStrings.head) }
+    (files zip isabelleStrings).foreach { case (f,s) => File.write(f,s) }
+
+    //println(proj)
   }
 }
 
