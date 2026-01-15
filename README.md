@@ -1,3 +1,5 @@
+[<img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" />](https://deepwiki.com/UniFormal/UPL)
+
 This folder contains the implementation and language examples for UPL.
 
 # Implementation
@@ -39,4 +41,5 @@ If you develop UPL, it is easier to skip installing the vsix file (but still gen
 3. Press F5 (alternatively click the rider Run --> Start Debugging)
 4. Select Node.js
 5. This will spawn a second VSCode window with the extension loaded
+
 
