@@ -18,6 +18,7 @@ case class ASTError(msg: String) extends PError(msg)
 
 abstract class ErrorHandler {
   def apply(e: SError): Unit
+  def size = 0
 }
 
 object ErrorThrower extends ErrorHandler {
@@ -31,6 +32,7 @@ object ErrorIgnorer extends ErrorHandler {
 class ErrorCollector extends ErrorHandler {
   override def toString = getErrors.mkString("\n")
   private var errors: List[SError] = Nil
+  override def size = errors.length
   def hasErrors = errors.nonEmpty
   def getErrors = errors.reverse
   def apply(e: SError) = {

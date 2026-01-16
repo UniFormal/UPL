@@ -284,8 +284,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
       // we need to skip the case where we look for super-theory t by following "include t" itself
       case ClosedRef(n) if !(name == n && noRecurse) => lookupRegional(n, true) match {
         case Some(m: Module) => m.lookupO(name).foreach {case d: NamedDeclaration => foundOne(d) case _ =>}
-        case Some(_) => throw IError("not a module")
-        case None => throw IError("unknown name")
+        case _ => // impossible for well-formed content, but could happen if we have previously recovered from unknown/wrong names
       }
       case _ =>
     }

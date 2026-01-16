@@ -153,6 +153,7 @@ abstract class Traverser[A] {
     case Equality(p,t,l,r) => Equality(p, apply(t), apply(l), apply(r))
     case Quantifier(q,vs,b) =>
       val (vsT,aT) = apply(vs)
+      // if the quantifiers is closing and the context has not been inferred yet, this does not pass down the correct context
       Quantifier(q, vsT, apply(b)(gc.append(vs),aT))
     case Assert(f) => Assert(apply(f))
     case UndefinedValue(tp) => UndefinedValue(apply(tp))
@@ -298,6 +299,7 @@ object OwnersSubstitutor {
 
 class Substituter(val initGC: GlobalContext) extends Traverser[Substitution] with TraverseOnlyOriginalRegion {
   override def apply(exp: Expression)(implicit gc: GlobalContext, sub: Substitution) = matchC(exp) {
+    case e if e.closing => e // no free variables in e even if they have not been inferred yet
     case VarRef(n) if n != "" && inOriginalRegion => sub.lookupO(n) match {
       case None => exp
       case Some(vd) => vd.dfO.get

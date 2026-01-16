@@ -291,6 +291,8 @@ object Type {
 sealed trait Expression extends Object {
   def field(dom: Theory, f: String) = OwnedExpr(this, dom, ClosedRef(f))
   def substitute(sub: Substitution) = Substituter(GlobalContext(""), sub, this)
+  /** true if this expression binds all free variables in its children */
+  def closing = false
 }
 
 // ************************** Common objects ************************
@@ -1029,6 +1031,7 @@ case class ListElem(list: Expression, position: Expression) extends Expression {
 }
 
 case class Quantifier(univ: Boolean, vars: LocalContext, body: Expression) extends Expression {
+  override def closing = vars == null
   def label = if (univ) "forall" else "exists"
   override def toString = s"($label $vars.$body)"
   def children = vars.children ::: List(body)
@@ -1440,7 +1443,9 @@ sealed trait PseudoOperator extends Operator {
   def interpret(meaning: Expression, args: List[Expression]) = Application(meaning, args)
 }
 
-sealed trait GeneralInfixOperator extends Operator {
+sealed trait GeneralInfixOrPostfixOperator extends Operator
+
+sealed trait GeneralInfixOperator extends GeneralInfixOrPostfixOperator {
   val symbol: String
   override def arity = Some(2)
   def precedence: Int
@@ -1471,7 +1476,7 @@ class PseudoPrefixOperator(val symbol: String) extends PseudoOperator {
 }
 
 /** expr symbol */
-class PseudoPostfixOperator(val symbol: String) extends PseudoOperator {
+class PseudoPostfixOperator(val symbol: String) extends PseudoOperator with GeneralInfixOrPostfixOperator {
   override def toString = magicName
   def fixity = Postfix
   def magicName = "_postfix_" + symbol
@@ -1505,9 +1510,20 @@ class PseudoBindfixOperator(val symbol: String) extends PseudoOperator {
 }
 
 object Parsable {
-  val symbols = List(Character.CURRENCY_SYMBOL, Character.MATH_SYMBOL, Character.DASH_PUNCTUATION, Character.OTHER_SYMBOL)
-  def isInfixChar(c: Char) = (symbols contains c.getType) || (c.getType == Character.OTHER_PUNCTUATION && !"\"';:,.".contains(c))
-  def isPrefixChar(c: Char) = isInfixChar(c)
+  val symbols = List(Character.CURRENCY_SYMBOL, Character.MATH_SYMBOL, Character.DASH_PUNCTUATION, Character.OTHER_PUNCTUATION, Character.OTHER_SYMBOL)
+  val modifiers = List(Character.MODIFIER_LETTER, Character.MODIFIER_SYMBOL)
+  /** character types that are allowed in operators */
+  val operators = symbols ::: modifiers
+  /** characters that are used by UPL and not allowed in operators */
+  val notOpChars = "\"';:,.`"
+  /** tests if c is allowed in an operator */
+  def isOperatorChar(c: Char) = (operators contains c.getType) && !notOpChars.contains(c)
+  def isSubOrSuperscript(c: Char) = (c >= 0x2070 && c <= 0x209F) || modifiers.contains(c)
+  /** differentiates between infix and postfix operator */
+  def isPostfixOp(s: String) = {
+    s.forall(isSubOrSuperscript)
+  }
+  def isPrefixChar(c: Char) = isOperatorChar(c)
   // right-pointing tacks and similar, not used yet, but could be used for precedences
   def isTurnstileLike(c: Char) = {
     c == 0x22A2 || (c >= 0x22A6 && c <= 0x22AF) || c == 0x2AE2 || c == 0x2AE6 || c == 0x27DD
@@ -1530,7 +1546,7 @@ object Parsable {
     else Some((c+1).toChar)
   }
   def isCircumfixStart(c: Char) = circumfixClose(c).isDefined
-  def isCircumfixChar(c: Char) = isInfixChar(c) || isCircumfixStart(c)
+  def isCircumfixChar(c: Char) = isOperatorChar(c) || isCircumfixStart(c)
 
   /** binder symbols cannot be defined based on Unicode classes
    *  we take all symbols called "N-Ary" in their Unicode name plus the quantifiers */
@@ -1540,7 +1556,7 @@ object Parsable {
     // quantifiers
     List(0x2200,0x2203,0x2204)
   def isBindfixStart(c: Char) = bindChars contains c
-  def isBindfixChar(c: Char) = isInfixChar(c) || isBindfixStart(c)
+  def isBindfixChar(c: Char) = isOperatorChar(c) || isBindfixStart(c)
 }
 
 /** operators with binary infix notation (flexary flag not supported yet) */

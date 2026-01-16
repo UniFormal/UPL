@@ -199,7 +199,10 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   override def toString = input.substring(index)
   case class Error(msg: String) extends SError(makeRef(index), msg)
   private case class Abort() extends Exception
+  private case class TrialRunFailed() extends Exception
+  private var trialRun = false
   def reportErrorAt(msg: String, at: Int) = {
+    if (trialRun) throw TrialRunFailed()
     val found = input.substring(at,Math.min(index+20,inputLength))
     val e = Error(msg + "; found " + (if (found.isEmpty) "[nothing]" else found))
     eh(e)
@@ -210,6 +213,15 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   def fail(msg: String) = {
     reportError(msg)
     throw Abort()
+  }
+  /** runs code, returns result if no errors, otherwise backtracks */
+  def tryParse[A](code: => A): Option[A] = {
+    val trialRunBefore = trialRun
+    trialRun = true
+    val beg = index
+    try {Some(code)}
+    catch {case TrialRunFailed() => index = beg; None}
+    finally {trialRun = trialRunBefore}
   }
 
   def makeRef(from: Int) = {
@@ -275,7 +287,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     newlineSeen
   }
 
-  def startsWithInfixOperator = Operator.infixes.exists(o => startsWith(o.symbol))
+  def startsWithBuiltinInfixOperator = Operator.infixes.exists(o => startsWith(o.symbol))
 
   /** the whitespace before the current index contains a newline */
   def newlineBefore: Boolean = {
@@ -367,13 +379,14 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   import Keywords._
 
   /** check if a declaration follows */
+  // TODO: no good way to differentiate T{s(x) = ...} and T{s(x)}
   def startsWithDeclaration = {
     val backtrackPoint = index
     trim
     val isDecl = allDeclKeywords.exists(startsWith) || {
       val n = parseName
       trim
-      n.nonEmpty && (startsWith(":") || startsWith("="))
+      n.nonEmpty && (startsWith(":") || startsWith("=") || startsWith("#"))
     }
     index = backtrackPoint
     isDecl
@@ -476,16 +489,17 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       declarationFound = true
       parseType(PContext.empty)
     } else Type.unknown()
-    trim
     var vl: Option[Expression] = None
     var nt: Option[Notation] = None
     def parseDef = {
+      trim
       if (startsWithS("=")) {
         declarationFound = true
         vl = Some(parseExpression(PContext.empty))
       }
     }
     def parseNot = {
+      trim
       if (startsWithS("#")) {
         nt = Some(parseNotation)
       }
@@ -816,7 +830,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         val n = parseName
         if (n.isEmpty) fail("name expected")
         trim
-        if (startsWith(":") && !startsWithInfixOperator) {
+        if (startsWith(":") && !startsWithBuiltinInfixOperator) {
           // variable declaration
           skip(":")
           val tp = parseType(doNotAllowS)
@@ -830,22 +844,27 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         }
       } // end exp =
       trim
+      // repeated check for and apply post-operators by modifying exp
       // if expressions are split over multiple lines, strong postops must occur at the end of the line, not the beginning
       // also, some expression can never be followed by a strong postop
       var tryPostOps = !newlineBefore && (exp match {
         case _:BaseValue | _: Block | _: Assign | _: VarDecl | _:While | _:For | _: Return => false
         case _ => true
       })
-      val strongPostops = List(".","(","[","{","°")
-      while (tryPostOps && {trim; startsWithAny(strongPostops:_*)}) {
-        setRef(exp,expBeginAt) // only the outermost expression gets its source reference automatically
+      while (tryPostOps) {
+        // updates exp after parsing a postfix operator
+        def modifyExp(e: Expression) : Unit = {
+          setRef(exp,expBeginAt) // only the outermost expression gets its source reference automatically
+          exp = e
+        }
+        trim
         if (startsWithS("(")) {
           val es = parseExpressions("",")")
-          exp = Application(exp,es)
+          modifyExp(Application(exp,es))
         } else if (startsWithS("[")) {
           val e = parseExpression
           skip("]")
-          exp = ListElem(exp,e)
+          modifyExp(ListElem(exp,e))
         } else if (startsWith(".")) {
           val btp = index
           skip(".")
@@ -858,7 +877,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
             val n = parseName
             if (n.isEmpty) fail("identifier expected")
             val owned = setRef(ClosedRef(n),nB)
-            exp = OwnedExpr(exp,null,owned)
+            modifyExp(OwnedExpr(exp,null,owned))
           }
         } else if (startsWithS("{")) {
           // conflict between M{decls} and exp{exp}
@@ -875,26 +894,36 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           asRef(exp) match {
             case Some(r) if startsWithDeclaration =>
               // p{decls}
-              val incl = Include(r).copyFrom(exp)
+              val incl = setRef(Include(r), expBeginAt)
               val ds = parseDeclarations(true)
               val sds = ds.flatMap {
                 case sd: SymbolDeclaration => List(sd)
                 case _ => reportError("symbol declaration expected"); Nil
               }
               val thy = setRef(Theory(incl::sds), incl.loc.from)
-              exp = Instance(thy)
+              modifyExp(Instance(thy))
             case _ =>
               // in e{q}, q is a closed expression in a different theory
               val e = parseExpression(ctxs.push())
-              exp = OwnedExpr(exp,null,e)
+              modifyExp(OwnedExpr(exp,null,e))
           }
           skip("}")
         } else if (startsWithS("°")) {
           // function application with Andrews' dot
           val a = parseExpression
-          exp = Application(exp,List(a))
+          modifyExp(Application(exp, List(a)))
+        } else {
+          val opBegin = index
+          tryParse(parseInfixOrPostfixO(Nil)) match {
+            case Some(Some(p: PseudoPostfixOperator)) =>
+              val pop = setRef(BaseOperator(p, Type.unknown()), opBegin)
+              modifyExp(Application(pop,List(exp)))
+            case _ =>
+              index = opBegin // needed in case some other operator was parsed successfully
+              tryPostOps = false
+          }
         }
-      } // end while
+      } // end while, applying postops
       trim
       if (!allowWeakPostops) return exp
       setRef(exp, expBeginAt)
@@ -937,16 +966,19 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           Match(exp,cs,handle)
         } else exp
         return expWP
+        // end weak postops
       } else {
         val opBegin = index
-        parseInfixO(Operator.infixes) match {
+        parseInfixOrPostfixO(Operator.infixes) match {
           case None =>
             return disambiguateInfixOperators(seen.reverse,exp)
-          case Some(o) =>
+          case Some(o: GeneralInfixOperator) =>
             seen ::= (exp,o, makeRef(opBegin))
+          case _ =>
+            throw IError("impossible case")
         }
       }
-    } // end while
+    } // end while that builds 'seen'
     null // impossible
   }
 
@@ -965,16 +997,19 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     }
   }
 
-  def parseInfixO(os: List[GeneralInfixOperator]): Option[GeneralInfixOperator] = {
-    val found = os.find {o => startsWith(o.symbol) && nextAfter(o.length).forall(!Parsable.isInfixChar(_))}
+  def parseInfixOrPostfixO(os: List[GeneralInfixOrPostfixOperator]): Option[GeneralInfixOrPostfixOperator] = {
+    val found = os.find {o => startsWith(o.symbol) && nextAfter(o.length).forall(!Parsable.isOperatorChar(_))}
     found match {
       case Some(f) =>
         skip(f.symbol)
         found
       case None =>
-        val op = parseWhile(Parsable.isInfixChar)
+        val op = parseWhile(Parsable.isOperatorChar)
         if (op.nonEmpty) {
-          Some(new PseudoInfixOperator(op))
+          if (Parsable.isPostfixOp(op))
+            Some(new PseudoPostfixOperator(op))
+          else
+            Some(new PseudoInfixOperator(op))
         } else {
           None
         }

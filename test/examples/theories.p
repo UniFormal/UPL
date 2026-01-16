@@ -57,7 +57,7 @@ module Theories {
   // When instantiating, ??? can be used for unknown terms. If there are not computational, like proofs, this is harmless.
   intAdd = Semigroup {
     type u = int
-    op(x,y::_) = x+y
+    op = (x,y) -> x+y
     assoc = ???
   }
 

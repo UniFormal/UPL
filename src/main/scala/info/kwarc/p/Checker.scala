@@ -32,6 +32,15 @@ class Checker(errorHandler: ErrorHandler) {
       reportError(m)(sf)
       recover
   }
+  /** counts errors while performing an operation */
+  // TODO not thread-safe
+  def countErrors[A](code: => A) = {
+    val s = errorHandler.size
+    val a = code
+    val he = errorHandler.size > s
+    (he, a)
+  }
+
   private def expected(exp: SyntaxFragment, found: SyntaxFragment): String = expected(exp.toString, found.toString)
   private def expected(exp: String, found: String): String = s"expected $exp; found $found"
 
@@ -64,7 +73,7 @@ class Checker(errorHandler: ErrorHandler) {
         if (id.dom != null) {
           val domC = checkTheory(gc, id.dom)(id)
           // TODO: what about includes of open theories
-          val dfOC = id.dfO map { d => checkExpression(gc, d, ClassType(domC)) }
+          val dfOC = id.dfO map {d => checkExpression(gc, d, ClassType(domC))}
           Include(domC, dfOC, id.realize)
         } else id.dfO match {
           case None => fail("untyped include")
@@ -219,7 +228,7 @@ class Checker(errorHandler: ErrorHandler) {
             }
             // queue the included declarations
             if (nw.dom.isInstanceOf[TheoryValue]) nw.subsumed = true // no need to keep trivial includes
-            val domE = evaluateTheory(gcC, nw.dom)
+            val domE = recoverWith(Theory.empty.copyFrom(nw.dom)) {evaluateTheory(gcC, nw.dom)}
             todo ::= FlattenInput(domE.decls, false, Some(nw.copy(realize = isRealize)))
           }
         case nw: NamedDeclaration =>
@@ -327,7 +336,7 @@ class Checker(errorHandler: ErrorHandler) {
       if (sd1 == sd2) return Identical
       // compare type (bound) and definiens separately
       val tpComp = compareTT(gc, sd1.tp, sd2.tp)
-      val dfComp = compareOO(sd1.dfO, sd2.dfO)
+      val dfComp = compareOOO(sd1.dfO, sd2.dfO)
       (tpComp, dfComp) match {
         // either clashes
         case (Clashing, _) | (_, Clashing) => Clashing
@@ -367,13 +376,17 @@ class Checker(errorHandler: ErrorHandler) {
         else Merged(tI,None)
       }
     }
-    def compareOO(o1: Option[Object], o2: Option[Object]): Result =
+    def compareOOO(o1: Option[Object], o2: Option[Object]): Result = {
       (o1, o2) match {
-        case (Some(_), None)    => Subsumes
-        case (None, Some(_))    => SubsumedBy
-        case (Some(x), Some(y)) => if (x == y) Identical else Clashing
-        case (None, None)       => Identical
+        case (Some(_), None) => Subsumes
+        case (None, Some(_)) => SubsumedBy
+        case (Some(x), Some(y)) => compareOO(x, y)
+        case (None, None) => Identical
       }
+    }
+    def compareOO(e1: Object, e2: Object): Result = {
+      if (e1 == e2) Identical else Clashing // TODO: be more generous, e.g., ignored domain of owned objects
+    }
   }
 
   /** checks a declaration against a module, which may provide an expected type for the declaration
@@ -404,14 +417,10 @@ class Checker(errorHandler: ErrorHandler) {
         // Concrete: error
         if (abs.defined && sd.defined && abs.dfO != sd.dfO) reportError("name is inherited and already defined differently")
         // Abstract: inherit type
-        val expectedTp = abs.tp
-        val tpC = if (!sd.tp.known) {
-          // type = Omitted: use expected type
-          abs.tp
-        } else {
-          // type = Present: must be subtype of inherited type
-          checkType(gc, sd.tp, abs.tp)
-        }
+        // We do not require sd.tp <: abs.tp; the intersection is taken later when merging declarations
+        val tpC = checkType(gc, sd.tp)
+        // but we check sd.tp <: abs.tp partially to solve unknown types
+        equateTypes(gc,tpC,abs.tp)(Some(true))
         sd match {
           case sd: ExprDecl =>
             // definition = Undefined: nothing to do
@@ -981,15 +990,12 @@ class Checker(errorHandler: ErrorHandler) {
           // we must reinfer the domain because the fields in the cached domain may have acquired definitions
           // when the object was moved into another region
           // TODO this code should go, and the issues solved elsewhere
-          val ownI = inferCheckedExpression(gc,own) match {
-            case ct:ClassType => ct
-            case t => apply(t)
-          }
-          val dom = ownI match {
+          val (_,ownI) = inferExpressionNorm(gc,own)(false)
+          val domM = ownI match {
             case ClassType(d) => d
             case _ => throw IError("unexpected type")
           }
-          val gcI = gc.push(dom,Some(own))
+          val gcI = gc.push(domM,Some(own))
           val tN = apply(gcI, t)
           val tpN = OwnersSubstitutor.applyType(gcI,tN)
           if (tpN != tp) apply(tpN) else tpN
@@ -1040,8 +1046,8 @@ class Checker(errorHandler: ErrorHandler) {
 
   /** like [[checkExpression]] but also checks purity */
   def checkExpressionPure(gc: GlobalContext, e: Expression, t: Type) = {
-    val eC = checkExpression(gc, e, t)
-    PurityChecker(gc,eC)
+    val (he,eC) = countErrors {checkExpression(gc, e, t)}
+    if (!he) PurityChecker(gc,eC)
     eC
   }
 
@@ -1170,7 +1176,7 @@ class Checker(errorHandler: ErrorHandler) {
         (CollectionValue(esC, k), CollectionType(eI, k))
 
       case (OwnedExpr(owner, dom, e), etp) =>
-        val (ownerC, ownerI) = if (alsoCheck) inferExpressionNorm(gc, owner) else (owner, ClassType(dom))
+        val (ownerC, ownerI) = inferExpressionNorm(gc, owner)
         ownerI match {
           case ClassType(domC) =>
             if (alsoCheck)
@@ -1240,7 +1246,7 @@ class Checker(errorHandler: ErrorHandler) {
             (eC, BoolType)
           } else if (op.operator.isCheckable) {
             val opTpC = checkType(gc,op.tp)
-            // TODO if type is know, we could check the arguments
+            // TODO if type is known, we could check the arguments
             val (argsC, argsI) = args.map(a => inferExpressionNorm(gc, a)(true)).unzip
             val opI = inferOperator(gc, op.operator, argsI, etp)
             checkSubtype(gc,opI,opTpC) // will set op.tp if unknown
@@ -2016,7 +2022,7 @@ class Checker(errorHandler: ErrorHandler) {
           else if (a.anonymous && b.anonymous) {
             // no need to remember variable in simple types
           } else {
-            return None // a simple type could match a dependent one, but we can worry about that later
+            return None // TODO match a simple type against a possibly-dependent one (as infered from a Lambda)
           }
           ms = m ::: ms
         case None => return None
@@ -2050,6 +2056,8 @@ object Checker {
     * - then  gc |- (o2.o1).r is (o:d).r with o = (o2:d2).o1 and d = (o2:d2).d1
     *   thus  gc + (o:d) |- r ---> o2.{ds}
     *   and the expression flattens to the same result as before
+    *
+    * recovers with the empty theory if ill-formed input yields errors
     */
   def evaluateTheory(gc: GlobalContext, thy: Theory): TheoryValue = {
     // invariants: gcI |- thyI : THEORY,  gcI = gc.push(_)....push(_)
