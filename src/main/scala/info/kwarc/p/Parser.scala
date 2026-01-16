@@ -74,7 +74,7 @@ package info.kwarc.p
   * @param allowWeakPostops if false, force bracketing of infix operators in expressions
   *                    this is mutable to allow toggling it back for subexpressions
   */
-case class PContext(contexts: List[LocalContext], allowStatement: Boolean, var allowWeakPostops: Boolean, var allowAssignment: Boolean) {
+case class PContext(contexts: List[LocalContext], allowStatement: Boolean, var allowWeakPostops: Boolean, var allowEqual: Boolean) {
   def append(vd: VarDecl): PContext = append(LocalContext(vd))
   def append(ctx: LocalContext): PContext = copy(contexts = contexts.head.append(ctx)::contexts.tail)
   def pop() = copy(contexts = contexts.tail).append(contexts.head) // TODO: type not correct (but irrelevant anyway)
@@ -197,14 +197,14 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   private var index = 0
   private val inputLength = input.length
   override def toString = input.substring(index)
-  case class Error(msg: String) extends SError(makeRef(index), msg)
+  case class Error(l: Location, msg: String) extends SError(l, msg)
   private case class Abort() extends Exception
   private case class TrialRunFailed() extends Exception
   private var trialRun = false
   def reportErrorAt(msg: String, at: Int) = {
     if (trialRun) throw TrialRunFailed()
     val found = input.substring(at,Math.min(index+20,inputLength))
-    val e = Error(msg + "; found " + (if (found.isEmpty) "[nothing]" else found))
+    val e = Error(Location(origin, at, at), msg + "; found " + (if (found.isEmpty) "[nothing]" else found))
     eh(e)
   }
   def reportError(msg: String) = {
@@ -627,6 +627,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       Postfix
     } else if (startsWithS("circumfix")) {
       Circumfix
+    } else if (startsWithS("applyfix")) {
+      Applyfix
     } else if (startsWithS("bindfix")) {
       Bindfix
     } else {
@@ -659,9 +661,9 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   // needed because addRef does not work with return-statements
   private def parseExpressionInner(implicit ctxs: PContext): Expression = {
     val allowWeakPostops = ctxs.allowWeakPostops
-    val allowAssignment = ctxs.allowAssignment
+    val allowEqual = ctxs.allowEqual
     ctxs.allowWeakPostops = true // only active for one level
-    ctxs.allowAssignment = true
+    ctxs.allowEqual = true
     val allowS = ctxs.allowStatement
     val doAllowS = ctxs.setAllowStatement(true)
     val doNotAllowS = ctxs.setAllowStatement(false)
@@ -798,7 +800,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         val e = parseExpression(ctxs.pop())
         skip("`")
         Eval(e)
-      } else if (!atEnd && Parsable.isCircumfixStart(next)) {
+      } else if (!atEnd && Parsable.isOpeningBracketChar(next)) {
         val begin = index
         val open = parseWhile(Parsable.isCircumfixChar)
         val op = new PseudoCircumfixOperator(open)
@@ -847,11 +849,12 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       // repeated check for and apply post-operators by modifying exp
       // if expressions are split over multiple lines, strong postops must occur at the end of the line, not the beginning
       // also, some expression can never be followed by a strong postop
-      var tryPostOps = !newlineBefore && (exp match {
+      val tryPostOps = !newlineBefore && (exp match {
         case _:BaseValue | _: Block | _: Assign | _: VarDecl | _:While | _:For | _: Return => false
         case _ => true
       })
-      while (tryPostOps) {
+      var tryStrongPostOps = tryPostOps
+      while (tryStrongPostOps) {
         // updates exp after parsing a postfix operator
         def modifyExp(e: Expression) : Unit = {
           setRef(exp,expBeginAt) // only the outermost expression gets its source reference automatically
@@ -871,7 +874,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           if (!atEnd && next == ' ') {
             // . only works if followed by identifier; this allows using ". " in a quantifier without ambiguity
             index = btp
-            tryPostOps = false
+            tryStrongPostOps = false
           } else {
             val nB = index
             val n = parseName
@@ -918,66 +921,92 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
             case Some(Some(p: PseudoPostfixOperator)) =>
               val pop = setRef(BaseOperator(p, Type.unknown()), opBegin)
               modifyExp(Application(pop,List(exp)))
+            case Some(Some(p: PseudoApplyfixOperator)) =>
+              val pop = setRef(BaseOperator(p, Type.unknown()), opBegin)
+              val es = parseExpressions("", p.close)
+              modifyExp(Application(pop,exp::es))
             case _ =>
               index = opBegin // needed in case some other operator was parsed successfully
-              tryPostOps = false
+              tryStrongPostOps = false
           }
         }
       } // end while, applying postops
       trim
-      if (!allowWeakPostops) return exp
       setRef(exp, expBeginAt)
-      if (startsWithAny(Parser.weakPostops:_*) && !startsWithAny(Parser.conflictingInfixes:_*)) {
-        exp = disambiguateInfixOperators(seen.reverse,exp)
-        val expWP = if (allowAssignment && startsWithS("=")) {
+      // weak postops; all of the below either
+      // - end the infix chain: call expDone, possibly modify the expression with postops, return
+      // - continue the infix chain
+      def expDone() = {
+        disambiguateInfixOperators(seen.reverse,exp)
+      }
+      // TODO parse Lambdas entirely differently
+      //if (startsWithAny(Parser.weakPostops:_*) && !startsWithAny(Parser.conflictingInfixes:_*)) {
+      // postops that stop the infix chain: -> , match, etc.
+      val cannotTakeWeakPostops = exp match {
+        case _: While | _: For | _: Return => true
+        case _ => false // all values can take infix operators, multiple cases can take ->, Assign/Block can take catch or dynamic connectives
+      }
+      if (!allowWeakPostops || cannotTakeWeakPostops) {
+        return expDone()
+      } else if (startsWith("=") && !startsWithAny(Parser.conflictingInfixes:_*)) {
+        if (allowEqual) {
+          skip("=")
           val df = parseExpression
-          Assign(exp,df)
-        } else if (startsWithS("->")) {
-          // decls -> body is a Lambda, pattern -> body is a MatchCase
-          def asVarDecls(e: Expression,top: Boolean): Option[List[VarDecl]] = e match {
-            case UnitValue if top => Some(Nil)
-            case Tuple(es) if top =>
-              val esV = es.map(e => asVarDecls(e,false))
-              if (esV.forall(_.isDefined)) Some(esV.flatMap(_.get))
-              else None
-            case e =>
-              val vd = e match {
-                case vd: VarDecl => vd
-                case VarRef(n) => VarDecl(n,Type.unknown()).copyFrom(e)
-                case ClosedRef(n) => VarDecl(n,Type.unknown()).copyFrom(e)
-                case _ => return None
-              }
-              Some(List(vd))
-          }
-          asVarDecls(exp,true) match {
-            case None =>
-              val b = parseExpression(doAllowS)
-              MatchCase(null,exp,b)
-            case Some(ins) =>
-              val ctx = LocalContext.make(ins).copyFrom(exp)
-              val b = parseExpression(doAllowS.append(ctx))
-              Lambda(ctx,b,false)
-          }
-        } else if (startsWithAny("match","catch")) {
-          val handle = skipEither("catch","match")
-          skip("{")
-          val cs = parseList(parseMatchCase,"}",false)
-          skip("}")
-          Match(exp,cs,handle)
-        } else exp
-        return expWP
-        // end weak postops
+          return Assign(expDone(), df)
+        } else {
+          // ensures types like |- e end before = so that a definition can follow
+          return expDone()
+        }
+      } else if (startsWith("->") && !startsWithAny(Parser.conflictingInfixes:_*)) {
+        skip("->")
+        exp = expDone()
+        // decls -> body is a Lambda, pattern -> body is a MatchCase
+        def asVarDecls(e: Expression,top: Boolean): Option[List[VarDecl]] = e match {
+          case UnitValue if top => Some(Nil)
+          case Tuple(es) if top =>
+            val esV = es.map(e => asVarDecls(e,false))
+            if (esV.forall(_.isDefined)) Some(esV.flatMap(_.get))
+            else None
+          case e =>
+            val vd = e match {
+              case vd: VarDecl => vd
+              case VarRef(n) => VarDecl(n,Type.unknown()).copyFrom(e)
+              case ClosedRef(n) => VarDecl(n,Type.unknown()).copyFrom(e)
+              case _ => return None
+            }
+            Some(List(vd))
+        }
+        asVarDecls(exp,true) match {
+          case None =>
+            val b = parseExpression(doAllowS)
+            return MatchCase(null, exp, b)
+          case Some(ins) =>
+            val ctx = LocalContext.make(ins).copyFrom(exp)
+            val b = parseExpression(doAllowS.append(ctx))
+            return Lambda(ctx, b, false)
+        }
+      } else if (startsWithAny("match","catch")) {
+        exp = expDone()
+        val handle = skipEither("catch","match")
+        skip("{")
+        val cs = parseList(parseMatchCase,"}",false)
+        skip("}")
+        return Match(exp,cs,handle)
+      } else if (newlineBefore) {
+        return expDone() // treat operators at the start of a line as prefix/circumfix
       } else {
+        // postops that continue the infix chain
         val opBegin = index
         parseInfixOrPostfixO(Operator.infixes) match {
           case None =>
-            return disambiguateInfixOperators(seen.reverse,exp)
+            return expDone()
           case Some(o: GeneralInfixOperator) =>
             seen ::= (exp,o, makeRef(opBegin))
-          case _ =>
-            throw IError("impossible case")
+          case o =>
+            // Applyfix and Postfix are handled as post-operators above
+            throw IError("impossible case at " + this)
         }
-      }
+      } // end if for weak postops
     } // end while that builds 'seen'
     null // impossible
   }
@@ -1004,14 +1033,20 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         skip(f.symbol)
         found
       case None =>
-        val op = parseWhile(Parsable.isOperatorChar)
-        if (op.nonEmpty) {
-          if (Parsable.isPostfixOp(op))
-            Some(new PseudoPostfixOperator(op))
-          else
-            Some(new PseudoInfixOperator(op))
+        if (!atEnd && Parsable.isOpeningBracketChar(next)) {
+          val op = parseWhile(c => Parsable.isOpeningBracketChar(c))
+          Some(new PseudoApplyfixOperator(op))
         } else {
-          None
+          val op = parseWhile(c => Parsable.isOperatorChar(c))
+          if (op.nonEmpty) {
+            if (Parsable.isPostfixOp(op)) {
+              Some(new PseudoPostfixOperator(op))
+            } else {
+              Some(new PseudoInfixOperator(op))
+            }
+          } else {
+            None
+          }
         }
     }
   }
@@ -1116,7 +1151,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         case _ => ProdType(ys)
       }
     } else if (startsWithS("|-")) {
-      val e = parseExpression(ctxs.copy(allowAssignment = false))
+      val e = parseExpression(ctxs.copy(allowEqual = false))
       ProofType(e)
     } else {
       // conflict between types that start with a name and those starting with an expression, i.e., e{tp} or e.tp

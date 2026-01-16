@@ -1665,6 +1665,8 @@ class Checker(errorHandler: ErrorHandler) {
                 otherArgs
               case _: PseudoCircumfixOperator =>
                 List(CollectionKind.List(otherArgs))
+              case _: PseudoApplyfixOperator =>
+                List(CollectionKind.List(otherArgs))
               case _: PseudoBindfixOperator =>
                 fail("cannot elaborate bindfix operator")
             }

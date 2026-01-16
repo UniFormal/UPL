@@ -7,6 +7,7 @@ case object Infix extends Fixity
 case object Prefix extends Fixity
 case object Postfix extends Fixity
 case object Circumfix extends Fixity
+case object Applyfix extends Fixity
 case object Bindfix extends Fixity
 
 

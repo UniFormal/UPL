@@ -4,7 +4,8 @@
 // - infix o       x o y
 // - prefix o      o x
 // - postfix o     x o
-// - circumfix b   b o b'
+// - circumfix b   b xs b'
+// - applyfix b    x b ys b'
 // - bindfix q     q vars. x   
 // where o, b, q are symbolic strings with the following properties
 // - q (quantifier/binder): contains a unicode symbol described as "N-ary" or "quantifier"
@@ -19,17 +20,27 @@ module Notations {
   // They are used to resolve operators when an instance of the theory is the first argument.
   theory A {
     x: int
+    // magic prefix operator: $a becomes a._prefix_$(); here: add 1 to x
+    val _prefix_$ = () -> A{x=..x+1}
     // magic infix operator: a ++ n becomes a._infix_++(n); here: add n to x
     val _infix_++ = (y: int) -> A{x=..x+y}
-    // magic circumfix operator: 〈a,b,c〉 becomes a._circumfix_〈_〉(list[b,c]); here: sum a.x + b.x + ...
+    // magic circumfix operator: 〈a,b,c〉 becomes a._circumfix_〈_〉(list[b,c]); here: sum a.x + b.x + c.x
     val _circumfix_〈_〉 = (as: list[A]) -> {
+      var i = x
+      for (u in as) i = i+u.x
+      A{x=i}
+    }
+    // magic postfix operator: a⁻ becomes a._prefix_⁻; here: substract 1 from x
+    val _postfix_⁻ = () -> A{x=..x-1}
+    // magic applyfix operator: a〈b,c〉 becomes a._applyfix_〈_〉(list[b,c]); here: sum a.x + b.x + c.x
+    val _applyfix_〈 = (as: list[A]) -> {
       var i = x
       for (u in as) i = i+u.x
       A{x=i}
     }
   }
   a = A{x=1}
-  test = (a++2).x == 3 & 〈a,a,a〉.x == 3
+  test = (a++2).x == 3 & 〈a,a,a〉.x == 3 & a〈a,a〉.x == 3 & ($a).x == 2 & a⁻.x == 0
 
   // There are magic functions that are used for converting instances to other types.A
   // - toString: converts to a string, e.g., for printing

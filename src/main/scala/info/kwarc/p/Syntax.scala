@@ -1482,10 +1482,20 @@ class PseudoPostfixOperator(val symbol: String) extends PseudoOperator with Gene
   def magicName = "_postfix_" + symbol
 }
 
-/** bracketing: comma-separated expressions enclosed in symbol and its mirror image */
-class PseudoCircumfixOperator(val symbol: String) extends PseudoOperator {
+sealed trait BracketOperator extends Operator {
   def open = symbol
   def close: String = symbol.map(c => Parsable.circumfixClose(c).getOrElse(c)).reverse
+}
+
+/** expr bracketed-args */
+class PseudoApplyfixOperator(val symbol: String) extends PseudoOperator with BracketOperator with GeneralInfixOrPostfixOperator {
+  override def toString = magicName
+  def fixity = Applyfix
+  def magicName = "_applyfix_" + symbol
+}
+
+/** bracketing: comma-separated expressions enclosed in symbol and its mirror image */
+class PseudoCircumfixOperator(val symbol: String) extends PseudoOperator with BracketOperator {
   def fixity = Circumfix
   def magicName = "_circumfix_" + open + "_" + close
 }
@@ -1545,8 +1555,12 @@ object Parsable {
     else if (c == 0x298F) Some(0x298E)
     else Some((c+1).toChar)
   }
-  def isCircumfixStart(c: Char) = circumfixClose(c).isDefined
-  def isCircumfixChar(c: Char) = isOperatorChar(c) || isCircumfixStart(c)
+  /** differentiates between infix and bracket operator */
+  def isOpeningBracket(s: String) = {
+    isOpeningBracketChar(s(0))
+  }
+  def isOpeningBracketChar(c: Char) = circumfixClose(c).isDefined
+  def isCircumfixChar(c: Char) = isOperatorChar(c) || isOpeningBracketChar(c)
 
   /** binder symbols cannot be defined based on Unicode classes
    *  we take all symbols called "N-Ary" in their Unicode name plus the quantifiers */
