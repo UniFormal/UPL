@@ -79,12 +79,12 @@ abstract class Traverser[A] {
   protected final def applyDefault(tp: Type)(implicit gc: GlobalContext, a: A): Type = tp match {
     case UnknownType(g,cont,sub) =>
       if (cont.known)
-        applyDefault(tp.skipUnknown)  // eliminate unknown-wrappers
+        apply(tp.skipUnknown)  // eliminate unknown-wrappers
       else {
-        val subT = if (sub != null)
+        val subT = if (sub == null) null else {
           // or traverse into the substitution values (this gives the right results for collecting free variables and applying substitutions)
           sub.map {vd => vd.copy(dfO = vd.dfO map applyDefault)}
-        else null
+        }
         UnknownType(g,cont, subT)
       }
     case r: Ref => apply(r)

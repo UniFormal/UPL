@@ -31,6 +31,7 @@ module Notations {
       A{x=i}
     }
     // magic postfix operator: a⁻ becomes a._prefix_⁻; here: substract 1 from x
+    // to distinguish infix from postfix during parsing, postfix operators are restricted to sub/superscripts
     val _postfix_⁻ = () -> A{x=..x-1}
     // magic applyfix operator: a〈b,c〉 becomes a._applyfix_〈_〉(list[b,c]); here: sum a.x + b.x + c.x
     val _applyfix_〈 = (as: list[A]) -> {

@@ -220,7 +220,8 @@ case class RegionalContextFrame(region: RegionalContext, transparent: Boolean, p
  * - referenced: owned and quoted objects (owner is stored in regional context)
  * The top element is the current region and provides the semantics of regional identifiers.
  * Physical and anonymous regions are transparent: They allow accessing their parent through "..".
- * Referenced regions block the visibility of all identifiers of the parent.
+ * Quoted regions block the visibility of all identifiers of the parent.
+ * For owned regions, the visibility is still up for discussion, currently they are transparent.
  */
 case class GlobalContext private (voc: Module, regions: List[RegionalContextFrame]) extends Context[GlobalContext] {
   def label = "global"
@@ -344,9 +345,10 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   def enter(t: Theory): GlobalContext = pushFrame(RegionalContext(t.toValue), true, None)
   /** push an empty anonymous region */
   def enterEmpty() = pushFrame(RegionalContext.empty, true, None)
-  /** push a referenced region (transparent if no owner) */
+  /** push a referenced region */
+  // We experimentally treat all regions as transparent (except for quoting); this used to make owned regions intransparent
   def push(t: Theory, owner: Option[Expression] = None): GlobalContext =
-    pushFrame(RegionalContext(t, owner), owner.isEmpty, None)
+    pushFrame(RegionalContext(t, owner), true, None)
   def push(owners: FlatOwnedObject.Owners): GlobalContext = owners match {
     case Nil => this
     case hd::tl => push(hd._2,Some(hd._1)).push(tl)

@@ -92,7 +92,7 @@ class Checker(errorHandler: ErrorHandler) {
         sdC match {
           case ed: ExprDecl => ed.ntO foreach {nt =>
             ed.tp match {
-              case FunType(ins,out) => (ins(0).tp,out) match {
+              case FlatOwnedObject(_,FunType(ins,out)) => (ins(0).tp,out) match {
                 case (ClosedRef(_),_) =>
                 case (_,ClosedRef(_)) =>
                 case _ => reportError("notations can only be inferred if the input or output type is declared in the same theory")
@@ -426,10 +426,10 @@ class Checker(errorHandler: ErrorHandler) {
             // definition = Undefined: nothing to do
             // definition = Defined: check against type
             val dfC = sd.dfO.map {df => checkExpression(gc,Lambda.allowReturn(df),tpC)}
-            sd.copy(tp = tpC,dfO = dfC)
+            sd.copy(tp = tpC.skipUnknown,dfO = dfC)
           case sd: TypeDecl =>
             val dfC = sd.dfO.map {df => checkType(gc, df, tpC)}
-            sd.copy(tp = tpC,dfO = dfC)
+            sd.copy(tp = tpC.skipUnknown,dfO = dfC)
         }
       case Some(_) =>
         // Other: error
@@ -452,11 +452,11 @@ class Checker(errorHandler: ErrorHandler) {
           case td: TypeDecl =>
             val tpC = checkType(gc,td.tp)
             val dfOC = td.dfO map {df => checkType(gc,df,tpC)}
-            td.copy(tp = tpC, dfO = dfOC)
+            td.copy(tp = tpC.skipUnknown, dfO = dfOC)
           case sd: ExprDecl =>
             val tpC = checkType(gc,sd.tp)
             val dfC = sd.dfO map {d => checkExpression(gc,Lambda.allowReturn(d),tpC)}
-            sd.copy(tp = tpC, dfO = dfC)
+            sd.copy(tp = tpC.skipUnknown, dfO = dfC)
         }
     }
   }
@@ -986,6 +986,7 @@ class Checker(errorHandler: ErrorHandler) {
           case _ => fail("illegal type")(tp) // impossible if tp is checked
         }
         case ct: ClassType => ct // We don't recurse into the domain; later checks must be able to handle non-normal domains.
+        case OwnedType(This(1),_, t) => apply(t) // substituting owners can introduce This(1)
         case OwnedType(own,dom,t) =>
           // we must reinfer the domain because the fields in the cached domain may have acquired definitions
           // when the object was moved into another region
@@ -1262,7 +1263,7 @@ class Checker(errorHandler: ErrorHandler) {
                 if (args.length != 2) fail("unexpected number of arguments")
                 Equality(pop == Equal, Type.unknown(gc), args(0), args(1))
               case pop: PseudoOperator =>
-                elaboratePseudo(gc, pop, args, etp)
+                elaboratePseudo(gc, pop, op.loc, args, etp)
             }
             return inferOrCheckExpression(gc, expElab.copyFrom(exp), expectedTpN)
         }
@@ -1633,14 +1634,14 @@ class Checker(errorHandler: ErrorHandler) {
     }
   }
 
-  def elaboratePseudo(gc: GlobalContext, pop: PseudoOperator, args: List[Expression], etp: Option[Type])(implicit cause: SyntaxFragment): Expression = {
+  def elaboratePseudo(gc: GlobalContext, pop: PseudoOperator, loc: Location, args: List[Expression], etp: Option[Type])(implicit cause: SyntaxFragment): Expression = {
     // first try via the expected type, no failure
     etp match {
       case Some(FlatOwnedObject(owners, a:Type)) if isMatchableForElaboration(a) =>
         val gcI = gc.push(owners)
         gcI.lookupRegionalByNotation(pop, None, Some(a)) match {
           case Some(ed) =>
-            val popE = FlatOwnedObject.makeExpr(owners, ed.toRef)
+            val popE = FlatOwnedObject.makeExpr(owners, ed.toRef).withLocation(loc)
             return pop.interpret(popE,args)
           case None =>
         }
@@ -1677,7 +1678,7 @@ class Checker(errorHandler: ErrorHandler) {
         val gcI = gc.push(owners)
         gcI.lookupRegionalByNotation(pop, Some(a), None) match {
           case Some(ed) =>
-            val popE = FlatOwnedObject.makeExpr(owners, ed.toRef)
+            val popE = FlatOwnedObject.makeExpr(owners, ed.toRef).withLocation(loc)
             pop.interpret(popE, args)
           case None =>
             fail("no constant with appropriate notation found in type: " + pop.symbol)
@@ -1685,7 +1686,7 @@ class Checker(errorHandler: ErrorHandler) {
       case _: UnknownType =>
         gc.lookupRegionalByNotation(pop, Some(aI), None) match {
           case Some(ed) =>
-            val popE = ed.toRef
+            val popE = ed.toRef.withLocation(loc)
             pop.interpret(popE, args)
           case None =>
             fail("no constant with appropriate notation found: " + pop.symbol)
@@ -1978,7 +1979,7 @@ class Checker(errorHandler: ErrorHandler) {
         else
           None
       case (ClassType(k),ClassType(l)) =>
-         if (k == l || (subTypeDirection.contains(true) && (k sub l)) || (subTypeDirection.contains(false) && (l sub k)))
+         if (k == l || (subTypeDirection.contains(true) && (l sub k)) || (subTypeDirection.contains(false) && (k sub l)))
            Some(Nil)
          else
            None
@@ -2091,7 +2092,8 @@ object ThrowingChecker extends Checker(ErrorThrower)
 
 class MagicFunctions(gc: GlobalContext) {
   class MagicFunction(val name: String) {
-    def insert(dom: Theory, owner: Expression, args: List[Expression]) = Application(owner.field(dom,name),args)
+    def insert(dom: Theory, owner: Expression, args: List[Expression]) =
+      Application(owner.field(dom,name).copyFrom(owner),args)
     def unapply(tp: Type) = tp match {
       case ClassType(thy) => gc.push(thy).lookupRegional(name) match {
         case Some(d: ExprDecl) => Some((thy,d.tp))

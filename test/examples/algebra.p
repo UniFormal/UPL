@@ -32,7 +32,8 @@ module Algebra {
   }
   theory SubCarrier {
     include Carrier
-    include PER // per: PER {type univ = ..univ}  // TODO: level falsely reported as not accessible when using per.apply
+    per: PER {type univ = ..univ}
+    perapply # infix % = per.rel
   }
   theory Magma {
     include Carrier
@@ -122,7 +123,7 @@ module Algebra {
       sym = ???
       trans = ???
     }
-    //inv_zero:--- mult.inv(add.e) == add.e // TODO: same issue as above
+    inv_zero:--- mult.inv(add.e) == add.e
   }
   theory Field {
     include SemiField
