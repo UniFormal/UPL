@@ -75,7 +75,7 @@ package info.kwarc.p
   *                    this is mutable to allow toggling it back for subexpressions
   */
 case class PContext(contexts: List[LocalContext], allowStatement: Boolean, var allowWeakPostops: Boolean, var allowEqual: Boolean) {
-  def append(vd: VarDecl): PContext = append(LocalContext(vd))
+  def append(vd: EVarDecl): PContext = append(LocalContext(vd))
   def append(ctx: LocalContext): PContext = copy(contexts = contexts.head.append(ctx)::contexts.tail)
   def pop() = copy(contexts = contexts.tail).append(contexts.head) // TODO: type not correct (but irrelevant anyway)
   def push() = copy(contexts = LocalContext.empty::contexts)
@@ -397,7 +397,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     if (atEnd) Nil else if (startsWithDeclaration) parseDeclarations(false)
     else {
       val e = parseExpression(PContext.empty)
-      List(ExprDecl(defaultName,Type.unknown(),Some(e), None, Modifiers(false,false)))
+      List(ExprDecl(defaultName,TypeContext.empty,Type.unknown(),Some(e), None, Modifiers(false,false)))
     }
   }
 
@@ -478,6 +478,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   def parseExprDecl(mods: Modifiers, nameAlreadyParsed: Option[String] = None): ExprDecl = {
     var declarationFound = false
     val name = nameAlreadyParsed getOrElse parseNameExtended
+    val tc = if (startsWith("[")) parseTypeContext() else TypeContext.empty
+    trim
     val args = if (startsWith("(")) Some(parseBracketedContext(PContext.empty)) else None
     trim
     val tp = if (startsWithS(":---")) {
@@ -518,12 +520,13 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       case None => (tp,vl)
       case Some(lc) => (FunType(lc,tp), vl map {v => Lambda(lc,v, true)})
     }
-    ExprDecl(name, atp, avl, nt, mods)
+    ExprDecl(name, tc, atp, avl, nt, mods)
   }
 
   def parseTypeDecl(mods: Modifiers): TypeDecl = {
     val begin = index
     val name = parseName
+    val tc = if (startsWith("[")) parseTypeContext() else TypeContext.empty
     val unbounded = Type.unbounded // location of name for the default upper bound
     setRef(unbounded, begin)
     //val args = parseBracketedContext(PContext.empty)
@@ -534,24 +537,24 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       (parseType(PContext.empty), None)
     } else
       (unbounded, None)
-    TypeDecl(name, tp, df, mods)
+    TypeDecl(name, tc, tp, df, mods)
   }
 
   /** counts how many extra : a VarDecl has */
   private class ColonCounter {var extras: Int = 0}
   // a variable declaration, possibly using multiple colons (0 for :, 1 for :: etc.)
-  def parseMultiVarDecl(mutable: Boolean, nameMandatory: Boolean)(implicit ctxs: PContext): (VarDecl,Int) = {
+  def parseMultiVarDecl(mutable: Boolean, nameMandatory: Boolean)(implicit ctxs: PContext): (EVarDecl,Int) = {
     val cc = new ColonCounter
     val vd = parseVarDecl(mutable, nameMandatory, cc)
     (vd,cc.extras)
   }
   // variable declaration with a single :
-  def parseVarDecl(mutable: Boolean, nameMandatory: Boolean)(implicit ctxs: PContext): VarDecl = {
+  def parseVarDecl(mutable: Boolean, nameMandatory: Boolean)(implicit ctxs: PContext): EVarDecl = {
     val (vd,extras) = parseMultiVarDecl(mutable, nameMandatory)
     if (extras > 0) reportErrorAt("too many :", vd.loc.from)
     vd
   }
-  private def parseVarDecl(mutable: Boolean, nameMandatory: Boolean, colonCounter: ColonCounter)(implicit ctxs: PContext): VarDecl = addRef {
+  private def parseVarDecl(mutable: Boolean, nameMandatory: Boolean, colonCounter: ColonCounter)(implicit ctxs: PContext): EVarDecl = addRef {
     val noStatements = ctxs.setAllowStatement(false)
     val backtrackPoint = index
     val n = parseName
@@ -560,7 +563,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       // n is not actually a variable name, treat this as anonymous var decl
       index = backtrackPoint
       val tp = parseType(noStatements)
-      VarDecl.anonymous(tp)
+      EVarDecl.anonymous(tp)
     } else {
       val tp = if (startsWithS(":")) {
         while (startsWithS(":")) colonCounter.extras += 1
@@ -569,7 +572,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       val df = if (startsWithS("=")) {
         Some(parseExpression(noStatements))
       } else None
-      VarDecl(n, tp, df, mutable)
+      EVarDecl(n, tp, df, mutable)
     }
   }
 
@@ -616,6 +619,15 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     } else {
       LocalContext.empty
     }
+  }
+
+  def parseTypeContext() = addRef {
+    trim
+    skip("[")
+    val ns = parseList(parseName,",", "]")
+    trim
+    skip("[")
+    TypeContext(ns.map(TVarDecl(_)))
   }
 
   def parseNotation = {
@@ -701,7 +713,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           val c = parseExpression(ctxL)
           cs ::= c
           c match {
-            case vd: VarDecl => ctxL = ctxL.append(vd)
+            case vd: EVarDecl => ctxL = ctxL.append(vd)
             case _ =>
           }
           trim
@@ -734,8 +746,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         skipT("in")
         val r = parseExpression
         skipT(")")
-        val b = parseExpression(doAllowS.append(VarDecl(v,Type.unknown())))
-        For(VarDecl(v,Type.unknown()),r,b)
+        val b = parseExpression(doAllowS.append(EVarDecl(v,Type.unknown())))
+        For(EVarDecl(v,Type.unknown()),r,b)
       } else if (startsWithS("if")) {
         val c = parseBracketedExpression
         val th = parseExpression
@@ -836,9 +848,9 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           // variable declaration
           skip(":")
           val tp = parseType(doNotAllowS)
-          VarDecl(n,tp)
+          EVarDecl(n,tp)
         } else if (n == "_") {
-          VarDecl.anonymous(Type.unknown()) // anonymous variable
+          EVarDecl.anonymous(Type.unknown()) // anonymous variable
         } else if (ctxs.contexts.head.domain.contains(n)) {
           VarRef(n) // reference to bound variable
         } else {
@@ -850,7 +862,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       // if expressions are split over multiple lines, strong postops must occur at the end of the line, not the beginning
       // also, some expression can never be followed by a strong postop
       val tryPostOps = !newlineBefore && (exp match {
-        case _:BaseValue | _: Block | _: Assign | _: VarDecl | _:While | _:For | _: Return => false
+        case _:BaseValue | _: Block | _: Assign | _: EVarDecl | _:While | _:For | _: Return => false
         case _ => true
       })
       var tryStrongPostOps = tryPostOps
@@ -961,7 +973,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         skip("->")
         exp = expDone()
         // decls -> body is a Lambda, pattern -> body is a MatchCase
-        def asVarDecls(e: Expression,top: Boolean): Option[List[VarDecl]] = e match {
+        def asVarDecls(e: Expression,top: Boolean): Option[List[EVarDecl]] = e match {
           case UnitValue if top => Some(Nil)
           case Tuple(es) if top =>
             val esV = es.map(e => asVarDecls(e,false))
@@ -969,9 +981,9 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
             else None
           case e =>
             val vd = e match {
-              case vd: VarDecl => vd
-              case VarRef(n) => VarDecl(n,Type.unknown()).copyFrom(e)
-              case ClosedRef(n) => VarDecl(n,Type.unknown()).copyFrom(e)
+              case vd: EVarDecl => vd
+              case VarRef(n) => EVarDecl(n,Type.unknown()).copyFrom(e)
+              case ClosedRef(n) => EVarDecl(n,Type.unknown()).copyFrom(e)
               case _ => return None
             }
             Some(List(vd))
@@ -1193,7 +1205,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       if (startsWithS("->")) {
         val (ctxR,ins) = tp match {
           case ProdType(ys) => (ctxs.append(ys),ys)
-          case y => (ctxs, LocalContext(VarDecl.anonymous(y).copyFrom(y)))
+          case y => (ctxs, LocalContext(EVarDecl.anonymous(y).copyFrom(y)))
         }
         val out = parseType(ctxR) // makes -> right-associative and dependent
         tp = FunType(ins.copyFrom(tp),out)

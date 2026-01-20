@@ -1,16 +1,16 @@
 package info.kwarc.p
 
-/**** TODO
+/**** MAYBE
  * every declaration in a module can be open (= static) or closed (dynamic); hack with global flag can be undone
- * the open/close flag of a module only defines the default
- * static methods may be abstract
- * static methods are inherited, i.e., kept during normalization
- * static methods are accessed using global references, thus not affected by ownership/quotation, dereferencing uses a different method
- * intro forms (e.g., for list making or monad return) are magic static methods that are found via the expected type
+ *   the open/close flag of a module only defines the default
+ *   static methods may be abstract
+ *   static methods are inherited, i.e., kept during normalization
+ *   static methods are accessed using global references, thus not affected by ownership/quotation, dereferencing uses a different method
+ *   --> actually static methods as introduction forms are not as important anymore
  *
  * every declaration in a module can be input or output
- * regional input = parameters
- * global input = environment variables etc.
+ *   regional input = parameters
+ *   global input = environment variables etc.
  */
 
 
@@ -187,6 +187,7 @@ sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
       (!this.defined || this.dfO == that.dfO) &&
       modifiers == that.modifiers
   }
+  def tc: TypeContext
 }
 
 /** unifies ExprDecl and VarDecl */
@@ -204,7 +205,7 @@ case class Modifiers(closed: Boolean, mutable: Boolean) {
   * @param tp the upper type bound, [AnyType] if unrestricted, null if to be inferred during checking
   * @param args input (bound in both type bound and definition)
   */
-case class TypeDecl(name: String, tp: Type, dfO: Option[Type], modifiers: Modifiers) extends SymbolDeclaration {
+case class TypeDecl(name: String, tc: TypeContext, tp: Type, dfO: Option[Type], modifiers: Modifiers) extends SymbolDeclaration {
   def kind = Keywords.typeDecl
   def tpSep = "<"
   def ntO = None
@@ -213,7 +214,7 @@ case class TypeDecl(name: String, tp: Type, dfO: Option[Type], modifiers: Modifi
 /** declares a typed symbol
   * @param tp the type, null if to be inferred during checking
   */
-case class ExprDecl(name: String, tp: Type, dfO: Option[Expression], ntO: Option[Notation], modifiers: Modifiers) extends SymbolDeclaration with TypedDeclaration {
+case class ExprDecl(name: String, tc: TypeContext, tp: Type, dfO: Option[Expression], ntO: Option[Notation], modifiers: Modifiers) extends SymbolDeclaration with TypedDeclaration {
   def kind = if (modifiers.mutable) Keywords.mutableExprDecl else Keywords.exprDecl
   def tpSep = ":"
 }
@@ -264,7 +265,8 @@ object Theory {
 sealed trait Type extends Object {
   def known = true
   def skipUnknown = this
-  def substitute(sub: Substitution) = Substituter(GlobalContext(""), sub, this)
+  // needs a different name than its counter part for expressions because Ref inherits both with different return types
+  def substituteInType(sub: Substitution) = Substituter(GlobalContext(""), sub, this)
   def <--(ins: Type*) = SimpleFunType(ins.toList, this)
 
   /** true if this type is definitely finite (in complex cases, this may be false for finite types)
@@ -301,30 +303,30 @@ sealed trait Expression extends Object {
 
 /** reference to a name */
 sealed trait Ref extends Expression with Type with Theory {
-  override def substitute(s: Substitution) = this // needed due to double-inheritance
+  def children = Nil
+  def finite = false
+  def label = toString
 }
 
 /** global reference: to a symbol from an open theory */
 case class OpenRef(path: Path) extends Ref {
   override def toString = "." + path
-  def label = path.toString
-  def children = Nil
-  def finite = false
 }
 
 /** regional reference: to a symbol from an included theory */
-case class ClosedRef(n: String) extends Ref {
-  override def toString = n
-  def label = n
-  def children = Nil
-  def finite = false
+case class ClosedRef(name: String) extends Ref {
+  override def toString = name
 }
 
 /** local reference: to a variable */
 case class VarRef(name: String) extends Ref {
   override def toString = name
-  def label = name
-  def children = Nil
+}
+
+/** reference to an open/closed symbol with its type arguments */
+case class AppliedRef(ref: Ref, args: List[Type]) extends Expression with Type {
+  def label = "ref"
+  def children = ref :: args
   def finite = false
 }
 
@@ -548,7 +550,7 @@ case class UnknownType(originalContext: GlobalContext, container: UnknownTypeCon
     if (sub == null)
       sk // only happens if unchecked content is reused after checking has solved a type
     else
-      sk.substitute(sub)
+      sk.substituteInType(sub)
   }
 
   /** solves the unknown type
@@ -771,7 +773,7 @@ case class FunType(ins: LocalContext, out: Type) extends Type {
 }
 
 object SimpleFunType {
-  def apply(ts: List[Type], t: Type) = FunType(LocalContext.make(ts.map(VarDecl.anonymous)), t)
+  def apply(ts: List[Type], t: Type) = FunType(LocalContext.make(ts.map(EVarDecl.anonymous)), t)
   def unapply(ft: Type): Option[(List[Type],Type)] = ft match {
     case FunType(ins,out) if ins.decls.forall(_.anonymous) => Some((Util.reverseMap(ins.decls)(_.tp), out))
     case _ => None
@@ -801,7 +803,7 @@ case class ProdType(comps: LocalContext) extends Type {
 }
 object ProdType {
   def simple(ts: List[Type]) = ProdType(
-    LocalContext.make(ts.map(VarDecl.anonymous))
+    LocalContext.make(ts.map(EVarDecl.anonymous))
   )
 }
 
@@ -1283,7 +1285,7 @@ case class UndefinedValue(tp: Type) extends Expression {
   * @param output the variable has no value (unless defined) and can only be written to
   *               unnamed output variables are the target of return statements
   */
-case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean, output: Boolean) extends Expression with TypedDeclaration {
+case class EVarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean, output: Boolean) extends Expression with VarDecl with TypedDeclaration {
   def defined = dfO.isDefined
   def keyword = if (mutable) Keywords.mutableVarDecl else Keywords.varDecl
   override def toString = {
@@ -1298,13 +1300,13 @@ case class VarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boo
   def label = if (name != "") name else "_"
   def children = tp :: dfO.toList
   def toRef = VarRef(name).copyFrom(this)
-  def toSub = VarDecl.sub(name, toRef)
+  def toSub = EVarDecl.sub(name, toRef)
 }
-object VarDecl {
-  def apply(n: String, tp: Type, dfO: Option[Expression] = None, mutable: Boolean = false): VarDecl = VarDecl(n, tp, dfO, mutable, false)
-  def anonymous(tp: Type) = VarDecl("", tp)
-  def output(tp: Type) = VarDecl("", tp, None, false, true)
-  def sub(n: String, df: Expression) = VarDecl(n, null, Some(df))
+object EVarDecl {
+  def apply(n: String, tp: Type, dfO: Option[Expression] = None, mutable: Boolean = false): EVarDecl = EVarDecl(n, tp, dfO, mutable, false)
+  def anonymous(tp: Type) = EVarDecl("", tp)
+  def output(tp: Type) = EVarDecl("", tp, None, false, true)
+  def sub(n: String, df: Expression) = EVarDecl(n, null, Some(df))
 
   class SpecialVarName(key: String) {
     var next = -1
@@ -1371,7 +1373,7 @@ case class MatchCase(context: LocalContext, pattern: Expression, body: Expressio
 /** for-loop, can be seen as elimination form of [[CollectionType]], behaves like map
   * @param range must evaluate to list
   */
-case class For(vd: VarDecl, range: Expression, body: Expression) extends Expression {
+case class For(vd: EVarDecl, range: Expression, body: Expression) extends Expression {
   override def toString = s"for (${vd.name} in $range) $body"
   def label = "for"
   def children = List(vd, range, body)
