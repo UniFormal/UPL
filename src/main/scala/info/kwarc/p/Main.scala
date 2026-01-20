@@ -11,7 +11,7 @@ object Main {
     val mn = if (left.nonEmpty) Some(next) else None
     val proj = Project.fromFile(path, mn)
     //println(proj)
-    if (isabelle) Isabelle.translateCode(proj) else proj.runMaybeRepl(interactive)
+    if (isabelle) Project.toIsabelleFiles(proj) else proj.runMaybeRepl(interactive)
   }
 
   val doc =
