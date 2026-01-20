@@ -175,7 +175,7 @@ class Interpreter(vocInit: TheoryValue) {
           case Some(d) => d // frame values are always interpreted
           case None => fail("undefined variable") // maybe allow later, e.g., when computing with quotations
         }
-      case VarDecl(n,_,vl,_,_) =>
+      case EVarDecl(n,_,vl,_,_) =>
         val vlI = vl match {
           case None => fail("uninitialized variable")
           case Some(v) => interpretExpression(v)
@@ -478,7 +478,7 @@ class Interpreter(vocInit: TheoryValue) {
       val vI = interpretExpression(v)
       val matched = assign(t,vI)(false, globalContext)
       BoolValue(matched)
-    case _: VarDecl  | _: Assign => interpretExpression(b); BoolValue(true)
+    case _: EVarDecl | _: Assign => interpretExpression(b); BoolValue(true)
     case _ => interpretExpression(b)
   }
 
@@ -568,7 +568,7 @@ class Interpreter(vocInit: TheoryValue) {
           // variable reference in (possibly non-linear) pattern
           frame.local.get(n) == v
         }
-      case (vd: VarDecl, v) if !inQuote =>
+      case (vd: EVarDecl, v) if !inQuote =>
         frame.allocate(vd.name, v)
         true
       case (r: Ref, s) if inQuote =>

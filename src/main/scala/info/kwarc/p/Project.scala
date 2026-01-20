@@ -160,9 +160,9 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
         } else {
           var result = ""
           val (eC, eI) = ch.checkAndInferExpression(gc, e)
-          val vd: VarDecl = eC match {
-            case v: VarDecl => v
-            case e => VarDecl("res" + i.toString, eI, Some(eC), true, false)
+          val vd: EVarDecl = eC match {
+            case v: EVarDecl => v
+            case e => EVarDecl("res" + i.toString, eI, Some(eC), true, false)
           }
           gc = gc.append(LocalContext.collectContext(vd))
           result = vd.toString

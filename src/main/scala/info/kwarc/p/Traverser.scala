@@ -34,6 +34,8 @@ abstract class Traverser[A] {
       TheoryValue(dsT)
   }
 
+  def apply(tc: TypeContext)(implicit gc: GlobalContext, a:A): TypeContext = tc
+
   def apply(ctx: LocalContext)(implicit gc: GlobalContext, a:A): (LocalContext,A) = {
     if (ctx == null) (null,a) else {
       var aT = a
@@ -50,9 +52,9 @@ abstract class Traverser[A] {
     }
   }
 
-  def applyVarDecl(vd: VarDecl)(implicit gc: GlobalContext, a:A): (VarDecl,A) = {
-    val VarDecl(n,t,d,m,o) = vd
-    (VarDecl(n, apply(t), d map apply, m, o), a)
+  def applyVarDecl(vd: EVarDecl)(implicit gc: GlobalContext, a:A): (EVarDecl,A) = {
+    val EVarDecl(n,t,d,m,o) = vd
+    (EVarDecl(n, apply(t), d map apply, m, o), a)
   }
 
   def apply(rc: RegionalContext)(implicit gc: GlobalContext, a:A): RegionalContext = {
@@ -68,10 +70,10 @@ abstract class Traverser[A] {
       Module(n, op, TheoryValue(dsT))
     case Include(dm,df, r) =>
       Include(apply(dm), df map apply, r)
-    case TypeDecl(n, bd, dfO, ms) =>
-      TypeDecl(n, apply(bd), dfO map apply, ms)
-    case ExprDecl(n, tp, dfO, ntO, ms) =>
-      ExprDecl(n, apply(tp), dfO map apply, ntO, ms)
+    case TypeDecl(n, tc, bd, dfO, ms) =>
+      TypeDecl(n, apply(tc), apply(bd), dfO map apply, ms)
+    case ExprDecl(n, tc, tp, dfO, ntO, ms) =>
+      ExprDecl(n, apply(tc), apply(tp), dfO map apply, ntO, ms)
   }
 
   def apply(tp: Type)(implicit gc: GlobalContext, a: A): Type = matchC(tp)(applyDefault _)
@@ -88,6 +90,7 @@ abstract class Traverser[A] {
         UnknownType(g,cont, subT)
       }
     case r: Ref => apply(r)
+    case AppliedRef(r, tps) => AppliedRef(apply(r), tps map apply)
     case OwnedType(e, d, o) => OwnedType(apply(e), apply(d), apply(o)(gc.push(d,Some(e)),a))
     case b: BaseType => b
     case ExceptionType => tp
@@ -107,11 +110,12 @@ abstract class Traverser[A] {
     case null => null
     case _: BaseValue => exp
     case r: Ref => apply(r)
+    case AppliedRef(r, tps) => AppliedRef(apply(r), tps map apply)
     case This(l) => This(l)
     case OwnedExpr(o, d, e) => OwnedExpr(apply(o), apply(d), apply(e)(gc.push(d,Some(o)),a))
     case BaseOperator(o,tp) => BaseOperator(o, apply(tp))
     case Instance(thy) => Instance(apply(thy))
-    case vd:VarDecl => applyVarDecl(vd)._1
+    case vd:EVarDecl => applyVarDecl(vd)._1
     case Assign(k,v) => Assign(apply(k), apply(v))
     case ExprOver(t,e) => ExprOver(apply(t), apply(e)(gc.pushQuoted(t),a))
     case Eval(e) => Eval(apply(e)(gc.pop(),a))
@@ -120,7 +124,7 @@ abstract class Traverser[A] {
       var aI = a
       val esT = es.map {e =>
         val eT = e match {
-          case vd: VarDecl =>
+          case vd: EVarDecl =>
             val (vdT,_a) = applyVarDecl(vd)(gcI,aI)
             gcI = gcI.append(vd)
             aI = _a
@@ -187,17 +191,17 @@ object EvalTraverser {
   }
   /** returns the quoted expression with all evals replaced by variables and context declaring the latter */
   def replaceEvals(eo: ExprOver) = {
-    var evals : List[VarDecl] = Nil
+    var evals : List[EVarDecl] = Nil
     var i = 0
     val eoT = EvalTraverser(eo) {ev =>
       val n = ReplaceVarName(i)
       i += 1
-      evals = VarDecl(n, null, Some(ev)) :: evals
+      evals = EVarDecl(n, null, Some(ev)) :: evals
       VarRef(n)
     }
     (LocalContext(evals.reverse), eoT)
   }
-  object ReplaceVarName extends VarDecl.SpecialVarName("eval")
+  object ReplaceVarName extends EVarDecl.SpecialVarName("eval")
 }
 
 /** Substitution for the [This]-operator
@@ -306,7 +310,7 @@ class Substituter(val initGC: GlobalContext) extends Traverser[Substitution] wit
     }
     case _ => applyDefault(exp)
   }
-  override def applyVarDecl(vd: VarDecl)(implicit gc: GlobalContext, sub: Substitution) = {
+  override def applyVarDecl(vd: EVarDecl)(implicit gc: GlobalContext, sub: Substitution) = {
     if (!inOriginalRegion) super.applyVarDecl(vd) else {
       val renamed = vd.name // TODO avoid capture
       val subT = sub.append(vd.name,VarRef(renamed))

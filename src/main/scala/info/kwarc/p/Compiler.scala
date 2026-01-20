@@ -17,9 +17,9 @@ object Compiler {
 
   // variable names generated during compilation
   /** name of the expression current being matched */
-  val matcheeVarName = new VarDecl.SpecialVarName("matchee")
+  val matcheeVarName = new EVarDecl.SpecialVarName("matchee")
   /** name of the instance currently being created */
-  val instanceVarName = new VarDecl.SpecialVarName("instance")
+  val instanceVarName = new EVarDecl.SpecialVarName("instance")
 
   /** references to functions defined in the prefix that is written in native Javascript */
   def UPLField(f: String) = JVarRef("_UPL").objectElem(f)
@@ -123,7 +123,7 @@ object Compiler {
         JTernary(jField, jField, JApply(reg.thy, regions.map(_.instance)))
       case OpenRef(p) => compilePath(p)
       case VarRef(n) => JVarRef(n)
-      case vd: VarDecl => JVarDecl(vd.name,c(vd.dfO.get), false)
+      case vd: EVarDecl => JVarDecl(vd.name,c(vd.dfO.get), false)
       case e: ExprOver =>
         val (ctx,expR) = EvalTraverser.replaceEvals(e)
         val evalsC = ctx.mapDecls(vd => JVarDef(vd.name, c(vd.dfO.get)))
