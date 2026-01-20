@@ -46,7 +46,7 @@ module Basic {
   f5_curried:   int -> int -> int = x -> y -> x+y
   f5_curried_applied = f5_curried(0)(1)
   // Arguments may also be declared right after the function name
-  // They  apply to type and definiens, i.e., the type is Pi-bound and the definiens lambda-bound
+  // They  apply to type and definiens, i.e., the type is Pi-bound and the definiens lambda-bound.
   f5_multiarg_variant(x: int,y:int): int = x+y
 
   // Unused variable names (e.g., in product or function types) can be omitted.
@@ -59,9 +59,11 @@ module Basic {
   t6: _              = (1,"foo")
 
   // Multiple variables in a row can be given the same type using multiple colons:
-  mutivar(v:bool, w,x,y:::int, z:bool) = w+x+y
+  mutivar(v:bool, w,x,y:::int, z:bool) = w+x+y // Three colons => w,x and y have type int.
+  mutivar2(v,x,y::int) = mutivar(v,x,x,x,v) // Two colons => x and y have type int; the type of v is inferred separately.
   // That also works if the types are omitted:
-  mutivar2(v,x,y::_) = mutivar(v,x,x,x,v) // Types of x and y are the same; type of v is inferred separately.
+  mutivar3(v,x,y::_) = mutivar(v,x,y,x,v) // Types of x and y are the same; type of v is inferred separately.
+  // mutivar4(v,x,y:::_) = mutivar(v,x,y,x,v) // Types of v,x and y are the same; doesn't work.
 
   // Type inference works across the whole module/theory.
   // Here the input type of 'id' is inferred from its use, and its return type from its body.

@@ -3,12 +3,12 @@ package info.kwarc.p
 import java.time.chrono.ChronoLocalDate
 
 /** joint parent class for all levels of contexts
- *  - global: all global declarations, i.e., the program's entire vocabulary
- *   names are unique due to qualification
- *  - regional: global + choice of theory relative to which expressions are formed
- *   duplicate names are merged
- *  - local: regional + locally bound variables
- *   duplicate names cause shadowing
+ *  - global: all global declarations, i.e., the program's entire vocabulary.
+ *   Names are unique due to qualification
+ *  - regional: global + choice of theory relative to which expressions are formed.
+ *   Duplicate names are merged
+ *  - local: regional + locally bound variables.
+ *   Duplicate names cause shadowing
  *
  * Implementation-wise, it is more convenient to group the contexts in such a way that each subsumes the smaller ones.
  * Thus, in particular, every context has a local context.
