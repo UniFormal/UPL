@@ -214,7 +214,7 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
     val hov = sf match {
       case r: Ref => gc.lookupRef(r).getOrElse(return null) match {
         case sd: SymbolDeclaration => sd.toString
-        case m: Module => "module"
+        case _: Module => "module"
         case vd: EVarDecl => vd.toString
         case _ => r.toString
       }

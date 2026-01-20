@@ -208,7 +208,7 @@ case class Modifiers(closed: Boolean, mutable: Boolean) {
 case class TypeDecl(name: String, tc: TypeContext, tp: Type, dfO: Option[Type], modifiers: Modifiers) extends SymbolDeclaration {
   def kind = Keywords.typeDecl
   def tpSep = "<"
-  def ntO = None
+  def ntO:Option[Notation] = None
 }
 
 /** declares a typed symbol
@@ -236,7 +236,7 @@ sealed trait Theory extends Object {
   def isFlat = flatness != Theory.NotFlat
 }
 object Theory {
-  def empty = TheoryValue(Nil)
+  def empty: TheoryValue = TheoryValue(Nil)
   def apply(ds: List[Declaration], keepFull: Option[Boolean] = None) = {
     val thy = TheoryValue(ds)
     keepFull.foreach {kf => thy.flatness = if (kf) FullyFlat else QuasiFlat}
@@ -1508,7 +1508,7 @@ class PseudoBindfixOperator(val symbol: String) extends PseudoOperator {
   def fixity = Bindfix
   def magicName = "_bindfix_" + symbol
 
-  override def interpret(meaning: Expression, args: List[Expression]) = {
+  override def interpret(meaning: Expression, args: List[Expression]): Application = {
     args match {
       case List(l @ Lambda(vd -: rest, bd, mr)) if !rest.empty =>
         // curry multiple bindings into single ones
