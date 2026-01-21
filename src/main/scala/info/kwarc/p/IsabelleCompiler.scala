@@ -26,7 +26,7 @@ object IsabelleCompiler {
       case m: Module =>
         // closed/open - theory/locale
         if (!m.closed) { IsaTheory(m.name, compileDecls(m.df.decls)) }
-        else { IsaLocale(m.name, compileDecls(m.df.decls))}
+        else { IsaLocale(m.name, compileDeclsLocale(m.df.decls))}
       //case ed: ExprDecl => IsaDefiniton(ed.name, compileType(ed.tp), compileExpr(ed.dfO.get))  // IsaExprDecl(name, type, definiens), compileType, compileExpr
       case ed: ExprDecl => ed.dfO match {
         case Some(expr) => IsaExprDecl(ed.name, compileType(ed.tp), Some(compileExpr(expr)))
@@ -39,8 +39,22 @@ object IsabelleCompiler {
     }
   }
 
+  def compileDeclLocale(decl: Declaration): Isa = {
+    decl match {
+      case ed: ExprDecl => ed.tp match {
+        case tp: ProofType => IsaLocaleAssumption(ed.name, compileType(tp))
+        case tp => IsaLocaleFixes(ed.name, compileType(tp))
+      }
+      case td: TypeDecl => IsaLocaleTypeDummy()
+    }
+  }
+
   def compileDecls(decls: List[Declaration]): IsaBody = {
     IsaBody(decls.map(compileDecl))
+  }
+
+  def compileDeclsLocale(decls: List[Declaration]): IsaBody = {
+    IsaBody(decls.map(compileDeclLocale))
   }
 
   def compileType(tp: Type): IsaType = {
@@ -54,6 +68,8 @@ object IsabelleCompiler {
 
       case NumberType(true, false, false, false, false) => IsaIntType(tp.label)
       case BoolType => IsaBoolType(tp.label)
+
+      case ProofType(formula) => IsaLocaleAssumptionType(compileExpr(formula))
 
 
       case null => null
@@ -77,7 +93,7 @@ object IsabelleCompiler {
       case Application(fun, args) => IsaApplication(compileExpr(fun), compileExprs(args))
       case BaseOperator(operator, tp) => IsaBaseOperator(compileOp(operator), compileType(tp))
 
-
+      case Quantifier(univ, vars, body) => IsaQuantifier(univ, compileExprs(vars.variables), compileExpr(body))
 
     }
 
@@ -97,6 +113,8 @@ object IsabelleCompiler {
       case Less => IsaLess
       case LessEq => IsaLessEq
       case Plus => IsaPlus
+
+      case Equal => IsaEqual
     }
   }
 }

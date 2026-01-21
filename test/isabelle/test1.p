@@ -1,4 +1,4 @@
-module T1 {
+module Test1 {
 
     // comment
 
@@ -6,8 +6,9 @@ module T1 {
     b = true | false
     c = !false
     d = false => true
-    c = 1 < 2
-    d = 1 <= 2
+    e = 1 < 2
+    f = 1 <= 2
+
     n = 1 + 2
 
 }

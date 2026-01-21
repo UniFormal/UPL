@@ -236,8 +236,14 @@ object Project {
     // check the project files
     val _ = proj.check(false)
 
+
     // list of files with Isabelle file extensions .thy
-    val files = proj.entries.map(pe => File(pe.toString).setExtension("thy"))
+    // val files = proj.entries.map(pe => File(pe.toString).setExtension("thy"))
+    // renames files with the UPL module name
+    val files: List[File] = proj.entries.map(pe => {
+      assert(pe.parsed.decls.size == 1 & pe.parsed.decls.head.isInstanceOf[Module])
+      File(pe.toString).up./(pe.parsed.decls.head.nameO.get + ".thy")
+    })
 
     val isabelleStrings = proj.entries.map(pe => Isabelle.toIsabelleCode(pe.parsed))
 

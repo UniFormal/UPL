@@ -1,4 +1,4 @@
-theory T0
+theory Test0_target
   imports Main
 begin
 

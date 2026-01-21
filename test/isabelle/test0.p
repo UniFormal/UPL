@@ -1,4 +1,4 @@
-module T0 {
+module Test0 {
 
     // comment
 

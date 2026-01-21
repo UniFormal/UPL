@@ -4,7 +4,7 @@ package info.kwarc.p
 
 
 abstract class Isa {
-
+  def toString: String
 
 }
 
@@ -18,7 +18,7 @@ case class IsaTheory(name: String, decls: IsaBody) extends Isa {
 
 case class IsaLocale(name: String, decls: IsaBody) extends Isa {
   override def toString = s"locale $name\n" +
-    "begin\n" +
+    "begin\n\n" +
     decls.toString +
     "end\n"
 
@@ -27,7 +27,7 @@ case class IsaLocale(name: String, decls: IsaBody) extends Isa {
 //case class IsaLocale
 
 case class IsaBody(decls: List[Isa]) extends Isa {
-  override def toString = decls.mkString("\n") + "\n"
+  override def toString = decls.mkString("\n") + "\n\n"
 }
 
 
@@ -37,7 +37,7 @@ case class IsaBody(decls: List[Isa]) extends Isa {
 case class IsaDefiniton(name: String, tp: IsaType, exprO: Option[IsaExpr]) extends Isa {
   override def toString = exprO match {
     case Some(expr) => s"definition $name :: $tp where\n" +
-      s"  \"$name = $expr\""
+      s"  \"$name = $expr\"\n"
     case None => s"definition $name :: $tp\n"
   }
 }
@@ -69,6 +69,18 @@ case class IsaTypeDef(name: String, tpO: Option[IsaType]) extends Isa {
     // todo: when to use keyword 'type_synonym' versus 'typedef'
     case None => s"typedecl $name"
   }
+}
+
+case class IsaLocaleTypeDummy() extends Isa {
+  override def toString = ""
+}
+
+case class IsaLocaleFixes(name: String, tp: IsaType) extends Isa {
+  override def toString = s"fixes $name :: $tp"
+}
+
+case class IsaLocaleAssumption(name: String, tp: IsaType) extends Isa {
+  override def toString = s"assumes $name: $tp"
 }
 
 /*** Isabelle types **/
@@ -113,6 +125,14 @@ case class IsaClosedRefType(n: String) extends IsaType {
   override def toString: String = name
 }
 
+case class IsaLocaleAssumptionType(formula: IsaExpr) extends IsaType {
+  def name = formula.toString
+  override def toString: String = formula match {
+    case IsaQuantifier(univ, vars, body) => body.toString
+    case _ => "IsaLocalAssumptionType toString match"
+  }
+}
+
 /*** Isabelle expressions **/
 
 trait IsaExpr extends Isa {
@@ -125,7 +145,7 @@ case class IsaInt(value: BigInt) extends IsaExpr {
 }
 
 case class IsaBool(value: Boolean) extends IsaExpr {
-  override def toString = value.toString
+  override def toString = value.toString.head.toUpper + value.toString.tail
 }
 
 case class IsaLambda(args: List[IsaExpr], body: IsaExpr, unparseAsFun: Boolean = false, nested: Boolean = false) extends IsaExpr {
@@ -161,16 +181,21 @@ case class IsaClosedRef(n: String) extends IsaExpr {
 }
 
 case class IsaApplication(fun: IsaExpr, args: List[IsaExpr]) extends IsaExpr {
-  assert(fun.isInstanceOf[IsaBaseOperator])
+  //assert(fun.isInstanceOf[IsaBaseOperator])
   override def toString = fun match {
     //case infOp: IsaInfixOperator => args.mkString(fun.toString)
     //case prefOp: IsaPrefixOperator => fun.toString + args.head.toString
     case IsaBaseOperator(op, tp) => op match {
-      case infOp: IsaInfixOperator => args.mkString (" " + infOp.toString + " ")
-      case prefOp: IsaPrefixOperator => prefOp.toString + " " + args.head.toString
+      case infOp: IsaInfixOperator => "(" + args.mkString(" " + infOp.toString + " ") + ")"
+      case prefOp: IsaPrefixOperator => "(" + prefOp.toString + " " + args.head.toString + ")"
     }
-    case _ => null
+    case IsaClosedRef(n) => n + " " + args.map(_.toString).mkString(" ")
+    case _ => "IsaApplication toString matching"
   }
+}
+
+case class IsaQuantifier(univ: Boolean, vars: List[IsaExpr], body: IsaExpr) extends IsaExpr {
+  override def toString = "todo: quantifier string"
 }
 
 /** Application expression composed of expressions
@@ -223,3 +248,4 @@ case object IsaNot extends IsaPrefixOperator("\\<not>")
 
 case object IsaImplies extends IsaInfixOperator("\\<longrightarrow>") with IsaConnective
 
+case object IsaEqual extends IsaInfixOperator("=") with IsaComparison
