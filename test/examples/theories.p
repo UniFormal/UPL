@@ -26,12 +26,12 @@ module Theories {
   // To obtain a concrete theory as an expression of type Mod(T),
   // the notation T{b} can be used where b defines the remaining abstract fields.
   // This corresponds to creating a new instance of a class. No 'new' keyword is used.
-  me = Man {name = "Florian", age = 45}
+  me: Man = Man {name = "Florian", age = 45}
 
-  // Theories may contain type declarations. In that case, the resulting type is big, i.e., limited in its use.
+  // Theories may contain type declarations. In that case, the resulting type is big, i.e. limited in its use.
   theory Magma {
-    type u
-    op: (u,u) -> u
+    type univ
+    op: (univ,univ) -> univ
   }
 
   // For a Boolean b, the type |- b is the type of proofs of b.
@@ -46,7 +46,7 @@ module Theories {
   }
   theory Monoid  {
     include Semigroup
-    e: u
+    e: univ
     neutral: |- forall x. op(x,e) == x & op(e,x) == x
   }
   // Multiple includes of the same theories (diamonds) are identified.
@@ -56,7 +56,7 @@ module Theories {
   }
   // When instantiating, ??? can be used for unknown terms. If there are not computational, like proofs, this is harmless.
   intAdd = Semigroup {
-    type u = int
+    type univ = int
     op = (x,y) -> x+y
     assoc = ???
   }
@@ -64,22 +64,23 @@ module Theories {
   // When merging declarations, the second declaration can be more restrictive:
   theory IntMagma {
     include Magma
-    type u < int // refining a type to be a subtype
+    type univ < int // refining a type to be a subtype
   }
   theory IntMagma2 {
     include Magma
-    type u = int // maximally refine a type by defining it
+    type univ = int // maximally refine a type by defining it
   }
 
   // The keyword "realize" behaves like "include" except that it additionally checks that all included declarations are defined.
   theory Pointed {
-    type u
-    point: u
+    type univ
+    point: univ
   }
+  
   theory NeutralPoint {
     include Monoid
-    realize Pointed // This yields a second declaration "type u". Both are merged.
-    point = e // Without this, Pointed would be fully realized.
-    // Declarations present in both the realizing and the realized theory (here: u) do not have to be defined.
+    realize Pointed // This yields a second declaration "type univ". Both are merged.
+    point = e // Without this, Pointed wouldn't be fully realized.
+    // Declarations present in both the realizing and the realized theory (here: univ) do not have to be defined.
   }
 }
