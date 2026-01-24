@@ -215,11 +215,9 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
       case r: Ref => gc.lookupRef(r).getOrElse(return null) match {
         case sd: SymbolDeclaration => sd.toString
         case _: Module => "module"
-        case vd: EVarDecl => vd.toString
-        case _ => r.toString
+        case vd: VarDecl => vd.toString
       }
-      case sd: SymbolDeclaration => sd.toString
-      case vd: EVarDecl => vd.toString
+      case vd: VarDecl => vd.toString
       case bo: BaseOperator => bo.operator.symbol + ": " + bo.tp.toString
       case e: Expression if selection =>
         try {new Checker(ErrorThrower).inferCheckedExpression(gc,e).toString}
