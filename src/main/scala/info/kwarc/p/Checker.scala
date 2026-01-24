@@ -92,7 +92,7 @@ class Checker(errorHandler: ErrorHandler) {
         sdC match {
           case ed: ExprDecl => ed.ntO foreach {nt =>
             ed.tp match {
-              case FlatOwnedObject(_,FunType(ins,out)) => (ins(0).tp,out) match {
+              case FlatOwnedObject(_,ft:FunType) => (ft.inDecls.last.tp,ft.out) match {
                 case (ClosedRef(_),_) =>
                 case (_,ClosedRef(_)) =>
                 case _ => reportError("notations can only be inferred if the input or output type is declared in the same theory")
@@ -407,14 +407,14 @@ class Checker(errorHandler: ErrorHandler) {
           if (!ed.modifiers.closed) reportError("notations only allowed in theories")
         }
     }
+    sd.tc.decls.foreach {
+      case tv: TVarDecl =>
+      case _ => reportError("declaration not allowed here")
+    }
     // resolveName finds names in global, contained regional, and local contexts, but we only want the current region and its parent
     val sdP = if (!sd.modifiers.closed) None else gc.resolveName(ClosedRef(sd.name)).flatMap {
       case (ClosedRef(_), dO) => dO
       case _ => None
-    }
-    sd.tc.decls.foreach {
-      case tv: TVarDecl =>
-      case _ => reportError("declaration not allowed here")
     }
     val gcI = gc // TODO gc.append(sd.tc), requires allowing TVarDecl in LocalContext
     sdP match {
@@ -545,14 +545,27 @@ class Checker(errorHandler: ErrorHandler) {
     }
     lcC.copyFrom(lc)
   }
+  def checkELocal(gc: GlobalContext, lc: ExprContext, allowDefinitions: Boolean,allowMutable: Boolean): ExprContext = {
+    val lcC = checkLocal(gc,lc.toLocalContext, allowDefinitions, allowMutable)
+    lcC.variables.foreach {
+      case vd: EVarDecl =>
+      case vd => fail("expression variable expected")(vd)
+    }
+    ExprContext.force(lcC)
+  }
 
-  def checkVarDecl(gc: GlobalContext, vd: EVarDecl, allowDefinitions: Boolean, allowMutable: Boolean): EVarDecl = {
+  def checkVarDecl(gc: GlobalContext, vd: VarDecl, allowDefinitions: Boolean, allowMutable: Boolean): VarDecl = {
     implicit val cause = vd
-    if (vd.mutable && !allowMutable) reportError("mutable variable not allowed here")
-    if (vd.defined && !allowDefinitions) reportError("defined variable not allowed here")
-    val tpC = checkType(gc,vd.tp)
-    val dfC = vd.dfO map {d => checkExpression(gc,Lambda.allowReturn(d),tpC)}
-    val vdC = EVarDecl(vd.name,tpC.skipUnknown,dfC,vd.mutable)
+    val vdC = vd match {
+      case vd: EVarDecl => if (vd.mutable && !allowMutable) reportError("mutable variable not allowed here")
+        if (vd.defined && !allowDefinitions) reportError("defined variable not allowed here")
+        val tpC = checkType(gc, vd.tp)
+        val dfC = vd.dfO map {d => checkExpression(gc, Lambda.allowReturn(d), tpC)}
+        EVarDecl(vd.name, tpC.skipUnknown, dfC, vd.mutable)
+      case vd: TVarDecl =>
+        val dfC = vd.dfO.map {d => checkType(gc,d)}
+        TVarDecl(vd.name, dfC)
+    }
     vdC.copyFrom(vd)
   }
 
@@ -560,22 +573,32 @@ class Checker(errorHandler: ErrorHandler) {
   def checkSubstitution(gc: GlobalContext, sub: Substitution, ctx: LocalContext): Substitution = {
     if (sub.length != ctx.length) reportError("wrong number of substitutes")(sub)
     var subC = Substitution.empty
-    (ctx.decls.reverse zip sub.decls.reverse).foreach {case (vd,df) =>
+    (ctx.decls.reverse zip sub.decls.reverse).foreach {case (vd,sb) =>
       if (vd.dfO.isDefined) reportError("defined variable in expected context")(ctx)
-      if (vd.name != df.name) reportError("wrong name in substitution: " + expected(vd.name,df.name))(sub)
-      val e = df.dfO.get
-      val tpE = Substituter(gc, subC, vd.tp)
-      val eC = checkExpression(gc, e, tpE)
-      subC = subC.append(vd.name,eC)
+      if (vd.name != sb.name) reportError("wrong name in substitution: " + expected(vd.name,sb.name))(sub)
+      (vd,sb.dfO.get) match {
+        case (vd: EVarDecl, e: Expression) =>
+          val tpE = Substituter(gc, subC, vd.tp)
+          val eC = checkExpression(gc, e, tpE)
+          subC = subC.append(vd.name, eC)
+        case (vd: TVarDecl, t: Type) =>
+          val tC = checkType(gc, t)
+          subC = subC.append(vd.name, tC)
+        case (_, o) => reportError("mismatched substitute for " + vd)(o)
+      }
     }
     subC.copyFrom(sub)
+  }
+  def checkESubstitution(gc: GlobalContext, es: List[Expression], ctx: ExprContext): List[Expression] = {
+    val esC = checkSubstitution(gc, ctx.substitute(es), ctx.toLocalContext)
+    esC.exprs.asInstanceOf[List[Expression]]
   }
 
   /** component-wise subtype check,
     * gc |- as <: bs
     * returns substitution as -> bs
     */
-  def checkSubtypes(gc: GlobalContext, as: LocalContext, bs: LocalContext)(implicit cause: SyntaxFragment): Substitution = {
+  def checkSubtypes(gc: GlobalContext, as: ExprContext, bs: ExprContext)(implicit cause: SyntaxFragment): Substitution = {
     if (as.length != bs.length) reportError("wrong number of components: " + as.length + ", expected " + bs.length)
     var subI = Substitution.empty
     (as.decls.reverse zip bs.decls.reverse).foreach {case (a,b) =>
@@ -592,18 +615,18 @@ class Checker(errorHandler: ErrorHandler) {
     * TODO substitution into union context is not well-formed; every argument must be checked individually
     */
   def typesUnionOrIntersection(union: Boolean)
-                              (gc: GlobalContext, as: LocalContext, bs: LocalContext): Option[(LocalContext,Substitution)] = {
+                              (gc: GlobalContext, as: ExprContext, bs: ExprContext): Option[(ExprContext,Substitution)] = {
     // fail("wrong number of components: " + expected(as.length.toString,bs.length.toString))
     if (as.length != bs.length) return None
     var gcI = gc
     var subI = Substitution.empty
-    var abs = LocalContext.empty
+    var abs = ExprContext.empty
     (as.decls.reverse zip bs.decls.reverse).foreach {case (a,b) =>
       if (a.defined || b.defined) return None //reportError("union with defined variables")
       val bS = Substituter(gcI, subI, b.tp)
       val ab = if (union) typeUnion(gcI, a.tp, bS) else typeIntersection(gcI, a.tp, bS)
       val vd = EVarDecl(a.name, ab)
-      abs = abs append vd
+      abs = abs appendE vd
       gcI = gcI append vd
       subI = subI.appendRename(b.name, vd)
     }
@@ -737,9 +760,9 @@ class Checker(errorHandler: ErrorHandler) {
         val uC = u map {e => checkExpressionPure(gc,e,NumberType.Int)}
         IntervalType(lC,uC)
       case CollectionType(a,k) => CollectionType(rec(a),k)
-      case ProdType(as) => ProdType(checkLocal(gc,as,false,false))
+      case ProdType(as) => ProdType(checkELocal(gc,as,false,false))
       case FunType(as,b) =>
-        val asC = checkLocal(gc,as,false,false)
+        val asC = checkELocal(gc,as,false,false)
         val bC = checkType(gc.append(asC),b)
         FunType(asC,bC)
       case ClassType(thy) =>
@@ -1076,7 +1099,7 @@ class Checker(errorHandler: ErrorHandler) {
       gcI = gcI append vd
     }
     val eC = checkExpression(gcI, e, tp)
-    val fctxIS = fctxI.map {vd =>
+    val fctxIS = fctxI.map {case vd: EVarDecl =>
       if (!vd.tp.known) reportError("free variable whose type cannot be infered: " + vd.name)(e)
       vd.copy(tp = vd.tp.skipUnknown)
     }
@@ -1148,7 +1171,7 @@ class Checker(errorHandler: ErrorHandler) {
 
       case (Lambda(ins,bd,mr), Some(ft)) =>
         // this handles arbitrary function types so that we can always insert the return variable if necessary
-        val insC = if (alsoCheck) checkLocal(gc, ins, false, false) else ins
+        val insC = if (alsoCheck) checkELocal(gc, ins, false, false) else ins
         val gcI = gc.append(insC)
         val outType = ft match {
           case FunType(insE,outE) =>
@@ -1163,15 +1186,15 @@ class Checker(errorHandler: ErrorHandler) {
         val bdC = checkExpression(gcB,bd,outType)
         (Lambda(insC,bdC,mr), sameAsExpected)
       case (Lambda(ins, bd, mr),None) =>
-        val insC = if (alsoCheck) checkLocal(gc, ins, false, false) else ins
+        val insC = if (alsoCheck) checkELocal(gc, ins, false, false) else ins
         val gcI = gc.append(insC)
         val (bdC, bdI) = inferExpression(gcI, bd)
         (Lambda(insC, bdC, mr), FunType(insC, bdI))
 
       case (Tuple(es),Some(ProdType(ts))) =>
-        if (es.length != ts.length) reportError("wrong number of components in tuple")
-        val esC = checkSubstitution(gc, ts.substitute(es), ts)
-        (Tuple(esC.exprs), sameAsExpected)
+        if (es.sizeIs != ts.length) reportError("wrong number of components in tuple")
+        val esC = checkESubstitution(gc, es, ts)
+        (Tuple(esC), sameAsExpected)
       case (Tuple(es),None) =>
         val (esC, esI) = es.map(e => inferExpression(gc, e)).unzip
         (Tuple(esC), ProdType.simple(esI))
@@ -1405,7 +1428,7 @@ class Checker(errorHandler: ErrorHandler) {
                 if (p > ts.length) fail("index out of bounds")
               }
               val componentType = ts(p - 1).tp // -1 because components start at 1 but declarations at 0
-              val precedingCompDecls = ts.take(p - 1)
+              val precedingCompDecls = ts.force(_.take(p - 1))
               val precedingProjs = Range(1, p).toList.map(i => Projection(tup, i))
               val sub = precedingCompDecls.substitute(precedingProjs)
               val projI = Substituter(gc, sub, componentType)
@@ -1445,9 +1468,9 @@ class Checker(errorHandler: ErrorHandler) {
               // infer unknown context by creating a new variable for every unbound name
               val names = FreeVariables.infer(gc,exp)
               val vds = names.map(n => EVarDecl(n,Type.unknown(gc)))
-              LocalContext.make(vds)
+              ExprContext.make(vds)
             }
-            val varsC = checkLocal(gc, varsE, false, false)
+            val varsC = checkELocal(gc, varsE, false, false)
             val bdC = checkExpressionPure(gc.append(varsC), bd, BoolType)
             if (varsC.empty) bdC else Quantifier(q, varsC, bdC)
           } else exp
@@ -1487,12 +1510,12 @@ class Checker(errorHandler: ErrorHandler) {
               val eC = ExprOver(thy, Application(Eval.reduced(fC), as map Eval.reduced))
               return inferExpression(gc, eC)
             case u: UnknownType if !u.known && u.sub.isIdentity =>
-              var uis = LocalContext.empty
+              var uis = ExprContext.empty
               var gcI = u.originalContext
               val n = gcI.freshName
               Range(0, as.length).foreach { i =>
                 val vd = EVarDecl(n + "_" + i.toString, Type.unknown(gcI))
-                uis = uis append vd
+                uis = uis appendE vd
                 gcI = gc append vd
               }
               val uo = Type.unknown(gcI)
@@ -1502,12 +1525,11 @@ class Checker(errorHandler: ErrorHandler) {
             case _ => fail("not a function")(f)
           }
           if (ins.length != as.length) fail("wrong number of arguments")
-          val sub = ins.substitute(as)
           val asC = if (alsoCheck) {
-            checkSubstitution(gc, sub, ins)
-          } else sub
-          val outS = Substituter(gc, asC, out)
-          (Application(fM, asC.exprs), outS)
+            checkESubstitution(gc, as, ins)
+          } else as
+          val outS = Substituter(gc, ins.substitute(asC), out)
+          (Application(fM, asC), outS)
 
         case While(cond, bd) =>
           val expC = if (alsoCheck) {
@@ -1561,7 +1583,7 @@ class Checker(errorHandler: ErrorHandler) {
             (Match(eC, csC, h), mI)
           }
         case For(vd, range, bd) =>
-          val vdC = checkVarDecl(gc, vd, false, false)
+          val vdC = checkVarDecl(gc, vd, false, false).asInstanceOf[EVarDecl]
           val rangeC = checkExpression(gc, range, CollectionKind.UList(vdC.tp))
           val (bdC, bdI) = inferExpression(gc.append(vdC), bd)
           (For(vdC, rangeC, bdC), CollectionKind.List(bdI)) // map may introduce repetitions
@@ -1617,7 +1639,7 @@ class Checker(errorHandler: ErrorHandler) {
               case (vd::rest, need::needs) =>
                 val equated = equateTypes(gc,vd.tp,need.tp)(None)
                 if (!equated) fail("introduction form does not match expected type")
-                val tpR = ProofType(Quantifier.optional(true,LocalContext.make(needs),bd))
+                val tpR = ProofType(Quantifier.optional(true,ExprContext.make(needs),bd))
                 val subs = Substitution.empty.appendRename(need.name, vd)
                 val tpRS = Substituter(gc,subs,tpR)
                 applyIntros(gc.append(vd), rest, tpRS)
@@ -1800,6 +1822,9 @@ class Checker(errorHandler: ErrorHandler) {
         case _: While => isNot("total")
         case _: Return => isNot("total")
         case _: Lambda =>
+        case oe: OwnedExpr =>
+          apply(oe.owner)
+          apply(oe.owned) // no checking of domain
         case _ => applyDefault(e)
       }
       e
@@ -1814,7 +1839,10 @@ class Checker(errorHandler: ErrorHandler) {
       case VarRef("") => Nil // anonyomous variable
       case VarRef(n) =>
         val vd = gc.local.lookup(n)
-        if (!vd.mutable) fail("variable not mutable")
+        vd match {
+          case vd: EVarDecl => if (!vd.mutable) fail("variable not mutable")
+          case _ => fail("variable not assignable")
+        }
         List(target)
       case vd: EVarDecl =>
         if (vd.defined) fail("defined variable not assignable")
@@ -1964,7 +1992,10 @@ class Checker(errorHandler: ErrorHandler) {
       case (u: UnknownType, v: UnknownType) if u.container == v.container =>
         // avoid solving an unknown by itself
         val sub = cons.renameRightToLeft
-        val argsComp = (u.sub.decls zip v.sub.decls).forall {case (r,s) => r.dfO.get == s.dfO.get.substitute(sub)}
+        val argsComp = (u.sub.decls zip v.sub.decls).forall {
+          case (r: EVarDecl, s:EVarDecl) => r.dfO.get == s.dfO.get.substitute(sub)
+          case (r: TVarDecl, s:TVarDecl) => r.dfO.get == s.dfO.get.substituteInType(sub)
+        }
         if (argsComp) Some(Nil) else None
       // solve
       case (u: UnknownType, k) if u.isSolvable =>
@@ -1975,8 +2006,8 @@ class Checker(errorHandler: ErrorHandler) {
       case _ if aK.getClass != bK.getClass => None // fail quickly
       case (ProdType(as), ProdType(bs)) => matchTypeLists(as,bs,cons,false)
       case (FunType(as,c), FunType(bs,d)) =>
-        val asc = as.append(EVarDecl.anonymous(c))
-        val bsd = bs.append(EVarDecl.anonymous(d))
+        val asc = as appendE EVarDecl.anonymous(c)
+        val bsd = bs appendE EVarDecl.anonymous(d)
         matchTypeLists(asc,bsd,cons,true)
       case (k: NumberType, l: NumberType) =>
         if (k == l || (subTypeDirection.contains(true) && (k sub l)) || (subTypeDirection.contains(false) && (l sub k)))
@@ -2019,7 +2050,7 @@ class Checker(errorHandler: ErrorHandler) {
     Some(List((u,sol)))
   }
 
-  private def matchTypeLists(as: LocalContext, bs: LocalContext, cons: BiContext, flipSubtypingExceptLast: Boolean)
+  private def matchTypeLists(as: ExprContext, bs: ExprContext, cons: BiContext, flipSubtypingExceptLast: Boolean)
                             (implicit gc: GlobalContext, subTypeDirection: Option[Boolean]): Option[TypeAssignments] = {
     if (as.length != bs.length) return None
     var ms: TypeAssignments = Nil

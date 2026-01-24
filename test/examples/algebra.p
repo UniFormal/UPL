@@ -119,9 +119,11 @@ module Algebra {
   theory SemiField {
     include AbelianRing
     mult: SubGroup {
-      rel = (x,y) -> x == y & x != e
-      sym = ???
-      trans = ???
+      per = PER {
+        rel = (x,y) -> x == y & x != e
+        sym = ???
+        trans = ???
+      }
     }
     inv_zero:--- mult.inv(add.e) == add.e
   }

@@ -34,8 +34,6 @@ abstract class Traverser[A] {
       TheoryValue(dsT)
   }
 
-  def apply(tc: TypeContext)(implicit gc: GlobalContext, a:A): TypeContext = tc
-
   def apply(ctx: LocalContext)(implicit gc: GlobalContext, a:A): (LocalContext,A) = {
     if (ctx == null) (null,a) else {
       var aT = a
@@ -51,10 +49,20 @@ abstract class Traverser[A] {
       (ctxT, aT)
     }
   }
+  def apply(ctx: ExprContext)(implicit gc: GlobalContext, a:A): (ExprContext,A) = {
+    if (ctx == null) (null,a) else {
+      val (ctxT, aT) = apply(ctx.toLocalContext)
+      (ExprContext.force(ctxT), aT)
+    }
+  }
 
-  def applyVarDecl(vd: EVarDecl)(implicit gc: GlobalContext, a:A): (EVarDecl,A) = {
-    val EVarDecl(n,t,d,m,o) = vd
-    (EVarDecl(n, apply(t), d map apply, m, o), a)
+  def applyVarDecl(vd: VarDecl)(implicit gc: GlobalContext, a:A): (VarDecl,A) = vd match {
+    case EVarDecl(n,t,d,m,o) => (EVarDecl(n, if (t == null) null else apply(t), d map apply, m, o), a)
+    case TVarDecl(n,d) => (TVarDecl(n, d map apply), a)
+  }
+  def applyEVarDecl(vd: EVarDecl)(implicit gc: GlobalContext, a:A): (EVarDecl,A) = {
+    val (vdT,aT) = applyVarDecl(vd)
+    (vdT.asInstanceOf[EVarDecl], aT)
   }
 
   def apply(rc: RegionalContext)(implicit gc: GlobalContext, a:A): RegionalContext = {
@@ -71,9 +79,11 @@ abstract class Traverser[A] {
     case Include(dm,df, r) =>
       Include(apply(dm), df map apply, r)
     case TypeDecl(n, tc, bd, dfO, ms) =>
-      TypeDecl(n, apply(tc), apply(bd), dfO map apply, ms)
+      val (tcT,aT) = apply(tc)
+      TypeDecl(n, tcT, apply(bd)(gc,aT), dfO map {d => apply(d)(gc,aT)}, ms)
     case ExprDecl(n, tc, tp, dfO, ntO, ms) =>
-      ExprDecl(n, apply(tc), apply(tp), dfO map apply, ntO, ms)
+      val (tcT,aT) = apply(tc)
+      ExprDecl(n, tcT, apply(tp)(gc,aT), dfO map {d => apply(d)(gc,aT)}, ntO, ms)
   }
 
   def apply(tp: Type)(implicit gc: GlobalContext, a: A): Type = matchC(tp)(applyDefault _)
@@ -85,7 +95,12 @@ abstract class Traverser[A] {
       else {
         val subT = if (sub == null) null else {
           // or traverse into the substitution values (this gives the right results for collecting free variables and applying substitutions)
-          sub.map {vd => vd.copy(dfO = vd.dfO map applyDefault)}
+          sub // map {vd => applyVarDecl(vd)._1}
+          // TODO: the previous version used the code below, which falsely calls applyDefault instead of apply,
+          //  thus, e.g., not recursing into x in the common case of x/x
+          //  doing it correctly interferes with solving unknowns, e.g., possible free variables are collected as free variables
+          //  and unknowns are not equated
+          // sub.map {vd => vd.copy(dfO = vd.dfO map applyDefault)}
         }
         UnknownType(g,cont, subT)
       }
@@ -115,7 +130,7 @@ abstract class Traverser[A] {
     case OwnedExpr(o, d, e) => OwnedExpr(apply(o), apply(d), apply(e)(gc.push(d,Some(o)),a))
     case BaseOperator(o,tp) => BaseOperator(o, apply(tp))
     case Instance(thy) => Instance(apply(thy))
-    case vd:EVarDecl => applyVarDecl(vd)._1
+    case vd:EVarDecl => applyVarDecl(vd)._1.asInstanceOf[EVarDecl]
     case Assign(k,v) => Assign(apply(k), apply(v))
     case ExprOver(t,e) => ExprOver(apply(t), apply(e)(gc.pushQuoted(t),a))
     case Eval(e) => Eval(apply(e)(gc.pop(),a))
@@ -125,7 +140,7 @@ abstract class Traverser[A] {
       val esT = es.map {e =>
         val eT = e match {
           case vd: EVarDecl =>
-            val (vdT,_a) = applyVarDecl(vd)(gcI,aI)
+            val (vdT,_a) = applyEVarDecl(vd)(gcI,aI)
             gcI = gcI.append(vd)
             aI = _a
             vdT
@@ -143,7 +158,7 @@ abstract class Traverser[A] {
       MatchCase(ctxT, apply(p)(gcI,aT), apply(b)(gcI,aT))
     case While(c,b) => While(apply(c), apply(b))
     case For(v,r,b) =>
-      val (vT,aT) = applyVarDecl(v)
+      val (vT,aT) = applyEVarDecl(v)
       For(vT, apply(r), apply(b)(gc.append(v),aT))
     case Return(e, thrw) => Return(apply(e), thrw)
     case Lambda(is,b,mr) =>
@@ -199,7 +214,7 @@ object EvalTraverser {
       evals = EVarDecl(n, null, Some(ev)) :: evals
       VarRef(n)
     }
-    (LocalContext(evals.reverse), eoT)
+    (ExprContext.make(evals), eoT)
   }
   object ReplaceVarName extends EVarDecl.SpecialVarName("eval")
 }
@@ -305,15 +320,24 @@ class Substituter(val initGC: GlobalContext) extends Traverser[Substitution] wit
   override def apply(exp: Expression)(implicit gc: GlobalContext, sub: Substitution) = matchC(exp) {
     case e if e.closing => e // no free variables in e even if they have not been inferred yet
     case VarRef(n) if n != "" && inOriginalRegion => sub.lookupO(n) match {
+      case Some(vd: EVarDecl) => vd.dfO.get
+      case Some(_) => throw IError("unexpected substitute")
       case None => exp
-      case Some(vd) => vd.dfO.get
     }
     case _ => applyDefault(exp)
   }
-  override def applyVarDecl(vd: EVarDecl)(implicit gc: GlobalContext, sub: Substitution) = {
+  override def apply(tp: Type)(implicit gc: GlobalContext, sub: Substitution) = matchC(tp) {
+    case VarRef(n) if n != "" && inOriginalRegion => sub.lookupO(n) match {
+      case Some(vd: TVarDecl) => vd.dfO.get
+      case Some(_) => throw IError("unexpected substitute")
+      case None => tp
+    }
+    case _ => applyDefault(tp)
+  }
+  override def applyVarDecl(vd: VarDecl)(implicit gc: GlobalContext, sub: Substitution) = {
     if (!inOriginalRegion) super.applyVarDecl(vd) else {
       val renamed = vd.name // TODO avoid capture
-      val subT = sub.append(vd.name,VarRef(renamed))
+      val subT = sub.appendRename(vd,renamed)
       val (vdS,_) = super.applyVarDecl(vd)
       (vdS,subT)
     }
@@ -346,7 +370,7 @@ object Simplify extends StatelessTraverser {
       case Equality(p,_:ProofType,_,_) => BoolValue(p)
       case Equality(p, tp:ProdType, Tuple(ls), Tuple(rs)) =>
         val sub = tp.comps.substitute(ls)
-        val tpsS = tp.decls.zipWithIndex.map {case (vd,i) => Substituter(gc,sub.take(i),vd.tp)}
+        val tpsS = tp.declsRev.zipWithIndex.map {case (vd,i) => Substituter(gc,sub.take(i),vd.tp)}
         val lrs = (ls zip rs).zip(tpsS).map {case ((l, r), t) => Equality(p,t,l,r)}
         Equality.reduce(p)(lrs)
       case Equality(p, CollectionType(a,k), lc: CollectionValue, rc: CollectionValue) =>

@@ -2,7 +2,7 @@
   <configuration default="false" name="Test" type="Application" factoryName="Application">
     <option name="ALTERNATIVE_JRE_PATH" value="BUNDLED" />
     <option name="MAIN_CLASS_NAME" value="info.kwarc.p.Main" />
-    <module name="UPL" />
+    <module name="UPL.main" />
     <option name="PROGRAM_PARAMETERS" value="--repl test/temp.pp" />
     <method v="2">
       <option name="Make" enabled="true" />

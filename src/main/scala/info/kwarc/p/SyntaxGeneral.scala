@@ -3,7 +3,6 @@ package info.kwarc.p
 /** parent of all classes in the AST */
 trait SyntaxFragment {
   private[p] var loc: Location = null // set by parser to remember location in source
-
   def withLocation(l: Location): this.type = {
     loc = l
     this
@@ -12,12 +11,10 @@ trait SyntaxFragment {
     val l = if (f.loc == null) t.loc else if (t.loc == null) f.loc else f.loc extendTo t.loc
     withLocation(l)
   }
-
   def toStringShort: String = {
     val s = toString
     s.take(Math.min(20,s.length))
   }
-
   /** moves over mutable fields, may be called after performing traversals
    * if the resulting expression is "the same" as the original in some sense
    * if needed, it is usually to implement the traversal using also SyntaxFragment.matchC in the first place
@@ -26,20 +23,15 @@ trait SyntaxFragment {
     loc = sf.loc
     this
   }
-
   /** short name for the kind of node, e.g., for display in an IDE */
   def label: String
-
   /** children of this AST node */
   def children: List[SyntaxFragment]
-
   /** children, paired with the additional context, must be overridden if context changes for any child */
   def childrenInContext: List[SyntaxFragment.Child] = cf(children: _*)
-
   /** convenience to build children list if no context is changed */
   protected def cf(fs: SyntaxFragment*): List[SyntaxFragment.Child] =
     fs.toList.map(c => (None, None, c))
-
   /** the origin of this element (if no location, depth-first descendant with location) */
   def origin: SourceOrigin = if (loc != null) loc.origin else {
     children.foreach { c =>
@@ -111,7 +103,7 @@ trait Named extends MaybeNamed {
   def anonymous = name == ""
 }
 
-trait HasChildren[A <: MaybeNamed] extends SyntaxFragment {
+trait HasChildren[+A <: MaybeNamed] extends SyntaxFragment {
   def decls: List[A]
   def domain = decls collect {case d: Named => d.name}
   def length = decls.length

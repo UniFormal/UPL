@@ -70,7 +70,7 @@ object Compiler {
       case Application(f,args) => JObject("elim" -> encodeExpression(f), "application" -> JArray(args map encodeExpression :_*))
       case CollectionValue(es,_) => JObject("collection" -> JArray(es map encodeExpression :_*))
       case Quantifier(q,vs,bd) => JObject(
-        (if (q) "forall" else "exists") -> JArray(vs.mapDecls(vd => JString(vd.name)):_*),
+        (if (q) "forall" else "exists") -> JArray(vs.toLocalContext.mapDecls(vd => JString(vd.name)):_*),
         "body" -> encodeExpression(bd)
       )
     }
@@ -126,7 +126,7 @@ object Compiler {
       case vd: EVarDecl => JVarDecl(vd.name,c(vd.dfO.get), false)
       case e: ExprOver =>
         val (ctx,expR) = EvalTraverser.replaceEvals(e)
-        val evalsC = ctx.mapDecls(vd => JVarDef(vd.name, c(vd.dfO.get)))
+        val evalsC = Util.reverseMap(ctx.decls)(vd => JVarDef(vd.name, c(vd.dfO.get)))
         val eoC = encodeExpression(expR)
         JBlock(evalsC:::List(eoC)).asExpression()
       case _:Eval => throw Error(exp,"unexpected evaluation")

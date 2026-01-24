@@ -2,7 +2,7 @@
   <configuration default="false" name="Solver Test" type="Application" factoryName="Application">
     <option name="ALTERNATIVE_JRE_PATH" value="BUNDLED" />
     <option name="MAIN_CLASS_NAME" value="info.kwarc.p.SolverTest" />
-    <module name="UPL" />
+    <module name="UPL.main" />
     <option name="PROGRAM_PARAMETERS" value="test/solver/test.pp" />
     <method v="2">
       <option name="Make" enabled="true" />

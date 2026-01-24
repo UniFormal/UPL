@@ -1,7 +1,5 @@
 package info.kwarc.p
 
-import java.time.chrono.ChronoLocalDate
-
 /** joint parent class for all levels of contexts
  *  - global: all global declarations, i.e., the program's entire vocabulary.
  *   Names are unique due to qualification
@@ -13,7 +11,7 @@ import java.time.chrono.ChronoLocalDate
  * Implementation-wise, it is more convenient to group the contexts in such a way that each subsumes the smaller ones.
  * Thus, in particular, every context has a local context.
  */
-abstract class Context[A] extends SyntaxFragment with HasChildren[EVarDecl] {
+abstract class Context[A] extends SyntaxFragment with HasChildren[VarDecl] {
 
   /** the local context */
   def local: LocalContext
@@ -23,8 +21,10 @@ abstract class Context[A] extends SyntaxFragment with HasChildren[EVarDecl] {
   def copyLocal(lc: LocalContext): A
 
   /** copies and appends some local declarations (c may be null) */
-  def append(c: LocalContext) = copyLocal(LocalContext((if (c == null) Nil else c.variables) ::: decls))
-  def append(vd: EVarDecl): A = append(LocalContext(vd))
+  def append(c: AbstractLocalContext[_,_<:VarDecl]): A = {
+    if (c == null) copyLocal(local) else copyLocal(LocalContext(c.decls ::: decls))
+  }
+  def append(vd: VarDecl): A = append(LocalContext(vd))
 
   /** the prefix of this containing the first n local declarations (counting from outer-most) */
   def take(n: Int) = copyLocal(LocalContext(decls.drop(length - n)))
@@ -32,32 +32,49 @@ abstract class Context[A] extends SyntaxFragment with HasChildren[EVarDecl] {
   /** the prefix of this without the last n local declarations (counting from outer-most) */
   def dropLast(n: Int) = copyLocal(LocalContext(decls.drop(n)))
   def split = (decls.last, LocalContext(decls.init))
-  def getOutput = local.decls.find(vd => vd.name == "" && vd.output).map(_.tp)
+  def getOutput = local.decls.collectFirst {
+    case vd: EVarDecl if vd.name == "" && vd.output => vd.tp
+  }
 }
 
 object -: {
-  def unapply(l: LocalContext): Option[(EVarDecl,LocalContext)] =
+  def unapply(l: LocalContext): Option[(VarDecl,LocalContext)] =
     if (!l.empty) Some(l.split) else None
+  def unapply(l: ExprContext): Option[(EVarDecl,ExprContext)] =
+    if (!l.empty) Some((l.decls.last,ExprContext(l.decls.init))) else None
 }
 
-/** object-level context: relative to a vocabulary and a choice of theory in it
- *
- * Context-order means that the inner-most variables occurs first.
- * These are found first by lookup.
- * The constructors must not be applied to declarations in natural order - use make instead.
- */
-case class LocalContext(variables: List[EVarDecl]) extends Context[LocalContext] {
+/** parts of the implementation of LocalContext that are reusable */
+sealed trait AbstractLocalContext[A,VD <: VarDecl] extends Context[LocalContext] {
+  def variables: List[VD]
+  // sharpen type
+  override def decls: List[VD] = variables
+  def copyLocal(lc: LocalContext) = lc
   override def toString = variables.reverse.mkString(", ")
   def label = "binding"
   def children = variables.reverse
   override def childrenInContext = variables.tails.toList.reverse.tail.map(l =>
     (None, Some(LocalContext(l.tail)), l.head)
   )
-  def local = this
-  def copyLocal(lc: LocalContext) = lc
-
   /** the n-th declaration (counting from outer-most, starting at 0) */
-  def apply(n: Int) = variables(length - 1 - n)
+  def apply(n: Int): VD = variables(length - 1 - n)
+  def namesInOrder = domain.reverse
+  def namesUnique = {
+    val names = variables collect {case vd if !vd.anonymous => vd.name}
+    Util.noReps(names)
+  }
+  def identity = Substitution(variables collect {
+    case vd if !vd.anonymous => vd.toSub
+  })
+}
+/** object-level context: relative to a vocabulary and a choice of theory in it
+ *
+ * Context-order means that the inner-most variables occurs first.
+ * These are found first by lookup.
+ * The constructors must not be applied to declarations in natural order - use make instead.
+ */
+case class LocalContext(variables: List[VarDecl]) extends AbstractLocalContext[LocalContext,VarDecl] {
+  def local = this
 
   /** checks if this == smaller.append(result) */
   def unappend(smaller: LocalContext): Option[LocalContext] = {
@@ -71,35 +88,43 @@ case class LocalContext(variables: List[EVarDecl]) extends Context[LocalContext]
   }
 
   /** applies f to all declarations, outer-most first */
-  def map(f: EVarDecl => EVarDecl) = {
+  def map(f: VarDecl => VarDecl) = {
     LocalContext.make(this mapDecls f)
   }
   /** applies f to all declarations, outer-most first */
-  def mapDecls[B](f: EVarDecl => B) = {
+  def mapDecls[B](f: VarDecl => B) = {
     Util.reverseMap(variables)(f)
   }
-  def namesInOrder = domain.reverse
-  def namesUnique = {
-    val names = variables collect {case vd if !vd.anonymous => vd.name}
-    Util.noReps(names)
-  }
+}
+
+/** special case of LocalContext that contains only expressions
+ * some, but not all, operations preserve the special case of typing
+ */
+case class ExprContext(variables: List[EVarDecl]) extends AbstractLocalContext[ExprContext,EVarDecl] {
+  def local = toLocalContext
+  def toLocalContext = LocalContext(variables)
+  def appendE(vd: EVarDecl) = force(_.append(vd))
+  def force(f: ExprContext => LocalContext) = ExprContext.force(f(this))
 
   def substitute(es: List[Expression]) = {
-    if (variables.length != es.length)
+    if (variables.sizeIs != es.length)
       throw IError("unexpected number of values")
-    val defs = (variables zip es.reverse).map {case (vd, e) =>
+    val defs = (variables zip es.reverse).map {case (vd: EVarDecl, e) =>
       EVarDecl(vd.name, null, Some(e))
     }
     Substitution(defs)
   }
-  def identity = Substitution(variables collect {
-    case vd if !vd.anonymous => vd.toSub
-  })
+}
+object ExprContext {
+  val empty = ExprContext(Nil)
+  def apply(vd: EVarDecl): ExprContext = ExprContext(List(vd))
+  def make(vds: List[EVarDecl]) = ExprContext(vds.reverse)
+  def force(lc: LocalContext) = ExprContext(lc.variables.asInstanceOf[List[EVarDecl]])
 }
 object LocalContext {
   val empty = LocalContext(Nil)
-  def apply(d: EVarDecl): LocalContext = LocalContext(List(d))
-  def make(vds: List[EVarDecl]) = LocalContext(vds.reverse)
+  def apply(d: VarDecl): LocalContext = LocalContext(List(d))
+  def make(vds: List[VarDecl]) = LocalContext(vds.reverse)
 
   /** collects the declarations introduced by this expression */
   def collect(exp: Expression): List[EVarDecl] = exp match {
@@ -120,31 +145,57 @@ object LocalContext {
 }
 
 /** parent of all variable declarations */
-trait VarDecl extends Named
+trait VarDecl extends Named {
+  def dfO: Option[Object]
+  def defined = dfO.isDefined
+  def label = if (name != "") name else "_"
+  def toRef = VarRef(name).copyFrom(this)
+  def toSub: VarDecl
+}
+
+object VarDecl {
+  def rename(a: VarDecl, b: VarDecl) = (a,b) match {
+    case (_: EVarDecl, _:EVarDecl) => EVarDecl.sub(a.name, b.toRef)
+    case (_: TVarDecl, _:TVarDecl) => TVarDecl(a.name, Some(b.toRef))
+  }
+}
 
 /** substitution (for an omitted context) into a target context
  * (n_1/e_1 ... n_l/e_l) : (n_1:_, ..., n_l:_) -> target
  * represented as decls == VarDecl.sub(n_l,e_n), ...
  */
-case class Substitution(decls: List[EVarDecl]) extends HasChildren[EVarDecl] {
+case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
   override def toString = decls.reverseIterator.map(vd => vd.name + "/" + vd.dfO.get).mkString(", ")
   def label = "substitution"
   def children = decls.map(_.dfO.get)
 
   /** e_1, ..., e_n */
   def exprs = Util.reverseMap(decls)(_.dfO.get)
-  def map(f: EVarDecl => EVarDecl) = Substitution(
+  def map(f: VarDecl => VarDecl) = Substitution(
     Util.reverseMap(decls)(f).reverse
   )
   def take(n: Int) = Substitution(decls.drop(decls.length-n))
 
   /** this : G -> target   --->  this, n/e : G, n:_ -> target */
   def append(n: String, e: Expression) = copy(decls = EVarDecl.sub(n, e) :: decls)
+  /** this : G -> target   --->  this, n/e : G, n:_ -> target */
+  def append(n: String, t: Type) = copy(decls = TVarDecl(n, Some(t)) :: decls)
 
   /** this : G -> target   --->  this, n/vd.name : G, n:_ -> target, vd */
-  def appendRename(n: String, vd: EVarDecl) = Substitution(
-    EVarDecl.sub(n, vd.toRef) :: decls
-  )
+  def appendRename(n: String, vd: VarDecl) = {
+    val r = vd match {
+        case _: EVarDecl => EVarDecl.sub(n, vd.toRef)
+        case _: TVarDecl => TVarDecl(n,Some(vd.toRef))
+      }
+    Substitution(r::decls)
+  }
+  def appendRename(vd: VarDecl, n: String) = {
+    val r = vd match {
+      case _: EVarDecl => EVarDecl.sub(vd.name, VarRef(n))
+      case _: TVarDecl => TVarDecl(vd.name, Some(VarRef(n)))
+    }
+    Substitution(r::decls)
+  }
 
   /** substitution is no-op */
   def isIdentity = decls.forall(d => d.anonymous || d.dfO.contains(VarRef(d.name)))
@@ -153,10 +204,12 @@ case class Substitution(decls: List[EVarDecl]) extends HasChildren[EVarDecl] {
   def inverse: Option[Substitution] = {
     var image: List[String] = Nil
     val subs = decls.collect {
-      case vd @ EVarDecl(_, _, Some(VarRef(n)), _, _)
-        if !vd.anonymous && !image.contains(n) =>
+      case vd @ EVarDecl(_, _, Some(VarRef(n)), _, _) if !vd.anonymous && !image.contains(n) =>
         image ::= n
         EVarDecl.sub(n, vd.toRef)
+      case vd @ TVarDecl(_,Some(VarRef(n))) if !vd.anonymous && !image.contains(n) =>
+        image ::= n
+        TVarDecl(n, Some(vd.toRef))
       case _ => return None
     }
     Some(Substitution(subs))
@@ -169,43 +222,22 @@ object Substitution {
 /** a pair of alpha-renamable contexts, with the substitutions between them
  * This is helpful when matching dependent types up to alpha-renaming in a way that delays substitutions.
  */
-case class BiContext(lr: List[(EVarDecl, EVarDecl)]) {
-  def append(a: EVarDecl, b: EVarDecl) = BiContext((a, b) :: lr)
+case class BiContext(lr: List[(VarDecl, VarDecl)]) {
+  def append[A<:VarDecl](a: A, b: A) = BiContext((a, b) :: lr)
   def left = LocalContext(lr.map(_._1))
   def right = LocalContext(lr.map(_._2))
-  def renameLeftToRight = Substitution(lr.map({case (a, b) => EVarDecl.sub(a.name, b.toRef)}))
-  def renameRightToLeft = Substitution(lr.map({case (a, b) => EVarDecl.sub(b.name, a.toRef)}))
+  def renameLeftToRight = Substitution(lr.map({case (a, b) => VarDecl.rename(a,b)}))
+  def renameRightToLeft = Substitution(lr.map({case (a, b) => VarDecl.rename(b,a)}))
 }
 
 object BiContext {
   def apply(l: LocalContext, r: LocalContext): BiContext = BiContext(l.decls zip r.decls)
 }
 
-case class TVarDecl(name: String) extends VarDecl {
+case class TVarDecl(name: String, dfO: Option[Type]) extends VarDecl {
   override def toString = name
-  def label = name
   def children = Nil
-}
-
-/** local declarations of type variables */
-case class TypeContext(decls: List[TVarDecl]) extends SyntaxFragment with HasChildren[TVarDecl] {
-  override def toString = decls.mkString("[", ", ", "]")
-  def label = "ctx"
-  def children = decls
-  def substitute(tps: List[Type]) = {
-    if (decls.length != tps.length)
-      throw IError("unexpected number of types")
-    TypeSubstitution(decls.map(_.name) zip tps)
-  }
-}
-object TypeContext {
-  val empty = TypeContext(Nil)
-}
-case class TypeSubstitution(subs: List[(String,Type)]) extends SyntaxFragment {
-  override def toString = subs.map(_._2.toString).mkString("[", ", ", "]")
-  def label = "type args"
-  def children = subs.map(_._2)
-  def lookupO(s: String) = subs.find(_._1 == s).map(_._2)
+  def toSub = TVarDecl(name, Some(toRef))
 }
 
 /** declaration-level context: relative to a vocabulary, holds a regional+local context
@@ -274,7 +306,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
 
   // lookups
 
-  def lookupLocal(name: String): Option[EVarDecl] = {
+  def lookupLocal(name: String): Option[VarDecl] = {
     var regs = regions
     while (regs.nonEmpty) {
       val r = regs.head
@@ -333,7 +365,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
           candidates ::= ed
           ed.tp match {
             case ft:FunType =>
-              val matches = tpIn1.forall(_ == ft.ins.variables.last.tp) && tpOut.forall(_ == ft.out)
+              val matches = tpIn1.forall(_ == ft.inDecls.last.tp) && tpOut.forall(_ == ft.out)
               if (matches) return Some(ed)
             case _ =>
           }
@@ -341,7 +373,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
       case _ =>
     }
     // if only 1 declaration for the fixity exists, use it even if the types don't match
-    if (candidates.length == 1)
+    if (candidates.sizeIs == 1)
       candidates.headOption
     else
       None
@@ -425,7 +457,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   /** checks if this == smaller.append(result) */
   def unappend(smaller: GlobalContext): Option[LocalContext] = {
     // voc may be longer than shorter.voc, but that is not checked here
-    if (this.regions.length != smaller.regions.length) return None
+    if (this.regions.sizeIs != smaller.regions.length) return None
     if (this.regions.tail != smaller.regions.tail)
       return None // should be reference equal in practice and succeed immediately
     this.currentRegion.local unappend smaller.currentRegion.local
@@ -471,7 +503,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
       voc.lookupPath(pp) match {
         case Some(d) => Some((pp, d))
         case None =>
-          if (regions.length > 1 && currentIsTransparent) {
+          if (regions.sizeIs > 1 && currentIsTransparent) {
             // current region is transparent and there is a previous one to try
             pop().resolvePath(p)
           } else None
@@ -512,7 +544,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
         return Some(ret)
       }
       // look in transparent enclosing regions
-      gcO = if (gc.regions.length > 1 && gc.currentIsTransparent) {
+      gcO = if (gc.regions.sizeIs > 1 && gc.currentIsTransparent) {
         Some(gc.pop())
       } else {
         None

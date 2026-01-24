@@ -605,14 +605,14 @@ class Interpreter(vocInit: TheoryValue) {
         }
       case (Lambda(ei,eb,_), Lambda(vi,vb,_)) if inQuote =>
         // contexts must match up to alpha if types are equal
-        val ren = BiContext(ei,vi).renameLeftToRight
+        val ren = BiContext(ei.toLocalContext,vi.toLocalContext).renameLeftToRight
         assign(eb substitute ren, vb)(mustMatch, gc.append(vi))
       case (Quantifier(eq,ei,eb), Quantifier(vq,vi,vb)) if inQuote =>
         // TODO: allow alpha renaming
         if (eq != vq || ei != vi)
           assignFail("inequal terms")
         else {
-          val ren = BiContext(ei,vi).renameLeftToRight
+          val ren = BiContext(ei.toLocalContext,vi.toLocalContext).renameLeftToRight
           assign(eb substitute ren,vb)(mustMatch,gc.append(vi))
         }
       case (eo:ExprOver, vo: ExprOver) =>

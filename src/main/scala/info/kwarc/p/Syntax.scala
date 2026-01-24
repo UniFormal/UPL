@@ -187,7 +187,7 @@ sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
       (!this.defined || this.dfO == that.dfO) &&
       modifiers == that.modifiers
   }
-  def tc: TypeContext
+  def tc: LocalContext
 }
 
 /** unifies ExprDecl and VarDecl */
@@ -205,7 +205,7 @@ case class Modifiers(closed: Boolean, mutable: Boolean) {
   * @param tp the upper type bound, [AnyType] if unrestricted, null if to be inferred during checking
   * @param args input (bound in both type bound and definition)
   */
-case class TypeDecl(name: String, tc: TypeContext, tp: Type, dfO: Option[Type], modifiers: Modifiers) extends SymbolDeclaration {
+case class TypeDecl(name: String, tc: LocalContext, tp: Type, dfO: Option[Type], modifiers: Modifiers) extends SymbolDeclaration {
   def kind = Keywords.typeDecl
   def tpSep = "<"
   def ntO:Option[Notation] = None
@@ -214,7 +214,7 @@ case class TypeDecl(name: String, tc: TypeContext, tp: Type, dfO: Option[Type], 
 /** declares a typed symbol
   * @param tp the type, null if to be inferred during checking
   */
-case class ExprDecl(name: String, tc: TypeContext, tp: Type, dfO: Option[Expression], ntO: Option[Notation], modifiers: Modifiers) extends SymbolDeclaration with TypedDeclaration {
+case class ExprDecl(name: String, tc: LocalContext, tp: Type, dfO: Option[Expression], ntO: Option[Notation], modifiers: Modifiers) extends SymbolDeclaration with TypedDeclaration {
   def kind = if (modifiers.mutable) Keywords.mutableExprDecl else Keywords.exprDecl
   def tpSep = ":"
 }
@@ -757,53 +757,58 @@ object IntervalType {
 }
 
 /** dependent functions
-  * Declarations in ins are given in context-order
-  */
-case class FunType(ins: LocalContext, out: Type) extends Type {
+ */
+case class FunType(ins: ExprContext, out: Type) extends Type {
   override def toString = ProdType(ins).toString + " -> " + out
   def label = "->"
   def children = ins.children ::: List(out)
   override def childrenInContext =
-    ins.childrenInContext ::: List((None, Some(ins), out))
-  def finite = (out :: ins.decls.map(_.tp)).forall(_.finite)
-  def simple = ins.decls.forall(_.anonymous)
+    ins.childrenInContext ::: List((None, Some(ins.toLocalContext), out))
+  def finite = out.finite && inDecls.forall(_.tp.finite)
+  def simple = inDecls.forall(_.anonymous)
 
+  /** input declarations in reverse order */
+  def inDecls = ins.variables
+  /** input declarations in correct order */
+  def inDeclsRev = inDecls.reverse
   /** only valid if this.simple */
-  def simpleInputs = Util.reverseMap(ins.decls)(_.tp)
+  def simpleInputs = Util.reverseMap(inDecls)(_.tp)
 }
 
 object SimpleFunType {
-  def apply(ts: List[Type], t: Type) = FunType(LocalContext.make(ts.map(EVarDecl.anonymous)), t)
+  def apply(ts: List[Type], t: Type) = FunType(ExprContext.make(ts.map(EVarDecl.anonymous)), t)
   def unapply(ft: Type): Option[(List[Type],Type)] = ft match {
-    case FunType(ins,out) if ins.decls.forall(_.anonymous) => Some((Util.reverseMap(ins.decls)(_.tp), out))
+    case ft:FunType if ft.inDecls.forall(_.anonymous) => Some((ft.simpleInputs, ft.out))
     case _ => None
   }
 }
 
 /** dependent sums/tuples
-  * Declarations in comps are given in context-order
-  */
-case class ProdType(comps: LocalContext) extends Type {
+ */
+case class ProdType(comps: ExprContext) extends Type {
   def label = "(...)"
   def children = comps.children
   override def childrenInContext = comps.childrenInContext
   override def toString = {
     val (open, close) =
-      if (decls.length == 1 && decls.head.anonymous) ("", "") else ("(", ")")
+      if (decls.sizeIs == 1 && decls.head.anonymous) ("", "") else ("(", ")")
     val declsS =
-      decls.map(vd => if (vd.anonymous) vd.tp.toString else vd.toString)
+      Util.reverseMap(decls)(vd => if (vd.anonymous) vd.tp.toString else vd.toString)
     declsS.mkString(open, ",", close)
   }
-  def decls = comps.decls.reverse
+  /** declarations in reverse order */
+  def decls = comps.variables
+  /** declarations in correct order */
+  def declsRev = decls.reverse
   def finite = decls.forall(_.tp.finite)
-  def simple = comps.decls.forall(_.anonymous)
+  def simple = decls.forall(_.anonymous)
 
   /** only valid if this.simple */
-  def simpleComps = Util.reverseMap(comps.decls)(_.tp)
+  def simpleComps = decls.map(_.tp)
 }
 object ProdType {
   def simple(ts: List[Type]) = ProdType(
-    LocalContext.make(ts.map(EVarDecl.anonymous))
+    ExprContext.make(ts.map(EVarDecl.anonymous))
   )
 }
 
@@ -950,7 +955,7 @@ case class Query(scope: Theory, qvars: LocalContext, query: Expression) extends 
 /** anonymous function, introduction form for [[FunType]]
   * @param mayReturn whether a return statement in the body is caught at this level or passed through
   */
-case class Lambda(ins: LocalContext, body: Expression, mayReturn: Boolean) extends Expression {
+case class Lambda(ins: ExprContext, body: Expression, mayReturn: Boolean) extends Expression {
   /** used at run-time to store the frame relative to which the body must be interpreted when the function is applied */
   private[p] var frame: RegionalEnvironment = null
   override def copyFrom(sf: SyntaxFragment): this.type = {
@@ -964,7 +969,7 @@ case class Lambda(ins: LocalContext, body: Expression, mayReturn: Boolean) exten
   override def toString = s"($ins) -> $body"
   def label = "lambda"
   def children = ins.children ::: List(body)
-  override def childrenInContext = ins.childrenInContext ::: List((None, Some(ins), body))
+  override def childrenInContext = ins.childrenInContext ::: List((None, Some(ins.toLocalContext), body))
 }
 
 object Lambda {
@@ -1032,15 +1037,15 @@ case class ListElem(list: Expression, position: Expression) extends Expression {
   def children = List(list, position)
 }
 
-case class Quantifier(univ: Boolean, vars: LocalContext, body: Expression) extends Expression {
+case class Quantifier(univ: Boolean, vars: ExprContext, body: Expression) extends Expression {
   override def closing = vars == null
   def label = if (univ) "forall" else "exists"
   override def toString = s"($label $vars.$body)"
   def children = vars.children ::: List(body)
-  override def childrenInContext = vars.childrenInContext ::: List((None,Some(vars),body))
+  override def childrenInContext = vars.childrenInContext ::: List((None,Some(vars.toLocalContext),body))
 }
 object Quantifier {
-  def optional(u: Boolean, vs: LocalContext, bd: Expression) = if (vs.empty) bd else Quantifier(u,vs,bd)
+  def optional(u: Boolean, vs: ExprContext, bd: Expression) = if (vs.empty) bd else Quantifier(u,vs,bd)
 }
 
 /** typed equality, possibly negated */
@@ -1286,7 +1291,6 @@ case class UndefinedValue(tp: Type) extends Expression {
   *               unnamed output variables are the target of return statements
   */
 case class EVarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean, output: Boolean) extends Expression with VarDecl with TypedDeclaration {
-  def defined = dfO.isDefined
   def keyword = if (mutable) Keywords.mutableVarDecl else Keywords.varDecl
   override def toString = {
     val sep = if (output) "#" else ":"
@@ -1297,9 +1301,7 @@ case class EVarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Bo
     }
     s"$keyword $name$sep $tpS$vlS"
   }
-  def label = if (name != "") name else "_"
   def children = tp :: dfO.toList
-  def toRef = VarRef(name).copyFrom(this)
   def toSub = EVarDecl.sub(name, toRef)
 }
 object EVarDecl {
@@ -1514,7 +1516,7 @@ class PseudoBindfixOperator(val symbol: String) extends PseudoOperator {
         // curry multiple bindings into single ones
         // TODO support non-associative binders like exists-unique
         val bdI = interpret(meaning, List(Lambda(rest, bd, false)))
-        val lI = Lambda(LocalContext(vd), bdI, mr).withLocationFromTo(vd,bd)
+        val lI = Lambda(ExprContext(List(vd)), bdI, mr).withLocationFromTo(vd,bd)
         super.interpret(meaning, List(lI))
       case e => super.interpret(meaning, args)
     }
