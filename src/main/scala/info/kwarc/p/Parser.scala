@@ -409,13 +409,10 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     else if (startsWithAny(include,totalInclude)) parseInclude
     else if (startsWithS(typeDecl)) parseTypeDecl(mods)
     else if (startsWithS(mutableExprDecl)) parseExprDecl(mods.copy(mutable=true))
-    else if (startsWithS(exprDecl)) {
-      trim
-      val n = parseNameExtended
-      if (n.isEmpty) fail("name expected")
-      parseExprDecl(mods, Some(n))
+    else {
+      startsWithS(exprDecl) // No case distinction; no keyword => ExprDecl
+      parseExprDecl(mods)
     }
-    else parseExprDecl(mods)
     // else fail("declaration expected")
   }
 
