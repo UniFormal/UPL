@@ -627,17 +627,17 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
 
   def parseNotation = {
-    val fix = if (startsWithS("infix")) {
+    val fix = if (startsWithS(Keywords.infix)) {
       Infix
-    } else if (startsWithS("prefix")) {
+    } else if (startsWithS(prefix)) {
       Prefix
-    } else if (startsWithS("postfix")) {
+    } else if (startsWithS(postfix)) {
       Postfix
-    } else if (startsWithS("circumfix")) {
+    } else if (startsWithS(circumfix)) {
       Circumfix
-    } else if (startsWithS("applyfix")) {
+    } else if (startsWithS(applyfix)) {
       Applyfix
-    } else if (startsWithS("bindfix")) {
+    } else if (startsWithS(bindfix)) {
       Bindfix
     } else {
       fail("fixity expected")
@@ -1230,4 +1230,12 @@ object Keywords {
   val closedDecl = "closed"
   val modifiers = List(openDecl,closedDecl)
   val allDeclKeywords = List(openModule,closedModule,include,totalInclude,mutableExprDecl,typeDecl):::modifiers
+  val infix = "infix"
+  val prefix = "prefix"
+  val postfix = "postfix"
+  val circumfix = "circumfix"
+  val applyfix = "applyfix"
+  val bindfix = "bindfix"
+  val fixities = List(infix, prefix, circumfix, applyfix, bindfix)
 }
+
