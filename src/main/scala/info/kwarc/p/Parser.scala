@@ -201,17 +201,14 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   private case class Abort() extends Exception
   private case class TrialRunFailed() extends Exception
   private var trialRun = false
-  def reportErrorAt(msg: String, at: Int) = {
+  def reportError(msg: String, at: Int = index) = {
     if (trialRun) throw TrialRunFailed()
     val found = input.substring(at,Math.min(index+20,inputLength))
     val e = Error(Location(origin, at, at), msg + "; found " + (if (found.isEmpty) "[nothing]" else found))
     eh(e)
   }
-  def reportError(msg: String) = {
-    reportErrorAt(msg,index)
-  }
-  def fail(msg: String) = {
-    reportError(msg)
+  def fail(msg: String, at: Int = index) = {
+    reportError(msg, at)
     throw Abort()
   }
   /** runs code, returns result if no errors, otherwise backtracks */
@@ -476,8 +473,10 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
 
   def parseExprDecl(mods: Modifiers, nameAlreadyParsed: Option[String] = None): ExprDecl = {
+    val indexPre = index
     var declarationFound = false
     val name = nameAlreadyParsed getOrElse parseNameExtended
+    if (name.isEmpty) fail("name expected")
     val tc = if (startsWith("[")) parseTypeContext() else LocalContext.empty
     trim
     val args = if (startsWith("(")) Some(parseBracketedContext(PContext.empty)) else None
@@ -513,7 +512,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     // TODO this does not work yet because # is parsed as a postfix operator in the definiens
     if (vl.isEmpty && nt.isDefined) parseDef
     if (!declarationFound) {
-      fail("declaration expected")
+      fail("declaration expected", indexPre)
     }
     // bind arguments in type and definiens
     val (atp,avl) = args match {
@@ -551,7 +550,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   // variable declaration with a single :
   def parseVarDecl(mutable: Boolean, nameMandatory: Boolean)(implicit ctxs: PContext): EVarDecl = {
     val (vd,extras) = parseMultiVarDecl(mutable, nameMandatory)
-    if (extras > 0) reportErrorAt("too many :", vd.loc.from)
+    if (extras > 0) reportError("too many \":\"", vd.loc.from)
     vd
   }
   private def parseVarDecl(mutable: Boolean, nameMandatory: Boolean, colonCounter: ColonCounter)(implicit ctxs: PContext): EVarDecl = addRef {
@@ -592,7 +591,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       if (useMultiType>0) {
         useMultiType -= 1
         if (vd.tp.known || i > 0) {
-          reportErrorAt("omitted type expected due to subsequent ::", vd.loc.from)
+          reportError("omitted type expected due to subsequent ::", vd.loc.from)
           vd
         } else {
           vd.copy(tp = previousType)
@@ -604,7 +603,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       }
     }
     if (useMultiType > 0) {
-      reportErrorAt("declaration with omitted type expected due to subsequent ::", vds.head._1.loc.from)
+      reportError("declaration with omitted type expected due to subsequent ::", vds.head._1.loc.from)
     }
     // no need to call make because we've already reversed the list
     ExprContext(vdsR)
@@ -910,10 +909,11 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
             case Some(r) if startsWithDeclaration =>
               // p{decls}
               val incl = setRef(Include(r), expBeginAt)
+              val indexPre = index
               val ds = parseDeclarations(true)
               val sds = ds.flatMap {
                 case sd: SymbolDeclaration => List(sd)
-                case _ => reportError("symbol declaration expected"); Nil
+                case _ => reportError("symbol declaration expected", indexPre); Nil
               }
               val thy = setRef(Theory(incl::sds), incl.loc.from)
               modifyExp(Instance(thy))
@@ -1024,6 +1024,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
 
   def parseMatchCase(implicit ctxs: PContext) = addRef {
+    val indexPre = index
     val e = parseExpression
     e match {
       case mc: MatchCase => mc
@@ -1034,7 +1035,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         else
           VarRef(ins.decls.head.name)
         MatchCase(null, p.copyFrom(ins), bd)
-      case e => reportError("match case expected"); MatchCase(null,VarRef(""), e)
+      case e => reportError("match case expected", indexPre); MatchCase(null,VarRef(""), e)
     }
   }
 
@@ -1182,6 +1183,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         // - expr-to-type coercion allows expressions in type-positions
         // Setting noWeakPostops avoids parsing -> and other operators, which we want to handle ourselves.
         index = backtrackPoint
+        val indexPre = index
         val exp = parseExpression(ctxs.noWeakPostops)
         val tp = exp match {
           case r: Ref => r
@@ -1193,7 +1195,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           // This coercion should happen during type-checking (and it does for Refs and OwnedType(_,_,Ref)),
           // but because it changes Scala-type, we have to do it here already.
           case _: VarRef | _: Application | _: Projection | _: ListElem => UnivType(exp, null)
-          case _ => reportError("type expected"); AnyType
+          case _ => reportError("type expected", indexPre); AnyType
         }
         tp.copyFrom(exp)
       }
