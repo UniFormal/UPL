@@ -99,8 +99,9 @@ trait MaybeNamed extends SyntaxFragment {
 
 trait Named extends MaybeNamed {
   def name: String
-  def nameO: Some[String] = Some(name)
-  def anonymous = name == ""
+  def nameO: Some[String] = Some(nameOrAnonymous())
+  def anonymous: Boolean = Option(name.isEmpty).getOrElse(true) // catch name == null
+  def nameOrAnonymous(anonDefault: String = ""): String = if (anonymous) anonDefault else name
 }
 
 trait HasChildren[+A <: MaybeNamed] extends SyntaxFragment {

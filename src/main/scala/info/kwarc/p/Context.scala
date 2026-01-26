@@ -148,7 +148,7 @@ object LocalContext {
 trait VarDecl extends Named {
   def dfO: Option[Object]
   def defined = dfO.isDefined
-  def label = if (name != "") name else "_"
+  def label = nameOrAnonymous("_")
   def toRef = VarRef(name).copyFrom(this)
   def toSub: VarDecl
 }
@@ -300,7 +300,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   }
   def freshName = {
     var i = 0
-    while (local.decls.exists(vd => vd.name.startsWith("_" + i))) i += 1
+    while (local.decls.exists(vd => vd.nameOrAnonymous().startsWith("_" + i))) i += 1
     "_" + i
   }
 
