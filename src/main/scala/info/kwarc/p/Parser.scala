@@ -197,14 +197,17 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   private var index = 0
   private val inputLength = input.length
   override def toString = input.substring(index)
-  case class Error(l: Location, msg: String) extends SError(l, msg)
+  case class ParserError(l: Location, msg: String) extends SError(l, msg)
   private case class Abort() extends Exception
   private case class TrialRunFailed() extends Exception
   private var trialRun = false
-  def reportError(msg: String, at: Int = index) = {
+
+  def reportError(msg: String, from: Int = index, toIndex: Int = index) = {
     if (trialRun) throw TrialRunFailed()
-    val found = input.substring(at,Math.min(index+20,inputLength))
-    val e = Error(Location(origin, at, at), msg + "; found " + (if (found.isEmpty) "[nothing]" else found))
+    val to = if (toIndex > from && toIndex <= inputLength) toIndex
+            else Math.min(from + 20, inputLength)
+    val found = input.substring(from,to)
+    val e = ParserError(Location(origin, from, to), msg + "; found " + (if (found.isEmpty) "[nothing]" else found))
     eh(e)
   }
   def fail(msg: String, at: Int = index) = {
@@ -301,7 +304,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   // parses the string s and throws it away
   def skip(s: String) = {
     if (!startsWith(s)) {
-      reportError("expected " + s)
+      reportError("expected " + s, index, index + s.length)
     } else {
       index += s.length
     }
@@ -804,7 +807,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           val k = kindO.getOrElse {if (es.length > 1) CollectionKind.List else CollectionKind.Option}
           CollectionValue(es,k)
       } else if (startsWithS("`")) {
-        if (ctxs.contexts.length <= 1) reportError("eval outside quotation")
+        if (ctxs.contexts.length <= 1) reportError("eval outside quotation", index-1, inputLength)
         val e = parseExpression(ctxs.pop())
         skip("`")
         Eval(e)
@@ -1032,7 +1035,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         else
           VarRef(ins.decls.head.name)
         MatchCase(null, p.copyFrom(ins), bd)
-      case e => reportError("match case expected", indexPre); MatchCase(null,VarRef(""), e)
+      case e => reportError("match case expected", indexPre); MatchCase(null,setRef(VarRef(""),indexPre), e)
     }
   }
 
