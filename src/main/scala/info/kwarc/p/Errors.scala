@@ -38,8 +38,15 @@ class ErrorCollector extends ErrorHandler {
   def apply(e: SError) = {
     if (e.loc == null) throw IError(s"SError without valid Location: ${e.getMessage}")
     errors ::= e
+    val errO: Option[SError] = Option {
+      if (errors.count(_ == e) >= 10) HandlerError(e.loc, "The exact same error has been reported 10 times. Loop suspected.")
+      else if (errors.size > 1000) HandlerError(e.loc, "Exceeded 1000 errors. Giving up.")
+      else null
+    }
+    errO.foreach { err => errors ::= err; throw err }
   }
   def clear = {errors = Nil}
+  case class HandlerError(l: Location, msg: String) extends SError(l, msg)
 }
 
 trait ThrowsErrors {

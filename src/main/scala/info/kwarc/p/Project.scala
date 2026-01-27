@@ -69,8 +69,14 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
   }
 
   def updateAndCheck(so: SourceOrigin, src: String): TheoryValue = {
-    update(so, src)
-    check(so, false)
+    try{
+      update(so, src)
+      check(so, false).approximateMissingLocations()
+    }
+    catch{
+      case _: PError => get(so).getVocabulary
+    }
+
   }
 
   def check(so: SourceOrigin, alsoRun: Boolean): TheoryValue = {
@@ -230,8 +236,11 @@ object Project {
 }
 
 object ProjectTest{
+  val testCode: String = "val t = 1 match{n}"
   def main(args: Array[String]): Unit = {
     val proj = new Project(Nil)
+    proj.updateAndCheck(SourceOrigin("Test"), testCode)
+    proj.checkErrors()
     proj.runMaybeRepl(true)
   }
 }

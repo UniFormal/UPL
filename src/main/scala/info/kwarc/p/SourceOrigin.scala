@@ -4,7 +4,7 @@ package info.kwarc.p
 case class SourceOrigin(container: String, fragment: String = null) {
   def isAnonymous = container == null
   def isStandalone = fragment == null
-  override def toString = (if (container != null) container else "") + (if (fragment != null) "?" + fragment else "")
+  override def toString = (if (container != null) container else "_") + (if (fragment != null) "?" + fragment else "")
 }
 
 object SourceOrigin {

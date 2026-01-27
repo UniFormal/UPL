@@ -112,6 +112,21 @@ trait HasChildren[+A <: MaybeNamed] extends SyntaxFragment {
   def lookupO(name: String) = decls.find(_.nameO.contains(name))
   def lookup(name: String) = lookupO(name).get
   def declares(name: String) = lookupO(name).isDefined
+
+  /**
+    * Traverse the Fragment depth-first, and replace `null` locations with the span of all child locations.
+    * @return The same SyntaxFragment, but all locations which can reasonably be approximated are `!= null`
+    */
+  def approximateMissingLocations(debugPrint: Boolean = false): this.type = {
+    decls.tapEach {
+      case d:HasChildren[A] => d.approximateMissingLocations()
+      case d => d}
+    if (loc == null) {
+      decls.foldLeft(this)(this.withLocationFromTo(_, _))
+      if (debugPrint) println(s"Approximated missing location of $label at $loc")
+    } // expand loc over all children
+    this
+  }
 }
 
 /** identifiers */

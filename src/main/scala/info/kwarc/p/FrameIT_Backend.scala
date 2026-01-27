@@ -35,6 +35,7 @@ class FrameITProject private(main: Option[Expression] = None)(implicit debug: Bo
   private var counter = 0
   def currentFragment: String = fragment(counter)
   object SiTh extends ProjectEntry(SiThOrigin) {
+    implicit val so: SourceOrigin = SiThOrigin
     /** Set the SiTh to the combination of all [[Declaration]]s of all SiThFragments
       *
       * @return `false` iff the resulting [[ProjectEntry]] does not type-check
@@ -42,32 +43,35 @@ class FrameITProject private(main: Option[Expression] = None)(implicit debug: Bo
     def update() = updateAsCombination(List.range(0, counter + 1))
 
     def updateAsCombination(frags: List[Int]) = {
-      val includes = for (f <- frags) yield include(fragment(f))
-      set(includes)
-
+      val includes = for (f <- frags) yield s"include ${fragment(f)}"
+      updateAndCheck(s"theory SiTh{ ${includes.mkString(" ")} }")
       removeIncludes()
       if (debug) println(toString)
       !hasErrors
     }
-    def set(fromDecls: List[Declaration]): TheoryValue = {
-      updateAndCheck(SiThOrigin, TheoryValue(Module("SiTh", closed = true, fromDecls)))
+    def removeIncludes() = {
+      parsed = getVocabulary.copy(List(get.copy(df=get.df.copy(decls.filterNot(_.isInstanceOf[Include])))))
+      check(SiThOrigin, false)
     }
-    def removeIncludes(): TheoryValue =
-      set(decls.filterNot(_.isInstanceOf[Include]))
-    def asModule: Module =
+
+    def get: Module =
       getVocabulary
         .decls
         .collectFirst{
           case m: Module if m.name == "SiTh" => m
         }
-        .getOrElse(Module("SiTh", closed = true, Theory.empty))
-    def decls: List[Declaration] = asModule.decls
+        .getOrElse { updateAsCombination(Nil); get }
+
+    def decls: List[Declaration] = get.decls
     override def toString: String =
       source.toString ++ " ::\n" ++ decls.mkString("{", "\n ", "\n}").indent(2)
   }
 
+  def updateAndCheck(src: String)(implicit so: SourceOrigin): TheoryValue = updateAndCheck(so, src)
+
   def SiThDecls = SiTh.decls
-  def getSiTh = SiTh.asModule
+  def getSiTh = SiTh.get
+
   def tryAdd(decls_String: String): Boolean = {
     val previousFragment = currentFragment
     counter += 1
@@ -81,20 +85,14 @@ class FrameITProject private(main: Option[Expression] = None)(implicit debug: Bo
     counter = 0
     entries = entries.filter {
       _.source match {
-      case SourceOrigin("SiTh", i) if i != null => false
+      case so@SourceOrigin("SiTh", i) => so.isStandalone
       case _ => true
       }
     }
     SiTh.update()
   }
   def getSiThErrors: List[SError] = SiTh.errors.getErrors
-  def updateAndCheck(so: SourceOrigin, thVal: TheoryValue): TheoryValue = {
-    val e = get(so)
-    e.errors.clear
-    e.parsed = thVal
-    e.checkedIsDirty = true
-    check(so, false)
-  }
+
   /** Find the corresponding [[ProjectEntry]] in [[entries]].
     *
     * If there isn't one yet, create it, and insert it as the __second to last__ entry, before the [[SiTh]]

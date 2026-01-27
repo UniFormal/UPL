@@ -107,7 +107,7 @@ object Parser {
     } else {
       p.parseAll(p.parseDeclarations(false))
     }
-    TheoryValue(ds)
+    p.setRef(TheoryValue(ds), 0).approximateMissingLocations()
   }
 
   def expression(so: SourceOrigin, s: String, eh: ErrorHandler): Expression = {
