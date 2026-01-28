@@ -1,4 +1,4 @@
-module Test6 {
+module Test102 {
 
 
     axiom_outside_theory: |- false

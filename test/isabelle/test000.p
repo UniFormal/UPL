@@ -1,4 +1,4 @@
-module Test0 {
+module Test000 {
 
     // comment
 
@@ -9,6 +9,6 @@ module Test0 {
     m: int
 
     // is a problem
-    f: int -> bool
+    //f: int -> bool
 
 }

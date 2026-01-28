@@ -4,13 +4,13 @@ import info.kwarc.p.IsabelleCompiler.compileIsabelle
 
 
 class IsabelleCompiler(tv: TheoryValue) {
-  def compileToIsa(): Isa = compileIsabelle(tv)
+  def compileToIsa(): IsaDecl = compileIsabelle(tv)
 
 }
 
 object IsabelleCompiler {
 
-  def compileIsabelle(tv: TheoryValue): Isa = {
+  def compileIsabelle(tv: TheoryValue): IsaDecl = {
     // first and only declaration must be a module, ensured by checker?
     assert(tv.decls.length == 1 && tv.decls.head.isInstanceOf[Module])
     compileDecl(tv.decls.head)
@@ -18,10 +18,11 @@ object IsabelleCompiler {
 
   def findPackages(decls: IsaBody): String = {
     // todo: implement to find the packages for 'imports' statement
+    //if (rat || real || complex) "Complex_Main" else
     "Main"
   }
 
-  def compileDecl(decl: Declaration): Isa = {
+  def compileDecl(decl: Declaration): IsaDecl = {
     decl match {
       case m: Module =>
         // closed/open - theory/locale
@@ -39,13 +40,14 @@ object IsabelleCompiler {
     }
   }
 
-  def compileDeclLocale(decl: Declaration): Isa = {
+  def compileDeclLocale(decl: Declaration): IsaDecl = {
     decl match {
       case ed: ExprDecl => ed.tp match {
         case tp: ProofType => IsaLocaleAssumption(ed.name, compileType(tp))
         case tp => IsaLocaleFixes(ed.name, compileType(tp))
       }
       case td: TypeDecl => IsaLocaleTypeDummy()
+      case i: Include => IsaLocaleImport(i.dom.label)
     }
   }
 
@@ -54,7 +56,7 @@ object IsabelleCompiler {
   }
 
   def compileDeclsLocale(decls: List[Declaration]): IsaBody = {
-    IsaBody(decls.map(compileDeclLocale))
+    IsaBody(decls.map(compileDeclLocale), true)
   }
 
   def compileType(tp: Type): IsaType = {
@@ -66,7 +68,12 @@ object IsabelleCompiler {
       case FunType(ins, out) => IsaFunType(ins.variables.map(vd => compileType(vd.tp)), compileType(out))
       case ClosedRef(n) => IsaClosedRefType(n)
 
+      case NumberType(false, false, false, false, false) => IsaNatType("nat") // todo: remove String argument
       case NumberType(true, false, false, false, false) => IsaIntType(tp.label)
+      case NumberType(true, true, false, false, false) => IsaRatType("rat")
+      case NumberType(true, true, true, false, false) => IsaComplexType("complex")
+      case NumberType(true, true, false, true, true) => IsaRealType("real")
+
       case BoolType => IsaBoolType(tp.label)
 
       case ProofType(formula) => IsaLocaleAssumptionType(compileExpr(formula))
@@ -79,6 +86,11 @@ object IsabelleCompiler {
   def compileExpr(expr: Expression): IsaExpr = {
 
     expr match {
+
+      case NumberValue(tp, re, im) => tp match {
+        case int => IsaNumber(re) // todo: convert Real to BigInt & compile to IsaInt, IsaReal; delete IsaNumber
+        case float => IsaNumber(re)
+      }
       case IntValue(i) => IsaInt(i)
       case BoolValue(b) => IsaBool(b)
 
@@ -112,9 +124,13 @@ object IsabelleCompiler {
 
       case Less => IsaLess
       case LessEq => IsaLessEq
+
       case Plus => IsaPlus
+      case Divide => IsaDivide
 
       case Equal => IsaEqual
+
+      case UMinus => IsaUMinus
     }
   }
 }

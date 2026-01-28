@@ -1,4 +1,4 @@
-module Test5 {
+module Test101 {
 
 
 theory Partial_order {

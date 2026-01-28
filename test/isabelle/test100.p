@@ -1,4 +1,4 @@
-module Test4 {
+module Test100 {
 
     theory T {
         t = true

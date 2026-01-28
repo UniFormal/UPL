@@ -1,14 +1,14 @@
 package info.kwarc.p
 
 
+/** Isabelle declarations */
 
-
-abstract class Isa {
+abstract class IsaDecl {
   def toString: String
 
 }
 
-case class IsaTheory(name: String, decls: IsaBody) extends Isa {
+case class IsaTheory(name: String, decls: IsaBody) extends IsaDecl {
   override def toString = s"theory ${name}\n" +
     s"  imports " + IsabelleCompiler.findPackages(decls) + "\n" +
     s"begin\n\n" +
@@ -16,25 +16,25 @@ case class IsaTheory(name: String, decls: IsaBody) extends Isa {
     s"end"
 }
 
-case class IsaLocale(name: String, decls: IsaBody) extends Isa {
-  override def toString = s"locale $name\n" +
-    "begin\n\n" +
-    decls.toString +
-    "end\n"
-
+case class IsaLocale(name: String, decls: IsaBody) extends IsaDecl {
+  override def toString = s"locale $name =\n" +
+    decls.toString
 }
 
 //case class IsaLocale
 
-case class IsaBody(decls: List[Isa]) extends Isa {
-  override def toString = decls.mkString("\n") + "\n\n"
+case class IsaBody(decls: List[IsaDecl], indent: Boolean = false) extends IsaDecl {
+  override def toString =
+    if (indent) {"  " + decls.mkString("\n  ") + "\n\n"} else {decls.mkString("\n") + "\n\n"}
 }
 
 
+/*** Isabelle commands
+ * declarations associated with a particular keyword
+ * e.g. definition, lemma, theorem, fun, ...
+**/
 
-/*** Isabelle declarations **/
-
-case class IsaDefiniton(name: String, tp: IsaType, exprO: Option[IsaExpr]) extends Isa {
+case class IsaDefiniton(name: String, tp: IsaType, exprO: Option[IsaExpr]) extends IsaDecl {
   override def toString = exprO match {
     case Some(expr) => s"definition $name :: $tp where\n" +
       s"  \"$name = $expr\"\n"
@@ -42,7 +42,7 @@ case class IsaDefiniton(name: String, tp: IsaType, exprO: Option[IsaExpr]) exten
   }
 }
 
-case class IsaExprDecl(name: String, tp: IsaType, exprO: Option[IsaExpr]) extends Isa {
+case class IsaExprDecl(name: String, tp: IsaType, exprO: Option[IsaExpr]) extends IsaDecl {
   def isa_keyword: String = tp match {
     case _: IsaFunType => "fun"
     case _ => "definition"
@@ -61,7 +61,7 @@ case class IsaExprDecl(name: String, tp: IsaType, exprO: Option[IsaExpr]) extend
   }
 }
 
-case class IsaTypeDef(name: String, tpO: Option[IsaType]) extends Isa {
+case class IsaTypeDef(name: String, tpO: Option[IsaType]) extends IsaDecl {
   override def toString = tpO match {
     case Some(tp) => s"type_synonym $name = $tp"
     // todo: what about type declarations without definiens? (see test3.p)
@@ -71,21 +71,27 @@ case class IsaTypeDef(name: String, tpO: Option[IsaType]) extends Isa {
   }
 }
 
-case class IsaLocaleTypeDummy() extends Isa {
+case class IsaLocaleTypeDummy() extends IsaDecl {
   override def toString = ""
 }
 
-case class IsaLocaleFixes(name: String, tp: IsaType) extends Isa {
+case class IsaLocaleFixes(name: String, tp: IsaType) extends IsaDecl {
   override def toString = s"fixes $name :: $tp"
 }
 
-case class IsaLocaleAssumption(name: String, tp: IsaType) extends Isa {
+case class IsaLocaleAssumption(name: String, tp: IsaType) extends IsaDecl {
   override def toString = s"assumes $name: $tp"
+}
+
+case class IsaLocaleImport(name: String) extends IsaDecl {
+  override def toString = s"$name +"
 }
 
 /*** Isabelle types **/
 
-trait IsaType extends Isa {
+// todo: implement all UPL types
+
+trait IsaType extends IsaDecl {
   def name: String
 }
 
@@ -93,7 +99,23 @@ case class IsaUnknownType(name: String) extends IsaType {
   override def toString = s"$name"
 }
 
+case class IsaNatType(name: String) extends IsaType {
+  override def toString = s"$name"
+}
+
 case class IsaIntType(name: String) extends IsaType {
+  override def toString = s"$name"
+}
+
+case class IsaRatType(name: String) extends IsaType {
+  override def toString = s"$name"
+}
+
+case class IsaRealType(name: String) extends IsaType {
+  override def toString = s"$name"
+}
+
+case class IsaComplexType(name: String) extends IsaType {
   override def toString = s"$name"
 }
 
@@ -135,12 +157,32 @@ case class IsaLocaleAssumptionType(formula: IsaExpr) extends IsaType {
 
 /*** Isabelle expressions **/
 
-trait IsaExpr extends Isa {
+trait IsaExpr extends IsaDecl {
 
+}
+
+case class IsaNumber(value: Real) extends IsaExpr {
+  override def toString = value.toString
+}
+
+case class IsaNat(value: BigInt) extends IsaExpr {
+  override def toString = value.toString
 }
 
 // inquire into BigInt
 case class IsaInt(value: BigInt) extends IsaExpr {
+  override def toString = value.toString
+}
+/*
+case class IsaRat(value: Integral) extends IsaExpr {
+  override def toString = value.toString
+}
+*/
+case class IsaReal(value: Double) extends IsaExpr {
+  override def toString = value.toString
+}
+
+case class IsaComplex(value: Integral[Double]) extends IsaExpr {
   override def toString = value.toString
 }
 
@@ -235,6 +277,10 @@ sealed trait IsaComparison extends IsaNumberOperator
 sealed trait IsaConnective extends IsaOperator
 
 case object IsaPlus extends IsaInfixOperator("+") with IsaArithmetic
+
+case object IsaDivide extends IsaInfixOperator("/") with IsaArithmetic
+
+case object IsaUMinus extends IsaPrefixOperator("-") with IsaArithmetic
 
 case object IsaLess extends IsaInfixOperator("<") with IsaComparison
 
