@@ -1010,6 +1010,19 @@ class Checker(errorHandler: ErrorHandler) {
       val declsF = flattenCheckDeclarations(gc.enterEmpty(),thy.decls,pars)
       Theory(declsF, Some(kf))
     }
+    override def apply(exp: Expression)(implicit gc: GlobalContext, a:Unit) = {
+      matchC(exp) {
+        case r: Ref => gc.lookupRef(r) match {
+          case Some(ed: ExprDecl) => ed.dfO match {
+            case Some(df) if !ed.modifiers.mutable && df.isInstanceOf[Ref] => apply(df)
+            case _ => r
+          }
+          case Some(_: EVarDecl) => r
+          case _ => fail("illegal expressions")(exp) // impossible if exp is checked
+        }
+        case _ => applyDefault(exp)
+      }
+    }
     override def apply(tp: Type)(implicit gc: GlobalContext, a:Unit): Type = {
       matchC(tp) {
         case r: Ref => gc.lookupRef(r) match {
@@ -1017,6 +1030,7 @@ class Checker(errorHandler: ErrorHandler) {
             case Some(df) => apply(df)
             case None => r
           }
+          case Some(_: TVarDecl) => r
           case _ => fail("illegal type")(tp) // impossible if tp is checked
         }
         case ct: ClassType => ct // We don't recurse into the domain; later checks must be able to handle non-normal domains.
