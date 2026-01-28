@@ -75,6 +75,10 @@ object IsabelleCompiler {
       case NumberType(true, true, false, true, true) => IsaRealType("real")
 
       case BoolType => IsaBoolType(tp.label)
+      case StringType => IsaStringType()
+      case UnitType => IsaUnitType()
+
+      case EmptyType => IsaEmptyType()
 
       case ProofType(formula) => IsaLocaleAssumptionType(compileExpr(formula))
 
@@ -87,12 +91,17 @@ object IsabelleCompiler {
 
     expr match {
 
+      // numbers
       case NumberValue(tp, re, im) => tp match {
         case int => IsaNumber(re) // todo: convert Real to BigInt & compile to IsaInt, IsaReal; delete IsaNumber
         case float => IsaNumber(re)
       }
       case IntValue(i) => IsaInt(i)
+      // bool & string
       case BoolValue(b) => IsaBool(b)
+      case StringValue(value) => IsaString(value)
+      // unit & any
+      case UnitValue => IsaUnit()
 
       case Lambda(ins, body, mayReturn) => IsaLambda(ins.variables.map(compileExpr), compileExpr(body), true)
       case VarDecl(name, tp, dfO, mutable, output) => dfO match {

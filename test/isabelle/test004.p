@@ -1,5 +1,6 @@
 module Test004 {
 
+    // number types
 
     a: nat = 1
     b: int = -1

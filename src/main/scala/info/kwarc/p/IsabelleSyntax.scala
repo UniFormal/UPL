@@ -5,7 +5,6 @@ package info.kwarc.p
 
 abstract class IsaDecl {
   def toString: String
-
 }
 
 case class IsaTheory(name: String, decls: IsaBody) extends IsaDecl {
@@ -57,7 +56,17 @@ case class IsaExprDecl(name: String, tp: IsaType, exprO: Option[IsaExpr]) extend
     case Some(expr) => s"$isa_keyword $name :: $tp where\n" +
       // todo: better solution for handling "=" in 'definition' versus 'fun'.
       {if (isa_keyword == "fun") (s"  \"$name $expr\"") else s"  \"$name = $expr\""}
-    case None => s"$isa_keyword $name :: $tp\n"
+    case None =>
+      // todo: handle type empty & expression declarations without definiens
+      // todo:
+      if (tp.isInstanceOf[IsaEmptyType])
+        /*"typedecl empty\n" +
+          "definition e :: \"empty\" where\n  \"e = undefined\""
+         */
+        throw IError("Can't translate empty type to Isabelle")
+      else
+        s"$isa_keyword $name :: $tp where\n" +
+        s"\"$name = undefined\""
   }
 }
 
@@ -93,14 +102,15 @@ case class IsaLocaleImport(name: String) extends IsaDecl {
 
 trait IsaType extends IsaDecl {
   def name: String
+  override def toString = s"$name"
 }
 
 case class IsaUnknownType(name: String) extends IsaType {
-  override def toString = s"$name"
+
 }
 
 case class IsaNatType(name: String) extends IsaType {
-  override def toString = s"$name"
+
 }
 
 case class IsaIntType(name: String) extends IsaType {
@@ -121,6 +131,15 @@ case class IsaComplexType(name: String) extends IsaType {
 
 case class IsaBoolType(name: String) extends IsaType {
   override def toString = s"$name"
+}
+
+case class IsaStringType() extends IsaType {
+  def name = "char list"
+}
+
+case class IsaEmptyType() extends IsaType {
+  throw IError("Can't handle empty type")
+  def name = "empty"
 }
 
 
@@ -144,7 +163,11 @@ case class IsaFunType(ins: List[IsaType], out: IsaType, nested: Boolean = false)
 
 case class IsaClosedRefType(n: String) extends IsaType {
   def name: String = n
-  override def toString: String = name
+  //override def toString: String = name
+}
+
+case class IsaUnitType() extends IsaType {
+  def name: String = "unit"
 }
 
 case class IsaLocaleAssumptionType(formula: IsaExpr) extends IsaType {
@@ -188,6 +211,18 @@ case class IsaComplex(value: Integral[Double]) extends IsaExpr {
 
 case class IsaBool(value: Boolean) extends IsaExpr {
   override def toString = value.toString.head.toUpper + value.toString.tail
+}
+
+case class IsaString(value: String) extends IsaExpr {
+  override def toString = s"''$value''"
+}
+
+case class IsaEmpty() extends IsaExpr {
+  IError("cannot parse an empty value")
+}
+
+case class IsaUnit() extends IsaExpr {
+  override def toString = "()"
 }
 
 case class IsaLambda(args: List[IsaExpr], body: IsaExpr, unparseAsFun: Boolean = false, nested: Boolean = false) extends IsaExpr {
