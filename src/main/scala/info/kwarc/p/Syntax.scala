@@ -46,7 +46,7 @@ sealed abstract class Declaration extends SyntaxFragment with MaybeNamed {
 
 sealed abstract class NamedDeclaration extends Declaration with Named {
   def modifiers: Modifiers
-  def label = nameOrAnonymous()
+  def label = name
 }
 sealed abstract class UnnamedDeclaration extends Declaration {
   val nameO = None
@@ -389,7 +389,7 @@ object FlatOwnedObject {
 
 object OwnedReference {
   def apply(o: Expression, d: Theory, nd: NamedDeclaration): OwnedObject = {
-    val n = nd.nameOrAnonymous()
+    val n = nd.name
     nd match {
       case _:ExprDecl => OwnedExpr(o,d, ClosedRef(n))
       case _:TypeDecl => OwnedType(o,d, ClosedRef(n))

@@ -12,15 +12,6 @@ class ProjectEntry(val source: SourceOrigin) {
   var result = Theory.empty
   def global = source.fragment == null
   def getVocabulary = if (checkedIsDirty) parsed else checked
-  def asModule: Module = {
-    getVocabulary.decls match{
-      case (m:Module) :: Nil => return m
-      case _ =>
-    }
-    val m = if (source.isAnonymous) Module.anonymous(getVocabulary.decls)
-      else  Module(source.toString, closed = false, getVocabulary)
-    m.copyFrom(parsed)
-  }
 }
 
 /**
@@ -72,20 +63,14 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     le.errors.clear
     le.parsed = Parser.text(so, src, le.errors)
     // the following line can be used during debugging to find missing locations in parsed content
-    //TestLocationFields(le.asModule)(GlobalContext(le.asModule),())
+    //TestLocationFields(Module.anonymous(le.parsed.decls))(GlobalContext(le.parsed.decls),())
     DependencyAnalyzer.update(le)
     le.checkedIsDirty = true
   }
 
   def updateAndCheck(so: SourceOrigin, src: String): TheoryValue = {
-    try{
-      update(so, src)
-      check(so, false).approximateMissingLocations()
-    }
-    catch{
-      case _: PError => get(so).getVocabulary
-    }
-
+    update(so, src)
+    check(so, false)
   }
 
   def check(so: SourceOrigin, alsoRun: Boolean): TheoryValue = {
@@ -98,8 +83,6 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
       le.checked = leC
       le.checkedIsDirty = false
     }
-    // the following line can be used during debugging to find missing locations in checked content
-    //TestLocationFields(le.asModule)(GlobalContext(le.asModule), ())
     if (alsoRun) {
       if (le.errors.hasErrors) return le.checked
       val ip = new Interpreter(vocR)
