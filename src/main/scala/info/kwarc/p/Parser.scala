@@ -909,7 +909,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
             case _ => None
           }
           asRef(exp) match {
-            case Some(r) if startsWithDeclaration =>
+            case Some(r) if startsWithDeclaration || startsWith("}") =>
               // p{decls}
               val incl = setRef(Include(r), expBeginAt)
               val indexPre = index
