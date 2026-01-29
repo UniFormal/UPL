@@ -211,7 +211,7 @@ object Project {
       val props = File.readPropertiesFromString(File.read(projFile))
       val src = props("source").getOrElse("").split("\\s")
       val mn = props("main")
-      val ps = src.toList.flatMap {s =>
+      val ps = src.toList.flatMap {s => //ToDo: Handle IOExceptions from incorrect paths
         val f = projFile.up.resolve(s)
         pFiles(f)
       }

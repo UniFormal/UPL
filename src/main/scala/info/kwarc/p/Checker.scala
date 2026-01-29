@@ -604,7 +604,7 @@ class Checker(errorHandler: ErrorHandler) {
     (as.decls.reverse zip bs.decls.reverse).foreach {case (a,b) =>
       val bS = Substituter(gc,subI, b.tp)
       checkSubtype(gc, a.tp, bS)
-      subI = subI.appendRename(a.name, b)
+      subI = subI.appendRename(a.name, b) // ToDo: also add a to the context
     }
     subI
   }

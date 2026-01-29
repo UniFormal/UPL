@@ -1040,8 +1040,8 @@ case class ListElem(list: Expression, position: Expression) extends Expression {
 case class Quantifier(univ: Boolean, vars: ExprContext, body: Expression) extends Expression {
   override def closing = vars == null
   def label = if (univ) "forall" else "exists"
-  override def toString = s"($label $vars.$body)"
-  def children = vars.children ::: List(body)
+  override def toString = s"($label $vars.$body)" // ToDo: Closing Quants print as "forall null. body"
+  def children = vars.children ::: List(body)// ToDo: Crashes if vars == null
   override def childrenInContext = vars.childrenInContext ::: List((None,Some(vars.toLocalContext),body))
 }
 object Quantifier {

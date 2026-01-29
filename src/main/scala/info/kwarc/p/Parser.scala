@@ -488,7 +488,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       // sugar for declaring an axiom: c:--- F ---->  c: |- Forall F
       declarationFound = true
       val e = parseExpression(PContext.empty)
-      ProofType(Quantifier(true, null, e))
+      ProofType(Quantifier(true, null, e))// ToDO no Ref added
     } else if (startsWithS(":")) {
       declarationFound = true
       parseType(PContext.empty)
@@ -520,7 +520,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     // bind arguments in type and definiens
     val (atp,avl) = args match {
       case None => (tp,vl)
-      case Some(lc) => (FunType(lc,tp), vl map {v => Lambda(lc,v, true)})
+      case Some(lc) => (FunType(lc,tp), vl map {v => Lambda(lc,v, true)})// ToDO no Ref added
     }
     ExprDecl(name, tc, atp, avl, nt, mods)
   }
