@@ -1013,13 +1013,23 @@ class Checker(errorHandler: ErrorHandler) {
     override def apply(exp: Expression)(implicit gc: GlobalContext, a:Unit) = {
       matchC(exp) {
         case r: Ref => gc.lookupRef(r) match {
-          case Some(ed: ExprDecl) => ed.dfO match {
-            case Some(df) if !ed.modifiers.mutable && df.isInstanceOf[Ref] => apply(df)
-            case _ => r
-          }
-          case Some(_: EVarDecl) => r
-          case _ => fail("illegal expressions")(exp) // impossible if exp is checked
+          // Collapse a reference to another reference (elim-rule)
+          case Some(ExprDecl(_,_,_,Some(df:Ref),_,Modifiers(_,false))) if df != r => apply(df:Expression)
+          case Some(_) => r // All other references have a normalized head
+          case None if r.isInstanceOf[VarRef] => r // ToDo when checking ExprContexts gc isn't updated => VarRefs are not found
+          case None => fail("unknown identifier")(exp)
         }
+        // Expressions that certainly don't belong into a type
+        case Assert(formula) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
+        case Assign(target, value) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
+        case Block(exprs) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
+        case IfThenElse(cond, thn, els) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
+        case Match(expr, cases, handler) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
+        case MatchCase(context, pattern, body) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
+        case For(vd, range, body) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
+        case While(cond, body) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
+        case Return(exp, thrw) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
+        // ToDo: Add special rules
         case _ => applyDefault(exp)
       }
     }
