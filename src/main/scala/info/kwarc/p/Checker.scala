@@ -1010,11 +1010,14 @@ class Checker(errorHandler: ErrorHandler) {
       val declsF = flattenCheckDeclarations(gc.enterEmpty(),thy.decls,pars)
       Theory(declsF, Some(kf))
     }
-    override def apply(exp: Expression)(implicit gc: GlobalContext, a:Unit) = {
-      matchC(exp) {
+    override def apply(exp: Expression)(implicit gc: GlobalContext, a:Unit) = matchC(exp) {
         case r: Ref => gc.lookupRef(r) match {
           // Collapse a reference to another reference (elim-rule)
-          case Some(ExprDecl(_,_,_,Some(df:Ref),_,Modifiers(_,false))) if df != r => apply(df:Expression)
+          case Some(ExprDecl(_,_,_,Some(df),_,Modifiers(_,false))) if df != r => df match {
+            case _:Ref => apply(df)
+            case OwnedExpr(_,_,_:Ref) => apply(df)
+            case _ => r
+          }
           case Some(_) => r // All other references have a normalized head
           case None if r.isInstanceOf[VarRef] => r // ToDo when checking ExprContexts gc isn't updated => VarRefs are not found
           case None => fail("unknown identifier")(exp)
@@ -1032,7 +1035,6 @@ class Checker(errorHandler: ErrorHandler) {
         // ToDo: Add special rules
         case _ => applyDefault(exp)
       }
-    }
     override def apply(tp: Type)(implicit gc: GlobalContext, a:Unit): Type = {
       matchC(tp) {
         case r: Ref => gc.lookupRef(r) match {
