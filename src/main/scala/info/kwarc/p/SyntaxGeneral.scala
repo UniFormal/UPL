@@ -13,7 +13,7 @@ trait SyntaxFragment {
   }
   def toStringShort: String = {
     val s = toString
-    s.take(Math.min(20,s.length))
+    s.take(Math.min(30,s.length))
   }
   /** moves over mutable fields, may be called after performing traversals
    * if the resulting expression is "the same" as the original in some sense
@@ -144,8 +144,12 @@ case class Location(origin: SourceOrigin, from: Int, to: Int) {
   def contains(that: Location): Boolean = this.origin == that.origin && this.from <= that.from && that.to <= this.to
   def contains(that: Int): Boolean = contains(Location.single(origin, that))
   def extendTo(l: Location) = copy(to=l.to)
+  def union(l: Location): Location =
+    if(l==null || l.origin != origin) this
+    else Location(origin, Math.min(l.from, from), Math.max(l.to, to))
 }
 
 object Location {
   def single(o: SourceOrigin, p: Int) = Location(o,p,p+1)
+  def covering(sfs: List[SyntaxFragment]): Option[Location] = sfs.map(_.loc).reduceOption(_ union _)
 }

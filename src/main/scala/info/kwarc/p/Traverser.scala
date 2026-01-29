@@ -461,7 +461,7 @@ object Regionals {
 object TestLocationFields extends StatelessTraverser {
   def test(sf: SyntaxFragment) = {
     if (sf != null && sf.loc == null)
-      println("missing location:" + sf.toStringShort)
+      println(s"${sf.getClass.getSimpleName} with missing location: ${sf.toStringShort}")
   }
   override def apply(decl: Declaration)(implicit gc: GlobalContext, a: Unit) = {
     test(decl)

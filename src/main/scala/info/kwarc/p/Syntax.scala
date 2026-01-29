@@ -132,7 +132,7 @@ case class Module(name: String, closed: Boolean, df: TheoryValue) extends NamedD
 }
 
 object Module {
-  def anonymous(decls: List[Declaration]) = Module("", false, decls)
+  def anonymous(decls: List[Declaration]) = Module("", false, decls).withLocation(Location.covering(decls).orNull)
   def apply(name: String, closed: Boolean, ds: List[Declaration] = Nil): Module = Module(name, closed, TheoryValue(ds))
 }
 

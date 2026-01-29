@@ -98,13 +98,14 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
     val so = makeOrigin(doc)
     val txt = doc.getText()
     val txtU = if (doc.fileName.endsWith(".tex")) Tex.detexify(txt) else txt
-    proj.updateAndCheck(so,txtU)
-    val diags = proj.get(so).errors.getErrors.map {e =>
-      // TODO: Catch errors with e.loc == null
-      val rg = range(doc,e.loc)
-      new Diagnostic(rg,e.getMessage)
+    try{ proj.updateAndCheck(so,txtU) }
+    finally {
+      val diags = proj.get(so).errors.getErrors.map { e =>
+        val rg = range(doc, e.loc)
+        new Diagnostic(rg, e.getMessage)
+      }
+      diagn.set(doc.uri, js.Array(diags: _*))
     }
-    diagn.set(doc.uri,js.Array(diags: _*))
   }
 
   def symbols(doc: TextDocument): js.Array[VSCode#DocumentSymbol] = {
