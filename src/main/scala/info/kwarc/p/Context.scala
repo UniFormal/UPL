@@ -113,7 +113,7 @@ case class LocalContext(variables: List[VarDecl]) extends AbstractLocalContext[L
  * some, but not all, operations preserve the special case of typing
  */
 case class ExprContext(variables: List[EVarDecl]) extends AbstractLocalContext[ExprContext,EVarDecl] {
-  def toLocalContext = LocalContext(variables)
+  def toLocalContext = LocalContext(variables).copyFrom(this)
   def local = toLocalContext
   def appendE(vd: EVarDecl) = force(_.append(vd))
   def force(f: ExprContext => LocalContext) = ExprContext.force(f(this))
@@ -131,7 +131,7 @@ object ExprContext {
   val empty = ExprContext(Nil)
   def apply(vd: EVarDecl): ExprContext = ExprContext(List(vd))
   def make(vds: List[EVarDecl]) = ExprContext(vds.reverse)
-  def force(lc: LocalContext) = ExprContext(lc.variables.asInstanceOf[List[EVarDecl]])
+  def force(lc: LocalContext) = ExprContext(lc.variables.asInstanceOf[List[EVarDecl]]).copyFrom(lc)
 }
 object LocalContext {
   val empty = LocalContext(Nil)

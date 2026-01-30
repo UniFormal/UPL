@@ -20,9 +20,9 @@ abstract class Traverser[A] {
   }
 
   /** must satisfy apply(thy.toValue) == apply(thy).toValue */
-  def apply(thy: Theory)(implicit gc: GlobalContext, a: A): Theory = applyDefault(thy)
+  def apply(thy: Theory)(implicit gc: GlobalContext, a: A): Theory = matchC(thy)(applyDefault _)
 
-  protected final def applyDefault(thy: Theory)(implicit gc: GlobalContext, a: A) = matchC(thy) {
+  protected final def applyDefault(thy: Theory)(implicit gc: GlobalContext, a: A) = thy match {
     case null => null
     case r: Ref => apply(r)
     case OwnedTheory(o,d,t) =>
@@ -46,7 +46,7 @@ abstract class Traverser[A] {
           vdT
         }
       }
-      (ctxT, aT)
+      (ctxT.copyFrom(ctx), aT)
     }
   }
   def apply(ctx: ExprContext)(implicit gc: GlobalContext, a:A): (ExprContext,A) = {
@@ -56,9 +56,12 @@ abstract class Traverser[A] {
     }
   }
 
-  def applyVarDecl(vd: VarDecl)(implicit gc: GlobalContext, a:A): (VarDecl,A) = vd match {
-    case EVarDecl(n,t,d,m,o) => (EVarDecl(n, if (t == null) null else apply(t), d map apply, m, o), a)
-    case TVarDecl(n,d) => (TVarDecl(n, d map apply), a)
+  def applyVarDecl(vd: VarDecl)(implicit gc: GlobalContext, a:A): (VarDecl,A) = {
+    val vdT = matchC(vd) {
+      case EVarDecl(n,t,d,m,o) => EVarDecl(n, if (t == null) null else apply(t), d map apply, m, o)
+      case TVarDecl(n,d) => TVarDecl(n, d map apply)
+    }
+    (vdT,a)
   }
   def applyEVarDecl(vd: EVarDecl)(implicit gc: GlobalContext, a:A): (EVarDecl,A) = {
     val (vdT,aT) = applyVarDecl(vd)
@@ -66,7 +69,7 @@ abstract class Traverser[A] {
   }
 
   def apply(rc: RegionalContext)(implicit gc: GlobalContext, a:A): RegionalContext = {
-    RegionalContext(apply(rc.theory).toValue, rc.owner map apply, apply(rc.local)._1)
+    RegionalContext(apply(rc.theory).toValue, rc.owner map apply, apply(rc.local)._1).copyFrom(rc)
   }
 
   def apply(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = matchC(d)(applyDefault _)

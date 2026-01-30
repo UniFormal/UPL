@@ -14,7 +14,7 @@ module Polymorphism {
   comp@(A,B,C)(f: A -> B, g: B -> C) = x -> g(f(x))
 
   // The theory of an endofunctor on the category of types.
-  theory TypeFunctor  {
+  theory TypeFunctor {
     // map types to types
     type typeApply@A
     // map functions to functions
@@ -28,7 +28,7 @@ module Polymorphism {
     funApplyCompVar@(A,B,C): |- forall f: A->B, g:B->C. funApply(comp(f,g)) == comp(funApply(f), funApply(g)) = funApplyComp
   }
 
-  // lists as such a functor.
+  // lists as such a functor
   List = TypeFunctor {
     type typeApply@A = list[A]
     funApply@(A,B) = f -> l -> {
