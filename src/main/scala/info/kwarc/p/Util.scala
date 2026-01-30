@@ -49,3 +49,28 @@ object Util {
     def clear() = {entries = Nil}
   }
 }
+
+abstract class Result[A] {
+  def ? = this match {
+    case Fail() => throw ReturnFail()
+    case Success(e) => e
+  }
+  def value = this match {
+    case Fail() => None
+    case Success(e) => Some(e)
+  }
+}
+case class ReturnFail() extends Throwable
+case class Fail[A]() extends Result[A]
+case class Success[A](e: A) extends Result[A]
+object Result {
+  def apply[A](code: => A): Result[A] = {
+    try {
+      val a = code
+      Success(a)
+    } catch {
+      case ReturnFail() => Fail()
+    }
+  }
+  def fail = throw ReturnFail()
+}

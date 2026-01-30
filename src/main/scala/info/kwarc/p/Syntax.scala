@@ -190,9 +190,14 @@ sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
   def tc: LocalContext
 }
 
-/** unifies ExprDecl and VarDecl */
+/** unifies ExprDecl and EVarDecl */
 trait TypedDeclaration extends Named {
+  def tc: LocalContext
   def tp: Type
+}
+
+/** unifies TypeDecl and TVarDecl */
+trait KindedDeclaration extends Named {
 }
 
 /** modifiers of declarations; not every modifiers is legal for every declaration */
@@ -205,7 +210,7 @@ case class Modifiers(closed: Boolean, mutable: Boolean) {
   * @param tp the upper type bound, [AnyType] if unrestricted, null if to be inferred during checking
   * @param args input (bound in both type bound and definition)
   */
-case class TypeDecl(name: String, tc: LocalContext, tp: Type, dfO: Option[Type], modifiers: Modifiers) extends SymbolDeclaration {
+case class TypeDecl(name: String, tc: LocalContext, tp: Type, dfO: Option[Type], modifiers: Modifiers) extends SymbolDeclaration with KindedDeclaration {
   def kind = Keywords.typeDecl
   def tpSep = "<"
   def ntO = None
@@ -325,9 +330,19 @@ case class VarRef(name: String) extends Ref {
 
 /** reference to an open/closed symbol with its type arguments */
 case class AppliedRef(ref: Ref, args: List[Type]) extends Expression with Type {
+  override def toString = ref.toString + "@" + args.mkString("(", ", ", ")")
   def label = "ref"
   def children = ref :: args
   def finite = false
+}
+/** unifies Ref and AppliedRef; AppliedRef(r,Nil) is the same as r */
+object MaybeAppliedRef {
+  def apply(r: Ref, tpargs: List[Type]) = if (tpargs.isEmpty) r else AppliedRef(r,tpargs)
+  def unapply(t: Object) = t match {
+    case r: Ref => Some((r,Nil))
+    case AppliedRef(r,tpargs) => Some((r,tpargs))
+    case _ => None
+  }
 }
 
 /** an object from a different local environment that is translated by o into the current local environment
@@ -388,12 +403,15 @@ object FlatOwnedObject {
 }
 
 object OwnedReference {
-  def apply(o: Expression, d: Theory, nd: NamedDeclaration): OwnedObject = {
-    val n = nd.name
+  def apply(o: Expression, d: Theory, nd: NamedDeclaration, args: List[Type] = Nil): OwnedObject = {
+    val r = ClosedRef(nd.name)
+    val ra = MaybeAppliedRef(r, args)
     nd match {
-      case _:ExprDecl => OwnedExpr(o,d, ClosedRef(n))
-      case _:TypeDecl => OwnedType(o,d, ClosedRef(n))
-      case _:Module => OwnedTheory(o,d, ClosedRef(n))
+      case _:ExprDecl => OwnedExpr(o,d,ra)
+      case _:TypeDecl => OwnedType(o,d,ra)
+      case _:Module =>
+        if (args.nonEmpty) throw IError("unexpected arguments")
+        OwnedTheory(o,d,r) // AppliedRef not yet allowed
     }
   }
 }
@@ -1040,8 +1058,8 @@ case class ListElem(list: Expression, position: Expression) extends Expression {
 case class Quantifier(univ: Boolean, vars: ExprContext, body: Expression) extends Expression {
   override def closing = vars == null
   def label = if (univ) "forall" else "exists"
-  override def toString = s"($label $vars.$body)" // ToDo: Closing Quants print as "forall null. body"
-  def children = vars.children ::: List(body)// ToDo: Crashes if vars == null
+  override def toString = s"($label $vars. $body)"
+  def children = vars.children ::: List(body)
   override def childrenInContext = vars.childrenInContext ::: List((None,Some(vars.toLocalContext),body))
 }
 object Quantifier {

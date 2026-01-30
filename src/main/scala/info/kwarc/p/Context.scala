@@ -95,14 +95,26 @@ case class LocalContext(variables: List[VarDecl]) extends AbstractLocalContext[L
   def mapDecls[B](f: VarDecl => B) = {
     Util.reverseMap(variables)(f)
   }
+  def substitute(os: List[Object]) = {
+    if (variables.sizeIs != os.length)
+      throw IError("unexpected number of substitutes")
+    val defs = (variables zip os.reverse).map {
+      case (vd: EVarDecl, o: Expression) =>
+        EVarDecl.sub(vd.name,o)
+      case (vd: TVarDecl, o: Type) =>
+        TVarDecl.sub(vd.name,o)
+      case _ => throw IError("unexpected substitute")
+    }
+    Substitution(defs)
+  }
 }
 
 /** special case of LocalContext that contains only expressions
  * some, but not all, operations preserve the special case of typing
  */
 case class ExprContext(variables: List[EVarDecl]) extends AbstractLocalContext[ExprContext,EVarDecl] {
-  def local = toLocalContext
   def toLocalContext = LocalContext(variables)
+  def local = toLocalContext
   def appendE(vd: EVarDecl) = force(_.append(vd))
   def force(f: ExprContext => LocalContext) = ExprContext.force(f(this))
 
@@ -146,6 +158,7 @@ object LocalContext {
 
 /** parent of all variable declarations */
 trait VarDecl extends Named {
+  def tc = LocalContext.empty
   def dfO: Option[Object]
   def defined = dfO.isDefined
   def label = if (name != "") name else "_"
@@ -156,7 +169,7 @@ trait VarDecl extends Named {
 object VarDecl {
   def rename(a: VarDecl, b: VarDecl) = (a,b) match {
     case (_: EVarDecl, _:EVarDecl) => EVarDecl.sub(a.name, b.toRef)
-    case (_: TVarDecl, _:TVarDecl) => TVarDecl(a.name, Some(b.toRef))
+    case (_: TVarDecl, _:TVarDecl) => TVarDecl.sub(a.name, b.toRef)
   }
 }
 
@@ -179,20 +192,20 @@ case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
   /** this : G -> target   --->  this, n/e : G, n:_ -> target */
   def append(n: String, e: Expression) = copy(decls = EVarDecl.sub(n, e) :: decls)
   /** this : G -> target   --->  this, n/e : G, n:_ -> target */
-  def append(n: String, t: Type) = copy(decls = TVarDecl(n, Some(t)) :: decls)
+  def append(n: String, t: Type) = copy(decls = TVarDecl.sub(n, t) :: decls)
 
   /** this : G -> target   --->  this, n/vd.name : G, n:_ -> target, vd */
   def appendRename(n: String, vd: VarDecl) = {
     val r = vd match {
         case _: EVarDecl => EVarDecl.sub(n, vd.toRef)
-        case _: TVarDecl => TVarDecl(n,Some(vd.toRef))
+        case _: TVarDecl => TVarDecl.sub(n,vd.toRef)
       }
     Substitution(r::decls)
   }
   def appendRename(vd: VarDecl, n: String) = {
     val r = vd match {
       case _: EVarDecl => EVarDecl.sub(vd.name, VarRef(n))
-      case _: TVarDecl => TVarDecl(vd.name, Some(VarRef(n)))
+      case _: TVarDecl => TVarDecl.sub(vd.name, VarRef(n))
     }
     Substitution(r::decls)
   }
@@ -209,7 +222,7 @@ case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
         EVarDecl.sub(n, vd.toRef)
       case vd @ TVarDecl(_,Some(VarRef(n))) if !vd.anonymous && !image.contains(n) =>
         image ::= n
-        TVarDecl(n, Some(vd.toRef))
+        TVarDecl.sub(n, vd.toRef)
       case _ => return None
     }
     Some(Substitution(subs))
@@ -234,10 +247,13 @@ object BiContext {
   def apply(l: LocalContext, r: LocalContext): BiContext = BiContext(l.decls zip r.decls)
 }
 
-case class TVarDecl(name: String, dfO: Option[Type]) extends VarDecl {
+case class TVarDecl(name: String, dfO: Option[Type]) extends VarDecl with KindedDeclaration {
   override def toString = name
   def children = Nil
-  def toSub = TVarDecl(name, Some(toRef))
+  def toSub = TVarDecl.sub(name, toRef)
+}
+object TVarDecl {
+  def sub(n: String, t: Type) = TVarDecl(n,Some(t))
 }
 
 /** declaration-level context: relative to a vocabulary, holds a regional+local context
@@ -512,12 +528,15 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   }
   /** resolves an ambiguous name */
   def resolveName(obj: Object): Option[(Object, Option[Named])] = {
-    def make(e: Object) = if (e == obj) obj else e.copyFrom(obj)
-    val n = obj match {
+    val (ref,args) = MaybeAppliedRef.unapply(obj).getOrElse{return Some((obj, None))}
+    def make(r: Ref) = {
+      val ra = MaybeAppliedRef(r,args)
+      if (ra == obj) obj else ra.copyFrom(obj)
+    }
+    val n = ref match {
       case VarRef(n) => n
       case ClosedRef(n) => n
-      case OpenRef(p) => return resolvePath(p) map {case (pR,d) => (OpenRef(pR),Some(d))}
-      case _ => return Some((obj, None))
+      case OpenRef(p) => return resolvePath(p) map {case (pR,d) => (make(OpenRef(pR)),Some(d))}
     }
     // try finding local variable n in context
     lookupLocal(n).foreach {vd =>
@@ -534,8 +553,8 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
           d match {
             case nd: NamedDeclaration =>
               val dO = OwnersSubstitutor.applyDecl(gc,nd,-level).asInstanceOf[NamedDeclaration]
-              val objC = OwnedReference(owner,null,nd) // we keep the domain uninfered to avoid triggering checks later; but it will be inferred eventually anyway
-              (objC,Some(dO))
+              val objC = OwnedReference(owner,null,nd,args) // we keep the domain uninfered to avoid triggering checks later; but it will be inferred eventually anyway
+              (objC.copyFrom(obj),Some(dO))
             case _ => throw IError("impossible case")
           }
         } else {
