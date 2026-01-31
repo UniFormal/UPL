@@ -3,7 +3,7 @@ package info.kwarc.p
 import info.kwarc.p.IsabelleCompiler.compileIsabelle
 
 
-class IsabelleCompiler(tv: TheoryValue) {
+class IsabelleCompiler(tv: TheoryValue, packString: String = "") {
   def compileToIsa(): IsaDecl = compileIsabelle(tv)
 
 }
@@ -16,17 +16,23 @@ object IsabelleCompiler {
     compileDecl(tv.decls.head)
   }
 
-  def findPackages(decls: IsaBody): String = {
-    // todo: implement to find the packages for 'imports' statement
-    //if (rat || real || complex) "Complex_Main" else
-    "Main"
+  def packageImportsString(m: Module): String = {
+    /** finds the packages for 'imports' statement
+    * calls a Traverser method that indexes the packages
+    * default output: "Main" (base package)
+    *   (rat || real || complex) ---> "Complex_Main" (base package)
+    *   bag                      ---> [base package] "HOL-Library.Multiset"
+    *   (not yet implemented) ulist ---> [base package] "HOL-Library.FSet"
+    */
+    IsabellePackageTraverser.importsString(GlobalContext.apply(m), m)
   }
+
 
   def compileDecl(decl: Declaration): IsaDecl = {
     decl match {
       case m: Module =>
         // closed/open - theory/locale
-        if (!m.closed) { IsaTheory(m.name, compileDecls(m.df.decls)) }
+        if (!m.closed) { IsaTheory(m.name, compileDecls(m.df.decls), packageImportsString(m)) }
         else { IsaLocale(m.name, compileDeclsLocale(m.df.decls))}
       //case ed: ExprDecl => IsaDefiniton(ed.name, compileType(ed.tp), compileExpr(ed.dfO.get))  // IsaExprDecl(name, type, definiens), compileType, compileExpr
       case ed: ExprDecl => ed.dfO match {
@@ -80,8 +86,19 @@ object IsabelleCompiler {
 
       case EmptyType => IsaEmptyType()
 
-      case ProofType(formula) => IsaLocaleAssumptionType(compileExpr(formula))
+      case IntervalType(lower, upper) => throw IError("Isabelle does not have native interval types.")
 
+      case ProdType(comps) => IsaProdType(comps.variables.reverseMap(vd => compileType(vd.tp)))
+
+      case CollectionType(elem, kind) => kind match {
+        case CollectionKind(false, false, true) => IsaOptionType(compileType(elem))
+        case CollectionKind(false, false, false) => IsaListType(compileType(elem))
+        case CollectionKind(true, true, false) => IsaSetType(compileType(elem))
+        case CollectionKind(false, true, false) => IsaMultisetType(compileType(elem))
+        case CollectionKind(true, false, false) => throw IError("ULists not yet implemented. Implement with distint property or as finite sets")
+      }
+
+      case ProofType(formula) => IsaLocaleAssumptionType(compileExpr(formula))
 
       case null => null
     }
@@ -91,6 +108,10 @@ object IsabelleCompiler {
 
     expr match {
 
+      // blocks, e.g. in function definition
+      case b: Block => IsaBlock(compileExprs(b.exprs))
+      case IfThenElse(cond, thn, els) => IsaIfThenElse(compileExpr(cond), compileExpr(thn), els.map(compileExpr))
+      case Return(exp, thrw) => IsaReturn(compileExpr(exp))
       // numbers
       case NumberValue(tp, re, im) => tp match {
         case int => IsaNumber(re) // todo: convert Real to BigInt & compile to IsaInt, IsaReal; delete IsaNumber
@@ -102,6 +123,16 @@ object IsabelleCompiler {
       case StringValue(value) => IsaString(value)
       // unit & any
       case UnitValue => IsaUnit()
+
+      case Tuple(comps) => IsaTuple(comps.map(compileExpr))
+
+      case CollectionValue(elems, kind) => kind match {
+        case CollectionKind(false, false, true) => IsaOption(elems.map(compileExpr))
+        case CollectionKind(false, false, false) => IsaList(elems.map(compileExpr))
+        case CollectionKind(true, true, false) => IsaSet(elems.map(compileExpr))
+        case CollectionKind(false, true, false) => IsaMultiset(elems.map(compileExpr))
+        case CollectionKind(true, false, false) => throw IError("ULists not yet implemented. Implement with distint property or as finite sets")
+      }
 
       case Lambda(ins, body, mayReturn) => IsaLambda(ins.variables.map(compileExpr), compileExpr(body), true)
       case VarDecl(name, tp, dfO, mutable, output) => dfO match {
@@ -135,11 +166,33 @@ object IsabelleCompiler {
       case LessEq => IsaLessEq
 
       case Plus => IsaPlus
+      case Minus => IsaMinus
+      case Times => IsaTimes
       case Divide => IsaDivide
 
       case Equal => IsaEqual
 
       case UMinus => IsaUMinus
+
+      case Cons => IsaCons
     }
+  }
+
+  def compileBlockToFun(fun_name: String, args: List[IsaExpr], tp: IsaType, blockexpr: IsaExpr): String = {
+    assert(blockexpr.isInstanceOf[IsaBlock])
+    blockexpr match {
+      case b: IsaBlock => {
+        val tl = b.exprs.tail
+        b.exprs.head match {
+          case ite: IsaIfThenElse => if (ite.thn.isInstanceOf[IsaReturn]) {
+            s"  $fun_name " + args.mkString(" ") + " = " +
+              s"(if ${ite.cond} then ${ite.thn} else " + tl.head.toString
+          } else ite.toString
+        }
+      }
+    }
+
+
+
   }
 }

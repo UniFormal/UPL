@@ -1,6 +1,6 @@
-module Test002 {
+module Test014 {
 
-    // comment
+    // function types
 
     f: int -> int = x -> x
 
@@ -10,7 +10,5 @@ module Test002 {
 
     i(x: int, y: int) = x + y
 
-    // is a problem, needs context, see test200
-    // g: int -> int
-    // g(x) = x
+
 }

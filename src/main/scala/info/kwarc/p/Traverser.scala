@@ -453,3 +453,37 @@ object TestLocationFields extends StatelessTraverser {
     applyDefault(thy)
   }
 }
+
+/** Traverser that creates the package imports string for the Isabelle compiler*/
+class IsabellePackageTraverser extends StatelessTraverser { //with TraverseOnlyOriginalRegion {
+  var packages: List[String] = List("Main", "")
+  // todo: indexes packages by matching the type; problem with unknown types, additionally match over expressions?
+  override def apply(tp: Type)(implicit gc: GlobalContext, a: Unit) =
+    tp match {
+      case NumberType(true, true, false, false, false) => {
+        packages = packages.updated(0, "Complex_Main"); applyDefault(tp)
+      }
+      case NumberType(true, true, true, false, false) => {
+        packages = packages.updated(0, "Complex_Main"); applyDefault(tp)
+      }
+      case NumberType(true, true, false, true, true) => {
+        packages = packages.updated(0, "Complex_Main"); applyDefault(tp)
+      }
+      case CollectionType(elem, kind) => kind match {
+        case CollectionKind(false, true, false) => packages = packages.updated(1, "\"HOL-Library.Multiset\""); applyDefault(tp)
+        //case CollectionKind(true, false, false) => throw IError("ULists not yet implemented. Implement with distint property or as finite sets")
+        case _ => applyDefault(tp)
+      }
+      //case CollectionKind(false, true, false) => {packages = packages.updated(1, true); applyDefault(tp)}
+      case _ => applyDefault(tp)
+    }
+}
+
+object IsabellePackageTraverser {
+  def importsString(gc: GlobalContext, decl: Declaration): String = {
+    val packTrav = new IsabellePackageTraverser
+    packTrav(decl)(gc,())
+    packTrav.packages.mkString(" ")
+  }
+}
+

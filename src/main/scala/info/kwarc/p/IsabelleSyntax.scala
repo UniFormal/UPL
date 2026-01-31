@@ -7,9 +7,9 @@ abstract class IsaDecl {
   def toString: String
 }
 
-case class IsaTheory(name: String, decls: IsaBody) extends IsaDecl {
+case class IsaTheory(name: String, decls: IsaBody, packImpsString: String) extends IsaDecl {
   override def toString = s"theory ${name}\n" +
-    s"  imports " + IsabelleCompiler.findPackages(decls) + "\n" +
+    s"  imports " + packImpsString + "\n" +
     s"begin\n\n" +
     decls.toString +
     s"end"
@@ -33,6 +33,7 @@ case class IsaBody(decls: List[IsaDecl], indent: Boolean = false) extends IsaDec
  * e.g. definition, lemma, theorem, fun, ...
 **/
 
+/*
 case class IsaDefiniton(name: String, tp: IsaType, exprO: Option[IsaExpr]) extends IsaDecl {
   override def toString = exprO match {
     case Some(expr) => s"definition $name :: $tp where\n" +
@@ -40,6 +41,7 @@ case class IsaDefiniton(name: String, tp: IsaType, exprO: Option[IsaExpr]) exten
     case None => s"definition $name :: $tp\n"
   }
 }
+*/
 
 case class IsaExprDecl(name: String, tp: IsaType, exprO: Option[IsaExpr]) extends IsaDecl {
   def isa_keyword: String = tp match {
@@ -53,9 +55,15 @@ case class IsaExprDecl(name: String, tp: IsaType, exprO: Option[IsaExpr]) extend
     }
   */
   override def toString = exprO match {
-    case Some(expr) => s"$isa_keyword $name :: $tp where\n" +
+    // todo: only parenthesize complex types
+    case Some(expr) => s"$isa_keyword $name :: \"$tp\" where\n" +
       // todo: better solution for handling "=" in 'definition' versus 'fun'.
-      {if (isa_keyword == "fun") (s"  \"$name $expr\"") else s"  \"$name = $expr\""}
+      {if (isa_keyword == "fun")
+        {expr match {
+        case lam: IsaLambda => if (lam.body.isInstanceOf[IsaBlock]) IsabelleCompiler.compileBlockToFun(name, lam.args, tp, lam.body)
+          else(s"  \"$name $expr\"")
+        }}
+      else s"  \"$name = $expr\""}
     case None =>
       // todo: handle type empty & expression declarations without definiens
       // todo:
@@ -68,6 +76,18 @@ case class IsaExprDecl(name: String, tp: IsaType, exprO: Option[IsaExpr]) extend
         s"$isa_keyword $name :: $tp where\n" +
         s"\"$name = undefined\""
   }
+}
+
+case class IsaBlock(exprs: List[IsaExpr]) extends IsaExpr {
+
+}
+
+case class IsaIfThenElse(cond: IsaExpr, thn: IsaExpr, els: Option[IsaExpr]) extends IsaExpr {
+  override def toString: String = "(" + s"if $cond then $thn " + (if (els.isDefined) s"else ${els.get}"  else "") + ")"
+}
+
+case class IsaReturn(expr: IsaExpr) extends IsaExpr {
+  override def toString = expr.toString
 }
 
 case class IsaTypeDef(name: String, tpO: Option[IsaType]) extends IsaDecl {
@@ -170,6 +190,30 @@ case class IsaUnitType() extends IsaType {
   def name: String = "unit"
 }
 
+case class IsaProdType(comps: List[IsaType]) extends IsaType {
+  override def name: String = comps.mkString(" \\<times> ")
+}
+
+// UPL collection type and kinds
+
+case class IsaOptionType(elemType: IsaType) extends IsaType {
+  override def name: String = s"$elemType option"
+}
+
+case class IsaListType(elemType: IsaType) extends IsaType {
+  override def name: String = s"$elemType list"
+}
+
+case class IsaSetType(elemType: IsaType) extends IsaType {
+  override def name: String = s"$elemType set"
+}
+
+case class IsaMultisetType(elemType: IsaType) extends IsaType {
+  override def name: String = s"$elemType multiset"
+}
+
+
+
 case class IsaLocaleAssumptionType(formula: IsaExpr) extends IsaType {
   def name = formula.toString
   override def toString: String = formula match {
@@ -225,6 +269,35 @@ case class IsaUnit() extends IsaExpr {
   override def toString = "()"
 }
 
+case class IsaTuple(comps: List[IsaExpr]) extends IsaExpr {
+  override def toString = comps.mkString("(", ",", ")")
+}
+
+case class IsaOption(elems: List[IsaExpr]) extends IsaExpr {
+  override def toString = if (elems.isEmpty) {
+    "None"
+  } else if (elems.size == 1) {
+    s"Some ${elems.head}"
+  } else {
+    throw IError("Option value contains more than one element")
+  }
+}
+
+case class IsaList(elems: List[IsaExpr]) extends IsaExpr {
+  override def toString = elems.mkString("[", ",", "]")
+}
+
+case class IsaSet(elems: List[IsaExpr]) extends IsaExpr {
+  override def toString = elems.mkString("{", ",", "}")
+}
+
+case class IsaMultiset(elems: List[IsaExpr]) extends IsaExpr {
+  override def toString = elems.mkString("{#", ",", "#}")
+}
+
+
+
+
 case class IsaLambda(args: List[IsaExpr], body: IsaExpr, unparseAsFun: Boolean = false, nested: Boolean = false) extends IsaExpr {
   // probably body: IsaBody
   override def toString = if (!unparseAsFun) {
@@ -237,6 +310,7 @@ case class IsaLambda(args: List[IsaExpr], body: IsaExpr, unparseAsFun: Boolean =
       // todo: implement IsaContexts to merge type and function definitions with closed references
       case IsaClosedRef(n) => n
       case app: IsaApplication => app.args.map(_.toString).mkString(" ") + " = " + app.toString
+      //case IsaBlock(exprs) => IsabelleCompiler.compileBlockToFun(exprs)
     }
   }
 
@@ -246,6 +320,7 @@ case class IsaVarDecl(name: String, tp: IsaType) extends IsaExpr {
   // extend with definiens, mutable, output?
   // VarDecl inside Lambda
   override def toString = name
+
 }
 
 //case class IsaRef
@@ -313,6 +388,10 @@ sealed trait IsaConnective extends IsaOperator
 
 case object IsaPlus extends IsaInfixOperator("+") with IsaArithmetic
 
+case object IsaMinus extends IsaInfixOperator("-") with IsaArithmetic
+
+case object IsaTimes extends IsaInfixOperator("*") with IsaArithmetic
+
 case object IsaDivide extends IsaInfixOperator("/") with IsaArithmetic
 
 case object IsaUMinus extends IsaPrefixOperator("-") with IsaArithmetic
@@ -330,3 +409,5 @@ case object IsaNot extends IsaPrefixOperator("\\<not>")
 case object IsaImplies extends IsaInfixOperator("\\<longrightarrow>") with IsaConnective
 
 case object IsaEqual extends IsaInfixOperator("=") with IsaComparison
+
+case object IsaCons extends IsaInfixOperator("#")
