@@ -1,17 +1,15 @@
 package info.kwarc.p
 
-import info.kwarc.p.IsabelleCompiler.compileIsabelle
-
 
 class IsabelleCompiler(tv: TheoryValue, packString: String = "") {
-  def compileToIsa(): IsaDecl = compileIsabelle(tv)
-
+  // todo: refactor methods from object IsabelleCompiler into this class?
+  def compileToIsa(): IsaDecl = IsabelleCompiler.compileIsabelle(tv)
 }
 
 object IsabelleCompiler {
 
   def compileIsabelle(tv: TheoryValue): IsaDecl = {
-    // first and only declaration must be a module, ensured by checker?
+    // first and only declaration must be a module, is this ensured by the checker?
     assert(tv.decls.length == 1 && tv.decls.head.isInstanceOf[Module])
     compileDecl(tv.decls.head)
   }
@@ -113,8 +111,9 @@ object IsabelleCompiler {
       case IfThenElse(cond, thn, els) => IsaIfThenElse(compileExpr(cond), compileExpr(thn), els.map(compileExpr))
       case Return(exp, thrw) => IsaReturn(compileExpr(exp))
       // numbers
+      // todo: convert Real to BigInt & compile to IsaInt, IsaReal; delete IsaNumber
       case NumberValue(tp, re, im) => tp match {
-        case int => IsaNumber(re) // todo: convert Real to BigInt & compile to IsaInt, IsaReal; delete IsaNumber
+        case int => IsaNumber(re)
         case float => IsaNumber(re)
       }
       case IntValue(i) => IsaInt(i)

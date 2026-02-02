@@ -232,25 +232,26 @@ object Project {
   }
 
   def toIsabelleFiles(proj: Project): Unit = {
-
-    // check the project files
+    // run a project-wide check to collect errors
     val _ = proj.check(false)
-
-
-    // list of files with Isabelle file extensions .thy
-    // val files = proj.entries.map(pe => File(pe.toString).setExtension("thy"))
-    // renames files with the UPL module name
-    val files: List[File] = proj.entries.map(pe => {
-      assert(pe.parsed.decls.size == 1 & pe.parsed.decls.head.isInstanceOf[Module])
-      File(pe.toString).up./(pe.parsed.decls.head.nameO.get + ".thy")
-    })
-
-    val isabelleStrings = proj.entries.map(pe => Isabelle.toIsabelleCode(pe.parsed))
-
-    //(0 to files.length).foreach { i => File.write(files.head , isabelleStrings.head) }
+    // abort if there are errors (prints errors)
+    if (proj.checkErrors()) return
+    // ensure each entry's `checked` field is populated (so unknown types are inferred
+    // and duplicate/merged declarations are produced by the Checker)
+    proj.entries.foreach { pe =>
+      // this will set pe.checked and clear checkedIsDirty for the entry
+      proj.check(pe.source, false)
+    }
+    // create Isabelle file names using the UPL module names (Isabelle file and theory name must be the same)
+    val files: List[File] = proj.entries.map { pe =>
+      val voc = pe.getVocabulary
+      assert(voc.decls.size == 1 & voc.decls.head.isInstanceOf[Module])
+      File(pe.toString).up./(voc.decls.head.nameO.get + ".thy")
+    }
+    // render from checked vocabulary; compile the checked vocabulary (not the raw parsed AST)
+    val isabelleStrings = proj.entries.map(pe => Isabelle.toIsabelleCode(pe.getVocabulary))
+    // write the strings to files
     (files zip isabelleStrings).foreach { case (f,s) => File.write(f,s) }
-
-    //println(proj)
   }
 }
 

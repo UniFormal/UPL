@@ -165,17 +165,18 @@ case class IsaEmptyType() extends IsaType {
 
 case class IsaFunType(ins: List[IsaType], out: IsaType, nested: Boolean = false) extends IsaType {
   def name: String = out match {
+    // todo: possibly need this structure if only parenthesize complex types
     case IsaFunType(ins2, out2, _) =>
       if (nested) {
         ins.mkString(" => ") + " => " + IsaFunType(ins2, out2, nested = true)
       } else {
-        Isabelle.hol_parenthesize(ins.mkString(" => ") + " => " + IsaFunType(ins2, out2, nested = true))
+        ins.mkString(" => ") + " => " + IsaFunType(ins2, out2, nested = true)
       }
     case _ =>
       if (nested) {
         ins.mkString(" => ") + " => " + s"$out"
       } else {
-        Isabelle.hol_parenthesize(ins.mkString(" => ") + " => " + s"$out")
+        ins.mkString(" => ") + " => " + s"$out"
       }
   }
   override def toString: String = name
