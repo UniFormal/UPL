@@ -204,7 +204,7 @@ class Interpreter(vocInit: TheoryValue) {
         val re = RegionalEnvironment("new instance",Some(runtimeInst), parent = Some(frame))
         // execute all fields in the context of this instance
         case class InterpretationInput(decls: List[Declaration], from: Option[Include])
-        var todo = List(InterpretationInput(initDecls, None))
+        var todo = if(initDecls.nonEmpty) List(InterpretationInput(initDecls, None)) else Nil
         env.inFrame(re) {
           while (todo.nonEmpty) {
             val InterpretationInput(d :: ds, inclO) :: tail = todo
@@ -240,7 +240,7 @@ class Interpreter(vocInit: TheoryValue) {
                 // append at the end so that constructor fields are executed before inherited fields
                 // TODO: this does not find regional modules
                 val decls = Checker.evaluateTheory(globalContext,incl.dom).decls
-                todo = todo ::: List(InterpretationInput(decls, delegateO))
+                if (decls.nonEmpty) todo = todo :+ InterpretationInput(decls, delegateO)
             }
           }
         }
