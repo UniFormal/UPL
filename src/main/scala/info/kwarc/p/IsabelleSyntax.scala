@@ -1,5 +1,7 @@
 package info.kwarc.p
 
+/** Covers some subset of the UPL AST.
+ * Translates the covered UPL constructs into a surface-level syntax representation for Isabelle */
 
 /** Isabelle declarations */
 
@@ -105,11 +107,11 @@ case class IsaLocaleTypeDummy() extends IsaDecl {
 }
 
 case class IsaLocaleFixes(name: String, tp: IsaType) extends IsaDecl {
-  override def toString = s"fixes $name :: $tp"
+  override def toString = s"fixes $name :: \"$tp\""
 }
 
 case class IsaLocaleAssumption(name: String, tp: IsaType) extends IsaDecl {
-  override def toString = s"assumes $name: $tp"
+  override def toString = s"assumes $name: \"$tp\""
 }
 
 case class IsaLocaleImport(name: String) extends IsaDecl {
@@ -223,10 +225,27 @@ case class IsaLocaleAssumptionType(formula: IsaExpr) extends IsaType {
   }
 }
 
+case class IsaProofType(formula: IsaExpr) extends IsaType {
+  def name = formula.toString
+  override def toString = s"\"$formula\""
+}
+
 /*** Isabelle expressions **/
 
 trait IsaExpr extends IsaDecl {
 
+}
+
+case class IsaTheorem(name: String, claim: IsaType, proof: IsaExpr) extends IsaExpr {
+  override def toString = s"theorem $name: $claim\n$proof"
+}
+
+case class IsaEmptyProof() extends IsaExpr {
+  override def toString = "apply(auto)\ndone"
+}
+
+case class IsaUndefinedProof(tp: IsaType) extends IsaExpr {
+  override def toString = "apply(auto)\ndone"
 }
 
 case class IsaNumber(value: Real) extends IsaExpr {
@@ -349,6 +368,10 @@ case class IsaApplication(fun: IsaExpr, args: List[IsaExpr]) extends IsaExpr {
 
 case class IsaQuantifier(univ: Boolean, vars: List[IsaExpr], body: IsaExpr) extends IsaExpr {
   override def toString = "todo: quantifier string"
+}
+
+case class IsaEquality(tp: IsaType, left: IsaExpr, right: IsaExpr) extends IsaExpr {
+  override def toString = s"$left = $right"
 }
 
 /** Application expression composed of expressions
