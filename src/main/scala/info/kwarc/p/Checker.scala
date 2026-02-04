@@ -2145,6 +2145,10 @@ class Checker(errorHandler: ErrorHandler) {
         val (consI, vsM) = matchTypeLists(vs1,vs2,cons,false).?
         val bM = matchExprs(b1,b2,consI).?
         vsM ::: bM
+      case (OwnedExpr(o1, d1, oe1),OwnedExpr(o2, d2, oe2)) if d1==d2 =>
+        val oM = matchExprs(o1, o2, cons).?
+        val oeM = matchExprs(oe1, oe2, cons).?
+        oM ::: oeM
       case _ => Result.fail
     }
   }
