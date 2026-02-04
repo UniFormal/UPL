@@ -1021,6 +1021,7 @@ class Checker(errorHandler: ErrorHandler) {
           case Some(ExprDecl(_,_,_,Some(df),_,Modifiers(_,false))) if df != r => df match {
             case _:Ref => apply(df)
             case OwnedExpr(_,_,_:Ref) => apply(df)
+            case UnitValue | BoolValue(_) | _: NumberValue | StringValue(_) => df
             case _ => r
           }
           case Some(_) => r // All other references have a normalized head
