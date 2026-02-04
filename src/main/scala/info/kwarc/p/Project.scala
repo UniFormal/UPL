@@ -66,6 +66,7 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     //TestLocationFields(Module.anonymous(le.parsed.decls))(GlobalContext(le.parsed.decls),())
     DependencyAnalyzer.update(le)
     le.checkedIsDirty = true
+    le.parsed
   }
 
   def updateAndCheck(so: SourceOrigin, src: String): TheoryValue = {

@@ -6,30 +6,6 @@ dist: point -> point -> float
 similar: triangle -> triangle -> bool
 /////
 
-/////
-// The facts all have useful names. They certainly wouldn't be generated this way, so let's just claim the user can rename them. 
-/////
-
-theory S1{
-  //             tip
-  //           ,´ |
-  //          p   |
-  //        ,´|   |
-  //  ground--q--foot
-  tip: point = ???
-  foot: point = ???
-  ground: point = ???
-  p: point = ???
-  q: point = ???
-  ground_dist_small = 42
-  ground_dist_small_P:  |- dist(ground)(q) == ground_dist_small = ???
-  ground_dist_large = 420
-  ground_dist_large_P:  |- dist(ground)(foot) == ground_dist_large = ???
-  apparent_height = 21
-  apparent_height_P: |- dist(q)(p) == apparent_height = ???
-  are_similar: |- similar((tip,ground,foot))((p, ground, q)) = ???
-}
-
 theory _simTri_Scroll{
   //             A
   //           ,´|
@@ -51,10 +27,34 @@ theory _simTri_Scroll{
   _are_similar: |- similar((_A,_C,_E))((_B,_C,_D)) 
 
   // The solution of the scroll. Recognizable by 
-  // - having a definiens (hypothetically)
+  // - having a definiens
   // - starting with a double underscore
   __EA = _CE * _DB / _CD
   __EA_P: |- dist(_E)(_A) == __EA = ???
+}
+
+/////
+// The facts all have useful names. They certainly wouldn't be generated this way, so let's just claim the user can rename them. 
+/////
+
+theory S1{
+  //             tip
+  //           ,´ |
+  //          p   |
+  //        ,´|   |
+  //  ground--q--foot
+  tip: point = ???
+  foot: point = ???
+  ground: point = ???
+  p: point = ???
+  q: point = ???
+  ground_dist_small = 21
+  ground_dist_small_P:  |- dist(ground)(q) == ground_dist_small = ???
+  ground_dist_large = 420
+  ground_dist_large_P:  |- dist(ground)(foot) == ground_dist_large = ???
+  apparent_height = 21
+  apparent_height_P: |- dist(q)(p) == apparent_height = ???
+  are_similar: |- similar((tip,ground,foot))((p, ground, q)) = ???
 }
 
 // ///////////
