@@ -60,13 +60,14 @@ class FrameITProject private(main: Option[Expression] = None)(implicit debug: Bo
   case class Stage(num: Int = Stage.counter) extends ProjectEntry(Stage.Origin(num))
   object Stage {
     var counter = 0
-    def current: String = s"Stage$counter"
-    def previous: String = s"Stage${counter-1}"
+    def current: String = makeName(counter)
+    def previous: String = makeName(counter-1)
+    private def makeName(num:Int) = s"Stage$num"
     /** Extractor, because SourceOrigin is a case class and cannot be extended */
     object Origin {
-      def apply(id: Int): SourceOrigin = SourceOrigin("SiTh", id.toString)
+      def apply(num: Int): SourceOrigin = SourceOrigin(makeName(num))
       def unapply(so: SourceOrigin): Option[Int] = so match {
-        case SourceOrigin("SiTh", id) => id.toIntOption
+        case SourceOrigin(s"Stage$num",null) => num.toIntOption
         case _ => None
       }
     }
@@ -81,16 +82,17 @@ class FrameITProject private(main: Option[Expression] = None)(implicit debug: Bo
   /** Helper Entry for the application of a Scheme */
   case class SchemeApplication(num: Int) extends ProjectEntry(SchemeApplication.Origin(num))
   object SchemeApplication {
-    private var counter = 0
+    var counter = 0
+    def next: (SourceOrigin,String) = {
+      counter += 1
+      (Origin(counter),makeName(counter))
+    }
+    private def makeName(num:Int) = s"Application$num"
     /** Extractor, because SourceOrigin is a case class and cannot be extended */
     object Origin {
-      def next: SourceOrigin = {
-        counter += 1
-        SourceOrigin("Application", counter.toString)
-      }
-      def apply(id: Int): SourceOrigin = SourceOrigin("Application", id.toString)
+      def apply(id: Int = counter): SourceOrigin = SourceOrigin(makeName(id))
       def unapply(so: SourceOrigin): Option[Int] = so match {
-        case SourceOrigin("Application", id) => id.toIntOption
+        case SourceOrigin(s"Application$num",null) => num.toIntOption
         case _ => None
       }
     }
@@ -108,11 +110,13 @@ class FrameITProject private(main: Option[Expression] = None)(implicit debug: Bo
     checkErrors()
   }
 
-  def applyScheme(scheme: String, apDeclsS: String, solDeclsS: String) = {
-    val apOrigin = SchemeApplication.Origin.next
-    val apCode = s"theory $apOrigin{include ${Stage.current} realize $scheme $apDeclsS}"
+  def applyScheme(scheme: String, requiredFacts: List[(String,String)], accquiredFacts: List[(String,String)]) = {
+    val (apOrigin,apName) = SchemeApplication.next
+    val reqDecls = requiredFacts map {case (n, d) => s"$n = $d"} mkString " "
+    val apCode = s"theory t$apName{include ${Stage.current} realize $scheme $reqDecls} $apName = t$apName{}"
     updateAndCheck(apOrigin,apCode)
-    add(solDeclsS)
+    val accDecls = accquiredFacts map {case (n, d) => s"$n = $apName.$d"} mkString " "
+    add(accDecls)
   }
 
   def reset(): Unit = {
@@ -138,7 +142,7 @@ class FrameITProject private(main: Option[Expression] = None)(implicit debug: Bo
     }
     e
   }
-  def tryReadAndRun(input: String) = {
+  def tryEval(input: String) = {
     Try{
       val parsed = Parser.expression(SourceOrigin.anonymous, input, ErrorThrower)
       val voc = check(true)
@@ -147,6 +151,8 @@ class FrameITProject private(main: Option[Expression] = None)(implicit debug: Bo
       r
     }
   }
+
+  def debugPrintVerbose(): Unit = println (entries.map(_.getVocabulary).mkString("\n"))
 }
 
 object FrameITProject{
@@ -171,8 +177,8 @@ object Gameplay{
   def test() = {
     val proj = FrameITProject(bg)(false)
     proj add s1
-    proj add s2
-    println(proj.tryReadAndRun("SiTh{}.__EA"))
+    proj applyScheme ("_SimilarTriangles",assignments, List(("height","__EA"), ("height_P","__EA_P")))
+    println(proj.tryEval("SiTh{}.height"))
   }
   /** The Background */
   val bg =
@@ -180,7 +186,7 @@ object Gameplay{
       |type triangle = (point,point,point)
       |dist: point -> point -> float
       |similar: triangle -> triangle -> bool
-      |theory _simTri_Scroll{
+      |theory _SimilarTriangles{
       |  _A: point _B: point _C: point _D: point _E: point
       |  _CD: float _CD_P:  |- dist(_C)(_D) == _CD
       |  _CE: float _CE_P:  |- dist(_C)(_E) == _CE
@@ -194,11 +200,18 @@ object Gameplay{
       |foot: point = ??? ground: point = ??? p: point = ??? q: point = ???
       |ground_dist_small = 42 ground_dist_small_P:  |- dist(ground)(q) == ground_dist_small = ???
       |ground_dist_large = 420 ground_dist_large_P:  |- dist(ground)(foot) == ground_dist_large = ???
-      |apparent_height = 21 apparent_height_P: |- dist(q)(p) == apparent_height = ???
+      |apparent_height = 42 apparent_height_P: |- dist(q)(p) == apparent_height = ???
       |are_similar: |- similar((tip,ground,foot))((p, ground, q)) = ???""".stripMargin
 
+  val assignments = List(
+    ("_A", "tip"), ("_B", "p"), ("_C", "ground"), ("_D", "q"), ("_E", "foot"),
+    ("_CD", "ground_dist_small"), ("_CD_P", "ground_dist_small_P"),
+    ("_CE", "ground_dist_large"), ("_CE_P", "ground_dist_large_P"),
+    ("_DB", "apparent_height"), ("_DB_P", "apparent_height_P"),
+    ("_are_similar", "are_similar"))
+
   val s2 =
-    """realize _simTri_Scroll
+    """realize _SimilarTriangles
       |_A = tip _B = p _C = ground _D = q _E = foot
       |_CD = ground_dist_small _CD_P = ground_dist_small_P
       |_CE = ground_dist_large _CE_P = ground_dist_large_P
@@ -246,7 +259,7 @@ object FrameIT_Backend {
 
   @JSExport("eval")
   def JS_eval(exprS: String): String = {
-    val ts = proj.tryReadAndRun(exprS)
+    val ts = proj.tryEval(exprS)
     //ts.fold(err => err.toString, expression => expression.toString)
     ts.toString
   }
