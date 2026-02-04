@@ -460,7 +460,7 @@ class IsabellePackageTraverser extends StatelessTraverser { //with TraverseOnlyO
   // indexes packages by matching the type; checking ensures there are no unknown types
   // todo: adding imperative programming features might necessitate additionally matching over expressions
   override def apply(tp: Type)(implicit gc: GlobalContext, a: Unit) =
-    tp match {
+    matchC(tp) {
       case NumberType(true, true, false, false, false) => {
         packages = packages.updated(0, "Complex_Main"); applyDefault(tp)
       }
