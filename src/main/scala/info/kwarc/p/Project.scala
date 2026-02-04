@@ -76,15 +76,21 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
   def check(so: SourceOrigin, alsoRun: Boolean): TheoryValue = {
     val le = get(so)
     val (vocC,vocR) = makeGlobalContext(so)
+    val eh = le.errors
     if (le.checkedIsDirty) {
-      if (le.errors.hasErrors) return le.parsed
-      val ch = new Checker(le.errors)
+      if (eh.hasErrors) return le.parsed
+      val ch = new Checker(eh)
       val leC = ch.checkVocabulary(GlobalContext(vocC), le.parsed, true)(le.parsed)
       le.checked = leC
       le.checkedIsDirty = false
+      val cleanE = eh.getErrors.mapConserve { e =>
+        if (e.loc == null) ch.Error(le.parsed,s"Error without valid Location: ${e.getMessage}")
+        else e
+      }
+      if (eh.getErrors != cleanE){eh.clear; cleanE foreach eh.apply}
     }
     if (alsoRun) {
-      if (le.errors.hasErrors) return le.checked
+      if (eh.hasErrors) return le.checked
       val ip = new Interpreter(vocR)
       val leR = le.checked.decls.map(ip.interpretDeclaration)
       le.result = TheoryValue(leR)

@@ -36,7 +36,7 @@ class ErrorCollector extends ErrorHandler {
   def hasErrors = errors.nonEmpty
   def getErrors = errors.reverse
   def apply(e: SError) = {
-    if (e.loc == null) throw IError(s"SError without valid Location: ${e.getMessage}")
+    //if (e.loc == null) throw IError(s"SError without valid Location: ${e.getMessage}")
     errors ::= e
   }
   def clear = {errors = Nil}

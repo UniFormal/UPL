@@ -1149,7 +1149,7 @@ class Checker(errorHandler: ErrorHandler) {
   }
 
   /** the main checking method: infers/elaborates/checks an expression
-   * @returns the elaborated checked expression and its type
+   * @return the elaborated checked expression and its type
    * @param gc context
    * @param expA the expression to check
    * @param expectedTp optional expected type; if given, the returned infered type can be ignored
