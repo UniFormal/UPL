@@ -229,9 +229,16 @@ module Basic {
     // Dynamic binding also happens if P is a short-circuiting connective: A and B are the left and right argument.
     // (But if A is an implication, it does not export any bindings, i.e., (true => (val x=1)) & x==1 is illegal.)
     val q = ([val u, val v] = x) & (val z = u+v) => z == k
-    k == expected & q
+    ASSERT(k, expected)
+    ASSERT(q)
   }
-  dynamicBinding = deepBinding1 & !dynamicAnd & dynamicImply & dynamicNames([1,2], 3) & dynamicNames([1], 0)
+  dynamicBinding() = {
+    ASSERT(deepBinding1)
+    ASSERT(!dynamicAnd)
+    ASSERT(dynamicImply)
+    dynamicNames([1,2], 3)
+    dynamicNames([1], 0)
+  }
 
   testNewline = {
     val x = 1
@@ -248,12 +255,12 @@ module Basic {
 
   // some tests for the above
   test = {
-    sum([1,2,3]) == 6 &
-    factorial(3) == 6 &
-    map([1,2,3])(x -> x+1) == [2,3,4] &
-    map2([1,2,3])(x -> x+1) == [2,3,4] &
-    divide(5,0) == 0 &
-    dynamicBinding &
-    ac == ("a","c")
+    ASSERT(sum([1,2,3]), 6)
+    ASSERT(factorial(3), 6)
+    ASSERT(map([1,2,3])(x -> x+1), [2,3,4])
+    ASSERT(map([1,2,3])(x -> x+1), [2,3,4])
+    ASSERT(divide(5,0), 0)
+    dynamicBinding()
+    ASSERT(ac, ("a","c"))
   }
 }

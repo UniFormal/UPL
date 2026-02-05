@@ -151,8 +151,8 @@ object Solver {
    */
   def findIsolatable(e: Expression, traversed: List[Int]): List[(String,Occurrence)] = e match {
     case ClosedRef(n) => List((n, Occurrence(traversed.reverse)))
-    case Application(BaseOperator(op,_), as) =>
-      op.isolatableArguments.flatMap(i => findIsolatable(as(i), i::traversed))
+    case Application(BaseOperator(op: KnownOperator,_), as) =>
+      op.isolatableArguments(as).flatMap(i => findIsolatable(as(i), i::traversed))
     case Application(OpenRef(p), as) =>
       InverseMethods.findIsolatable(p, as, traversed)
       // TODO InverseMethods.all.filter(im => im.fun.eq(p)).flatMap(im => ())
@@ -169,7 +169,7 @@ object Solver {
       case Nil => prop
       case i :: rest =>
         val lrO = prop.left match {
-          case Application(BaseOperator(op, _), as) => op.isolate(i, as, prop.right)
+          case Application(BaseOperator(op: KnownOperator, _), as) => op.isolate(i, as, prop.right)
           case Application(OpenRef(p), as) => InverseMethods.isolate(i, p, prop)
           case _ => None
         }

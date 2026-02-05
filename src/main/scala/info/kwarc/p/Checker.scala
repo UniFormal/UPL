@@ -93,8 +93,8 @@ class Checker(errorHandler: ErrorHandler) {
           case ed: ExprDecl => ed.ntO foreach {nt =>
             ed.tp match {
               case FlatOwnedObject(_,ft:FunType) => (ft.inDecls.last.tp,ft.out) match {
-                case (ClosedRef(_),_) =>
-                case (_,ClosedRef(_)) =>
+                case (MaybeAppliedRef(ClosedRef(_),_),_) =>
+                case (_,MaybeAppliedRef(ClosedRef(_),_)) =>
                 case _ => reportError("notations can only be inferred if the input or output type is declared in the same theory")
               }
               case _ => reportError("notations only allowed for constants of function type")
@@ -737,7 +737,7 @@ class Checker(errorHandler: ErrorHandler) {
               case _ => fail("expression cannot be coerced to a type")
             }
           case (rC: Ref, m: Module) if argsC.isEmpty =>
-            // module ref, interpret as class type, closed ref not supported yet
+            // module ref, interpret as class type
             if (!m.closed) reportError("open module not a type")
             checkType(gc, ClassType(rC))
           case _ => fail("not a type")
@@ -1029,7 +1029,7 @@ class Checker(errorHandler: ErrorHandler) {
           case None => fail("unknown identifier")(exp)
         }
         // Expressions that certainly don't belong into a type
-        case Assert(formula) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
+        case Assert(_,_,_) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
         case Assign(target, value) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
         case Block(exprs) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
         case IfThenElse(cond, thn, els) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
@@ -1315,36 +1315,39 @@ class Checker(errorHandler: ErrorHandler) {
         }
 
       case (Application(op: BaseOperator,args), etp) =>
-          if (op.operator.isDynamic) {
-            val eC = if (alsoCheck) checkDynamicBoolean(gc, exp)._1 else exp
-            if (alsoCheck) etp.foreach { tp =>
-              checkSubtype(gc, BoolType, tp)
+        op.operator match {
+          case ko: KnownOperator =>
+            if (ko.isDynamic) {
+              val eC = if (alsoCheck) checkDynamicBoolean(gc, exp)._1 else exp
+              if (alsoCheck) etp.foreach {tp =>
+                checkSubtype(gc, BoolType, tp)
+              }
+              (eC, BoolType)
+            } else {
+              val opTpC = checkType(gc,op.tp)
+              // TODO if type is known, we could check the arguments
+              val (argsC, argsI) = args.map(a => inferExpressionNorm(gc, a)(true)).unzip
+              val opI = inferOperator(gc, ko, argsI, etp)
+              checkSubtype(gc,opI,opTpC) // will set op.tp if unknown
+              val opC = op.copy(tp = opI)
+              (Application(opC, argsC), opI.out)
             }
-            (eC, BoolType)
-          } else if (op.operator.isCheckable) {
-            val opTpC = checkType(gc,op.tp)
-            // TODO if type is known, we could check the arguments
-            val (argsC, argsI) = args.map(a => inferExpressionNorm(gc, a)(true)).unzip
-            val opI = inferOperator(gc, op.operator, argsI, etp)
-            checkSubtype(gc,opI,opTpC) // will set op.tp if unknown
-            val opC = op.copy(tp = opI)
-            (Application(opC, argsC), opI.out)
-          } else {
-            val pop = op.operator match {
-              case pop: PseudoOperator => pop
-              case o => throw IError("missing case in type inference for operator: " + o.symbol)
-            }
-            val expElab = pop match {
-              case Equal | Inequal =>
-                if (args.length != 2) fail("unexpected number of arguments")
-                Equality(pop == Equal, Type.unknown(gc), args(0), args(1))
-              case pop: PseudoOperator =>
-                elaboratePseudo(gc, pop, op.loc, args, etp)
+          case po: PseudoOperator =>
+            val expElab = Operator.all.find(o => o.is(po)) match {
+              case Some(ko) =>
+                Application(op.copy(operator = ko), args)
+              case None =>
+                if ((po.symbol == "==" || po.symbol == "!=") && po.fixity == Infix) {
+                  if (args.length != 2) fail("unexpected number of arguments")
+                  Equality(po.symbol == "==", Type.unknown(gc), args(0), args(1))
+                } else {
+                  elaboratePseudo(gc, po, op.loc, args, etp)
+                }
             }
             return inferOrCheckExpression(gc, expElab.copyFrom(exp), expectedTpN)
         }
 
-      case (BaseOperator(op,opTp),_) if op.isCheckable =>
+      case (BaseOperator(op: KnownOperator, opTp),_) =>
         val opTpN = Normalize(gc, opTp.skipUnknown)
         opTpN match {
           case u: UnknownType =>
@@ -1533,9 +1536,12 @@ class Checker(errorHandler: ErrorHandler) {
             if (varsC.empty) bdC else Quantifier(q, varsC, bdC)
           } else exp
           (eC, BoolType)
-        case Assert(f) =>
-          val fC = if (alsoCheck) checkExpressionPure(gc, f, BoolType) else f
-          (Assert(fC), UnitType)
+        case a: Assert =>
+          val eq = a.asBoolean
+          val Equality(_,tpC,tC,eC) = {
+            if (alsoCheck) checkExpressionPure(gc, eq, BoolType) else eq
+          }
+          (Assert(tC,tpC,eC), BoolType)
         case EVarDecl(n, tp, dfO, mut, output) =>
           if (alsoCheck) {
             val tpC = checkType(gc, tp)
@@ -1706,13 +1712,13 @@ class Checker(errorHandler: ErrorHandler) {
               case (l,Nil) =>
                 applyIntros(gc,l,ProofType(bd))
             }
-          case Application(BaseOperator(Implies,_), args) =>
+          case Implies(args) =>
             val conc = args.last
             (vds, args.init) match {
               case (vd::rest,hyp::hyps) =>
                 val equated = equateTypes(gc, vd.tp, ProofType(hyp))(None)
                 if (!equated) fail("introduction form does not match expected type")
-                val tpR = ProofType(Implies(hyps,conc))
+                val tpR = ProofType(Implies(hyps:::List(conc)))
                 applyIntros(gc.append(vd), rest, tpR)
               case (Nil, l) => tp
               case (l,Nil) =>
@@ -1747,18 +1753,18 @@ class Checker(errorHandler: ErrorHandler) {
         val (primaryArg, primaryArgType, otherArgs) = (args.head, aI, args.tail)
         primaryArgType match {
           case popMagic(dom, _) =>
-            val otherArgsM = pop match {
-              case _: PseudoPrefixOperator | _: PseudoPostfixOperator =>
+            val otherArgsM = pop.fixity match {
+              case Prefix | Postfix =>
                 if (args.length != 1) reportError("one argument expected")
                 otherArgs
-              case _: PseudoInfixOperator =>
+              case Infix =>
                 if (args.length != 2) reportError("two arguments expected")
                 otherArgs
-              case _: PseudoCircumfixOperator =>
+              case Circumfix =>
                 List(CollectionKind.List(otherArgs))
-              case _: PseudoApplyfixOperator =>
+              case Applyfix =>
                 List(CollectionKind.List(otherArgs))
-              case _: PseudoBindfixOperator =>
+              case Bindfix =>
                 fail("cannot elaborate bindfix operator")
             }
             popMagic.insert(dom, primaryArg, otherArgsM)
@@ -1785,7 +1791,7 @@ class Checker(errorHandler: ErrorHandler) {
     }
   }
   def isMatchableForElaboration(tp: Type) = tp match {
-    case _:ClosedRef | _:BaseType => true
+    case _:ClosedRef | _:AppliedRef | _:BaseType | _: CollectionType => true
     case _ => false
   }
 
@@ -1794,12 +1800,12 @@ class Checker(errorHandler: ErrorHandler) {
    */
   def checkDynamicBoolean(gc: GlobalContext, b: Expression)(implicit alsoCheck: Boolean): (Expression, LocalContext) = recoverWith((b,LocalContext.empty)) {
     b match {
-      case And(l, r) =>
-        val (List(lC, rC), lc) = checkDynamicBooleans(gc, List(l, r))
-        (And(lC, rC).copyFrom(b), lc)
-      case Implies(l, r) =>
-        val (List(lC, rC), _) = checkDynamicBooleans(gc, List(l, r))
-        (Implies(lC, rC).copyFrom(b), LocalContext.empty)
+      case And(bs) =>
+        val (bsC, lc) = checkDynamicBooleans(gc, bs)
+        (And(bsC).copyFrom(b), lc)
+      case Implies(bs) =>
+        val (bsC, _) = checkDynamicBooleans(gc, bs)
+        (Implies(bsC).copyFrom(b), LocalContext.empty)
       case _: EVarDecl | _: Assign =>
         // treated as True
         val (bC,_) = inferExpression(gc,b)
@@ -1814,7 +1820,7 @@ class Checker(errorHandler: ErrorHandler) {
   /** maps over all arguments, collecting the contexts along the way */
   def checkDynamicBooleans(gc: GlobalContext, bs: List[Expression])(implicit alsoCheck: Boolean): (List[Expression], LocalContext) = {
     var lc = LocalContext.empty
-    val bsC = bs.map { b =>
+    val bsC = bs.map {b =>
       val (bC, bB) = checkDynamicBoolean(gc.append(lc), b)
       lc = lc.append(bB)
       bC
@@ -1833,8 +1839,8 @@ class Checker(errorHandler: ErrorHandler) {
         case _ => fail("defined function in pattern")(e)
       }
       case _: ExprOver => e
-      case Application(bo: BaseOperator, args) =>
-        if (bo.operator.invertible) {args map apply; e} else fail("non-invertible operator in pattern")(e)
+      case Application(BaseOperator(ko: KnownOperator,_), args) =>
+        if (ko.invertible) {args map apply; e} else fail("non-invertible operator in pattern")(e)
       case _ => fail("non-constructor in pattern")(e)
     }
   }
@@ -1930,8 +1936,8 @@ class Checker(errorHandler: ErrorHandler) {
           case _ => fail("function application not assignable")
         }
         es flatMap check
-      case Application(BaseOperator(o,_),es) =>
-        if (!o.invertible) fail("operator not invertible")
+      case Application(BaseOperator(ko: KnownOperator,_),es) =>
+        if (!ko.invertible) fail("operator not invertible")
         es flatMap check
       case _ => fail("expression not assignable")
     }
@@ -1984,7 +1990,7 @@ class Checker(errorHandler: ErrorHandler) {
     case _ => None
   }
 
-  def inferOperator(gc: GlobalContext,op: Operator, ins: List[Type], out: Option[Type])(implicit cause: Expression): FunType = {
+  def inferOperator(gc: GlobalContext,op: KnownOperator, ins: List[Type], out: Option[Type])(implicit cause: Expression): FunType = {
     op.arity.foreach {a =>
       if (ins.length != a)
         fail("wrong number of arguments")

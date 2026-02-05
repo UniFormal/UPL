@@ -25,7 +25,7 @@ module Notations {
     // magic infix operator: a ++ n becomes a._infix_++(n); here: add n to x
     val _infix_++ = (y: int) -> A{x=..x+y}
     // magic circumfix operator: 〈a,b,c〉 becomes a._circumfix_〈_〉(list[b,c]); here: sum a.x + b.x + c.x
-    val _circumfix_〈_〉 = (as: list[A]) -> {
+    val _circumfix_〈 = (as: list[A]) -> {
       var i = x
       for (u in as) i = i+u.x
       A{x=i}
@@ -41,7 +41,7 @@ module Notations {
     }
   }
   a = A{x=1}
-  test = (a++2).x == 3 & 〈a,a,a〉.x == 3 & a〈a,a〉.x == 3 & ($a).x == 2 & a⁻.x == 0
+  test = {ASSERT((a++2).x,3); ASSERT(〈a,a,a〉.x,3); ASSERT(a〈a,a〉.x,3); ASSERT(($a).x, 2);  ASSERT(a⁻.x, 0)}
 
   // There are magic functions that are used for converting instances to other types.A
   // - toString: converts to a string, e.g., for printing

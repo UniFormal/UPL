@@ -177,7 +177,7 @@ abstract class Traverser[A] {
       val (vsT,aT) = apply(vs)
       // if the quantifiers is closing and the context has not been inferred yet, this does not pass down the correct context
       Quantifier(q, vsT, apply(b)(gc.append(vs),aT))
-    case Assert(f) => Assert(apply(f))
+    case Assert(t,tp,e) => Assert(apply(t), apply(tp), apply(e))
     case UndefinedValue(tp) => UndefinedValue(apply(tp))
   }
 }

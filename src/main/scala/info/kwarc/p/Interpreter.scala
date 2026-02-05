@@ -122,7 +122,7 @@ class Interpreter(vocInit: TheoryValue) {
   def fail(msg: String)(implicit sf: SyntaxFragment) =
     throw Error(sf, stack, msg + ": " + sf)
   def abort(msg: String)(implicit sf: Expression) =
-    throw RuntimeError(sf, msg + ": " + sf)
+    throw RuntimeError(sf, sf.toString + ": " + msg)
 
   private val env = new GlobalEnvironment(vocInit)
   def voc = env.voc
@@ -347,7 +347,7 @@ class Interpreter(vocInit: TheoryValue) {
         val fI = interpretExpression(f)
         lazy val asI = as map interpretExpression
         fI match {
-          case bo: BaseOperator =>
+          case bo:BaseOperator =>
             if (bo.operator.isDynamic) {
               frame.inNewBlock {
                 interpretDynamicBoolean(exp)
@@ -434,14 +434,14 @@ class Interpreter(vocInit: TheoryValue) {
           }
         }
         BoolValue(q) // only correct if we've tried all values
-      case Assert(f) =>
-        val fI = interpretExpression(f)
-        fI match {
-          case BoolValue(true) =>
-          case BoolValue(false) => abort("assertion failed: " + f)
-          case _ => abort("assertion inconclusive: " + f)
-        }
-        UnitValue
+      case a: Assert =>
+        val tI = interpretExpression(a.test)
+        val eI = interpretExpression(a.expected)
+        val r = if (tI != eI) {
+          abort(s"assertion failed:\n  evaluating: ${a.test}\n      result: $tI\n    expected: $eI")
+          false
+        } else true
+        BoolValue(r)
       case u: UndefinedValue => u
     } // end match
   }
@@ -459,20 +459,24 @@ class Interpreter(vocInit: TheoryValue) {
   }
 
   def interpretDynamicBoolean(b: Expression): Expression = b match {
-    case And(l,r) =>
-      val lI = interpretDynamicBoolean(l)
-      lI match {
-        case BoolValue(true) => interpretDynamicBoolean(r)
-        case BoolValue(false) => BoolValue(false)
-        case _ => And(lI,r)
-      }
-    case Implies(l,r) =>
-      frame.inNewBlock {
-        val lI = interpretDynamicBoolean(l)
+    case And(bs) =>
+      if (bs.isEmpty) BoolValue(true)
+      else {
+        val lI = interpretDynamicBoolean(bs.head)
         lI match {
-          case BoolValue(true) => interpretDynamicBoolean(r)
+          case BoolValue(true) => if (bs.tail.isEmpty) BoolValue(true) else interpretDynamicBoolean(And(bs.tail))
+          case BoolValue(false) => BoolValue(false)
+          case _ => And(lI :: bs.tail)
+        }
+      }
+    case Implies(bs) =>
+      if (bs.isEmpty) BoolValue(false)
+      else frame.inNewBlock {
+        val lI = interpretDynamicBoolean(bs.head)
+        lI match {
+          case BoolValue(true) => if (bs.tail.isEmpty) BoolValue(true) else interpretDynamicBoolean(Implies(bs.tail))
           case BoolValue(false) => BoolValue(true)
-          case _ => Implies(lI,r)
+          case _ => Implies(lI::bs.tail)
         }
       }
     case Assign(t,v) =>

@@ -193,8 +193,8 @@ object Compiler {
         val eC = c(e)
         returnAdded = true
         if (thrw) JThrow(eC) else makeReturn(eC)
-      case Assert(f) =>
-        val fC = c(f)
+      case a: Assert =>
+        val fC = c(a.asBoolean)
         JIf(JUnOp("!", fC), JThrow(JString("assertion failed")), None)
       case q: Quantifier => throw Error(q,"cannot compile quantifier")
     }

@@ -8,7 +8,7 @@ module FiniteStructures {
     type node = univ
     edgeTo: univ -> set[univ]
   }
-  reflexive = (g: Graph) -> forall x: g.node. x in g.edgeTo(x)
+  reflexive = (g: Graph) -> forall x: g.node. x ∈ g.edgeTo(x)
   loops = s -> Graph {size = s, edgeTo = x -> [x]}
-  test = reflexive(loops(2))
+  test = ASSERT(reflexive(loops(2)))
 }

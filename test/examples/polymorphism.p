@@ -16,31 +16,49 @@ module Polymorphism {
   // The theory of an endofunctor on the category of types.
   theory TypeFunctor {
     // map types to types
-    type typeApply@A
+    type univ@A
     // map functions to functions
-    funApply@(A,B): (A -> B) -> (typeApply@A -> typeApply@B)
+    map@(A,B): (A -> B) -> (univ@A -> univ@B)
 
     // preservation of identity
-    funApplyId@A: |- funApply(id) == id
+    mapId@A: |- map(id) == id
     // preservation of composition
-    funApplyComp@(A,B,C): |- forall f,g. funApply@(A,C)(comp(f,g)) == comp(funApply@(A,B)(f), funApply@(B,C)(g))
+    mapComp@(A,B,C): |- forall f,g. map@(A,C)(comp(f,g)) == comp(map@(A,B)(f), map@(B,C)(g))
     // alternatively, we can give the variable types and infer the type arguments
-    funApplyCompVar@(A,B,C): |- forall f: A->B, g:B->C. funApply(comp(f,g)) == comp(funApply(f), funApply(g)) = funApplyComp
+    mapCompVar@(A,B,C): |- forall f: A->B, g:B->C. map(comp(f,g)) == comp(map(f), map(g)) = mapComp
+  }
+
+  theory Monad {
+    include TypeFunctor
+    
+    embed@A: A -> univ@A # prefix !
+    flatten@A: univ@(univ@A) -> univ@A
+
+    bind@(A,B): univ@A -> (A -> univ@B) -> univ@B # infix >>=
+              = x -> f -> flatten(map(f)(x))
   }
 
   // lists as such a functor
-  List = TypeFunctor {
-    type typeApply@A = list[A]
-    funApply@(A,B) = f -> l -> {
+  List = Monad {
+    type univ@A = list[A]
+    map@(A,B) = f -> l -> {
       l match {
         [] -> []
-        h -: t -> f(h) -: funApply(f)(t)  // if type arguments are omitted from an expression symbol, they are treated like @(_,...,_) and are inferred
+        h -: t -> f(h) -: map(f)(t)  // if type arguments are omitted from an expression symbol, they are treated like @(_,...,_) and are inferred
       }
     }
+    embed@A = x -> [x]
+    flatten@A = ls -> ls match {
+      [] -> []
+      h -: t -> h ::: flatten(t)
+    }
     // omitted proofs
-    funApplyId@A = ???
-    funApplyComp@(A,B,C) = ???
+    mapId@A = ???
+    mapComp@(A,B,C) = ???
   }
 
-  test = {val l = list[1,2,3]; List.funApply(x -> x+1)(l) == [2,3,4]}
+
+  test = {val l = list[1,2,3]; List.map(x -> x+1)(l) == [2,3,4]} 
+        // {val l: List{univ@int} = [1,2]; List.bind(l)(x -> [x,x]) == [1,1,2,2]}
+  
 }
