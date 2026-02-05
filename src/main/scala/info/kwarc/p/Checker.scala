@@ -1017,11 +1017,10 @@ class Checker(errorHandler: ErrorHandler) {
     }
     override def apply(exp: Expression)(implicit gc: GlobalContext, a:Unit) = matchC(exp) {
         case r: Ref => gc.lookupRef(r) match {
-          // Collapse a reference to another reference (elim-rule)
-          case Some(ExprDecl(_,_,_,Some(df),_,Modifiers(_,false))) if df != r => df match {
-            case _:Ref => apply(df)
-            case OwnedExpr(_,_,_:Ref) => apply(df)
-            case UnitValue | BoolValue(_) | _: NumberValue | StringValue(_) => df
+          case Some(ed: ExprDecl) if !ed.modifiers.mutable => ed.dfO match {
+            case Some(s) if s.isInstanceOf[Ref] => apply(s)
+            case Some(df @ OwnedExpr(_:Ref,_,_:Ref)) => apply(df)
+            case Some(v: BaseValue) => v
             case _ => r
           }
           case Some(_) => r // All other references have a normalized head
@@ -2151,10 +2150,12 @@ class Checker(errorHandler: ErrorHandler) {
         val (consI, vsM) = matchTypeLists(vs1,vs2,cons,false).?
         val bM = matchExprs(b1,b2,consI).?
         vsM ::: bM
-      case (OwnedExpr(o1, d1, oe1),OwnedExpr(o2, d2, oe2)) if d1==d2 =>
-        val oM = matchExprs(o1, o2, cons).?
-        val oeM = matchExprs(oe1, oe2, cons).?
-        oM ::: oeM
+      /*
+      // unclear if this is sound
+      case (OwnedExpr(o1, d1, e1),OwnedExpr(o2, d2, e2)) if o1 == o2 && d1 == d2 =>
+        val eM = matchExprs(o1, e2, cons)(gc.push(d1,Some(o1))).?
+        oM ::: eM
+       */
       case _ => Result.fail
     }
   }

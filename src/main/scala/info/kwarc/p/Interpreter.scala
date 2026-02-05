@@ -204,7 +204,7 @@ class Interpreter(vocInit: TheoryValue) {
         val re = RegionalEnvironment("new instance",Some(runtimeInst), parent = Some(frame))
         // execute all fields in the context of this instance
         case class InterpretationInput(decls: List[Declaration], from: Option[Include])
-        var todo = if(initDecls.nonEmpty) List(InterpretationInput(initDecls, None)) else Nil
+        var todo = List(InterpretationInput(initDecls, None))
         env.inFrame(re) {
           while (todo.nonEmpty) {
             val InterpretationInput(d :: ds, inclO) :: tail = todo
