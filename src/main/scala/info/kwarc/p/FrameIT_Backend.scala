@@ -1,5 +1,6 @@
 package info.kwarc.p
 
+import scala.collection.mutable
 import scala.scalajs.js.annotation._
 import scala.util.Try
 
@@ -27,9 +28,12 @@ trait SiTh_handler {
   * This is implemented via a special [[ProjectEntry]]
   * Its current value is accessible via [[getSiTh]], and new declarations can be added via [[add]]
   */
-class FrameITProject private(main: Option[Expression] = None)(implicit debug: Boolean)
-  extends Project(Nil, main) with SiTh_handler {
+class FrameITProject private()
+  extends Project(Nil,None) with SiTh_handler {
   import info.kwarc.p.FrameITProject._
+  final val debug: Boolean = false
+  entries = List(SiTh)
+  main = Option(Parser.expression(SiThOrigin, "SiTh{}", ErrorIgnorer))
   /** The current Situation is always the latest Stage, but with a constant Name ("SiTh") */
   case object SiTh extends ProjectEntry(SiThOrigin) {
     private val proj = FrameITProject.this
@@ -37,14 +41,7 @@ class FrameITProject private(main: Option[Expression] = None)(implicit debug: Bo
     /** Set the SiTh to the combination of all [[Declaration]]s of all SiThFragments */
     def update() = proj.update(SiThOrigin, s"theory SiTh{include ${Stage.current}}")
 
-    /** May be useful in a future where the Stages can split */
-    private def updateAsCombination(frags: List[Int]) = {
-      val includes = for (f <- frags) yield s"include ${fragment(f)}"
-      updateAndCheck(SiThOrigin, s"theory SiTh{${includes.mkString(" ")}}")
-    }
-
-    def get: Module =
-      getVocabulary
+    def get: Module = getVocabulary
         .decls
         .collectFirst{
           case m: Module if m.name == "SiTh" => m
@@ -155,31 +152,120 @@ class FrameITProject private(main: Option[Expression] = None)(implicit debug: Bo
   def debugPrintVerbose(): Unit = println (entries.map(_.getVocabulary).mkString("\n"))
 }
 
-object FrameITProject{
+object FrameITProject {
   // SiTh: SituationTheory
   private val SiThOrigin: SourceOrigin = SourceOrigin("SiTh")
-  def apply(backgroundTheoryContent: String, initialStageContent:String="", main: String = "")(implicit debug: Boolean): FrameITProject = {
-    val btOrigin = SourceOrigin("BackgroundTheory")
-    val mainE = Try(Parser.expression(SiThOrigin, main, ErrorThrower)).toOption
-    val proj = new FrameITProject(mainE)
-    proj.entries = List[ProjectEntry](new ProjectEntry(btOrigin), proj.SiTh)
-
-    // Add the BackgroundTheory. Compare [[proj.tryAdd]]
-    val btString = s"$backgroundTheoryContent " + // The actual Background
-      s"theory ${proj.Stage.current}{$initialStageContent}" // The initial Stage. Won't be deleted by [[reset]]
-    proj.updateAndCheck(btOrigin, btString)
+  def apply(backgroundContent: String, initialStageContent:String=""): FrameITProject = {
+    val proj = new FrameITProject()
+    proj.updateAndCheck(SourceOrigin("BackgroundTheory"), backgroundContent)
+    val isCode = s"theory ${proj.Stage.current}{$initialStageContent}"
+    /** The initial Stage is not stored in a [[proj.Stage]], to be save from [[proj.reset]] */
+    proj.updateAndCheck(SourceOrigin("InitialStage"), isCode)
     proj
   }
-  private def fragment(i: Int) = s"Stage$i"
+  def apply(setupFile: File): FrameITProject = {
+    val project = new FrameITProject()
+    // The background is modular and may be spread over multiple files
+    val (entries,siO) = unfoldProjectFile(setupFile)
+    project.entries = entries ++: project.entries // prepend the background, SiTh remains last element
+    entries.foreach {e => project.check(e.source, false)}
+    // For the initial Stage we have the "init" property in a .pp file, containing a [[TheoryValue]]
+    // Wrapping in a theory occurs here, to guarantee the correct name
+    val is = s"theory ${project.Stage.current}{${siO.getOrElse("")}}"
+    project.updateAndCheck(SourceOrigin("InitialStage"), is)
+    project
+  }
+
+  /** Kinda chimera of [[File.readPropertiesFromString]] and [[Project.fromFile]],
+    * because both aren't quite flexible enough to be used here */
+  def unfoldProjectFile(projFile: File): (List[ProjectEntry], Option[String]) = {
+    val props = new mutable.HashMap[String, List[String]].withDefaultValue(Nil)
+    if (projFile.getExtension contains "pp") {
+      val r = scala.io.Source.fromFile(projFile.toJava)
+      r.getLines()
+        .map(_.strip())
+        .filter(!_.startsWith("//"))
+        .foreach { line =>
+          val p +: v = line.split(":", 2).toList
+          if (p.nonEmpty && v.nonEmpty) { // make sure line contains colon and the key is non-empty
+            val key = p.strip()
+            val value = v.flatMap(_.split("\\s")).filter(_.nonEmpty)
+            props.updateWith(key) {
+              case None => Option(value)
+              case Some(old) => Option(value reverse_::: old)
+        } } }
+      props.mapValuesInPlace { (_, v) => v.reverse }
+    }
+    else {
+      props.update("source", Project.pFiles(projFile).map(_.toString))
+    }
+    val sourceProps = List("background","schemata","source") // List because we need the order for `entries`
+    val stageInit = for {
+        names <- props.remove("stageInit")
+        name <- names.headOption
+        f = projFile.up.resolve(name)
+      } yield Parser.getFileContent(f)
+    props.filterInPlace((k,_) => sourceProps.contains(k))
+    val entries = sourceProps.view
+      .flatMap(props)
+      .flatMap(s => Project.pFiles(projFile.up.resolve(s)))
+      .map(ProjectEntry(_))
+      .toList
+    (entries, stageInit)
+  }
+}
+
+/**
+  * The API for interfacing with the UPL Situation Theory from the outside.
+  * Hides all the fancy Scala stuff [[SiTh_handler]] can use, and instead provides simple return types.
+  *
+  * (Currently, the only expected "outside" is JS)
+  */
+//@JSExportAll
+@JSExportTopLevel("FrameIT")
+object FrameIT_Backend {
+  import Gameplay._
+  implicit val debug: Boolean = false
+  private var proj = FrameITProject("")
+
+  def main(args: Array[String]): Unit = {
+    proj = FrameITProject(File("test/FrameIt/Gameplay_Example/gameplay.pp"))
+    //proj add s1
+    proj applyScheme("_SimilarTriangles", assignments, List(("height", "__EA"))) // ("height_P","__EA_P") doesn't work
+    println(proj.tryEval("SiTh{}.height"))
+  }
+
+  // ToDO: Make a useful JS Object
+  def makeJSReadable(declaration: Declaration) = declaration.toString
+
+  @JSExport("showSiTh")
+  def JS_showSiTh: String = proj.getSiTh.toString
+
+  @JSExport("SiThErrors")
+  def JS_getSiThErrors: String = proj.getSiThErrors.mkString("\n")
+
+  /** Add [[Declaration]]s to the SiTh
+    *
+    * @param decls_String The declarations to add, as raw code string
+    * @return True if no error occurred, false otherwise.
+    */
+  @JSExport("tryAdd")
+  def JS_addS(decls_String: String): Boolean = proj.add(decls_String)
+
+  def resetLevel(): Unit = proj.reset()
+
+  @JSExport("newLevel")
+  def JS_newProject(backgroundTheoryContent: String): Unit = { proj = FrameITProject(backgroundTheoryContent) }
+
+  @JSExport("eval")
+  def JS_eval(exprS: String): String = {
+    val ts = proj.tryEval(exprS)
+    //ts.fold(err => err.toString, expression => expression.toString)
+    ts.toString
+  }
 }
 
 object Gameplay{
-  def test() = {
-    val proj = FrameITProject(bg)(false)
-    proj add s1
-    proj applyScheme ("_SimilarTriangles",assignments, List(("height","__EA"), ("height_P","__EA_P")))
-    println(proj.tryEval("SiTh{}.height"))
-  }
   /** The Background */
   val bg =
     """type point
@@ -217,52 +303,6 @@ object Gameplay{
       |_CE = ground_dist_large _CE_P = ground_dist_large_P
       |_DB = apparent_height _DB_P = apparent_height_P
       |_are_similar = are_similar""".stripMargin
-}
-
-/**
-  * The API for interfacing with the UPL Situation Theory from the outside.
-  * Hides all the fancy Scala stuff [[SiTh_handler]] can use, and instead provides simple return types.
-  *
-  * (Currently, the only expected "outside" is JS)
-  */
-@JSExportTopLevel("FrameIT")
-@JSExportAll
-object FrameIT_Backend {
-  implicit val debug: Boolean = false
-  private var proj = FrameITProject("")
-
-  def main(args: Array[String]): Unit = {
-    Gameplay.test()
-  }
-
-  // ToDO: Make a useful JS Object
-  def makeJSReadable(declaration: Declaration) = declaration.toString
-
-  @JSExport("showSiTh")
-  def JS_showSiTh: String = proj.getSiTh.toString
-
-  @JSExport("SiThErrors")
-  def JS_getSiThErrors: String = proj.getSiThErrors.mkString("\n")
-
-  /** Add [[Declaration]]s to the SiTh
-    *
-    * @param decls_String The declarations to add, as raw code string
-    * @return True if no error occurred, false otherwise.
-    */
-  @JSExport("tryAdd")
-  def JS_addS(decls_String: String): Boolean = proj.add(decls_String)
-
-  def resetLevel(): Unit = proj.reset()
-
-  @JSExport("newLevel")
-  def JS_newProject(backgroundTheoryContent: String): Unit = { proj = FrameITProject(backgroundTheoryContent) }
-
-  @JSExport("eval")
-  def JS_eval(exprS: String): String = {
-    val ts = proj.tryEval(exprS)
-    //ts.fold(err => err.toString, expression => expression.toString)
-    ts.toString
-  }
 }
 
 /** Experimental factory to make common, but convoluted, declarations easier to interact with.*/

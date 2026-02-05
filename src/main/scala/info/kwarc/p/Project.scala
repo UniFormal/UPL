@@ -10,14 +10,23 @@ class ProjectEntry(val source: SourceOrigin) {
   var checked = Theory.empty
   var checkedIsDirty = false
   var result = Theory.empty
-  def global = source.fragment == null
+  val global = source.fragment == null
   def getVocabulary = if (checkedIsDirty) parsed else checked
+}
+object ProjectEntry{
+  def apply(file: File): ProjectEntry = {
+    val e = new ProjectEntry(file.toSourceOrigin)
+    e.parsed = Parser.text(e.source, Parser.getFileContent(file), e.errors)
+    DependencyAnalyzer.update(e)
+    e.checkedIsDirty = true
+    e
+  }
 }
 
 /**
- * A project stores interrelated toplevel source snippets.
- * @param main the main call to run this project
- */
+  * A project stores interrelated toplevel source snippets.
+  * @param main the main call to run this project
+  */
 class Project(protected var entries: List[ProjectEntry], var main: Option[Expression] = None) {
   override def toString: String = entries.map(_.source).mkString(", ") + ": " + main.getOrElse("(no main)")
 
@@ -26,7 +35,7 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
 
   def get(so: SourceOrigin) = entries.find(_.source == so).getOrElse {
     val e = new ProjectEntry(so)
-    entries = entries ::: List(e)
+    entries = entries :+ e
     e
   }
   def hasErrors: Boolean = errors.hasErrors || entries.exists(_.errors.hasErrors)
@@ -196,7 +205,7 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
 
 object Project {
   private val fileEndings = List(".p", ".p.tex")
-  private def pFiles(f: File) = {
+  protected[p] def pFiles(f: File) = {
     val candidates = if (f.toJava.isFile) List(f) else f.descendants
     candidates.filter(d => fileEndings.exists(d.getName.endsWith))
   }
@@ -223,11 +232,9 @@ object Project {
     }
     val mainE = mainS.map(s => Parser.expression(projFile.toSourceOrigin, s, ErrorThrower))
     val es = paths.map {p =>
-      new ProjectEntry(p.toSourceOrigin)
+      ProjectEntry(p)
     }
-    val p = new Project(es,mainE)
-    p.entries.foreach {e => p.update(e.source, Parser.getFileContent(File(e.source.toString)))}
-    p
+    new Project(es,mainE)
   }
 }
 
