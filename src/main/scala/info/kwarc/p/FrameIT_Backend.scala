@@ -149,6 +149,19 @@ class FrameITProject private()
     }
   }
 
+  def checkAll()= {
+    val (dirty,checked) = entries.view.filter(_.global).partition(_.checkedIsDirty)
+    val voc: mutable.Queue[Declaration] = mutable.Queue.from(checked.flatMap(_.checked.decls))
+    dirty.foreach{ le =>
+      if(!le.errors.hasErrors) {
+        val ch = new Checker(le.errors)
+        le.checked = ch.checkVocabulary(GlobalContext(voc), le.parsed, true)(le.parsed)
+        le.checkedIsDirty = false
+      }
+      voc ++= le.getVocabulary.decls
+    }
+    TheoryValue(voc.toList)
+  }
   def debugPrintVerbose(): Unit = println (entries.map(_.getVocabulary).mkString("\n"))
 }
 
@@ -168,11 +181,9 @@ object FrameITProject {
     // The background is modular and may be spread over multiple files
     val (entries,siO) = unfoldProjectFile(setupFile)
     project.entries = entries ++: project.entries // prepend the background, SiTh remains last element
-    entries.foreach {e => project.check(e.source, false)}
-    // For the initial Stage we have the "init" property in a .pp file, containing a [[TheoryValue]]
-    // Wrapping in a theory occurs here, to guarantee the correct name
-    val is = s"theory ${project.Stage.current}{${siO.getOrElse("")}}"
-    project.updateAndCheck(SourceOrigin("InitialStage"), is)
+    val isCode = s"theory ${project.Stage.current}{${siO.getOrElse("")}}"
+    project.update(SourceOrigin("InitialStage"), isCode)
+    project.checkAll()
     project
   }
 
