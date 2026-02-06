@@ -1,3 +1,3 @@
 background: background.p
-schemata: scheme.p
+schemata: schema.p
 stageInit: stageInit.p

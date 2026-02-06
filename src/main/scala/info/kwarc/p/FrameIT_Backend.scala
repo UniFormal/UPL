@@ -52,44 +52,51 @@ class FrameITProject private()
     override def toString: String =
       source.toString ++ " ::" ++ decls.mkString("{\n", "\n", "\n}").indent(1)
   }
+
   /** Intermediate Stages of the Situation
     * There might be a point in having the Stages encapsulated in their own "Project", the Frame */
   case class Stage(num: Int = Stage.counter) extends ProjectEntry(Stage.Origin(num))
   object Stage {
     var counter = 0
     def current: String = makeName(counter)
-    def previous: String = makeName(counter-1)
-    private def makeName(num:Int) = s"Stage$num"
+    def previous: String = makeName(counter - 1)
+    private def makeName(num: Int) = s"Stage$num"
     /** Extractor, because SourceOrigin is a case class and cannot be extended */
     object Origin {
       def apply(num: Int): SourceOrigin = SourceOrigin(makeName(num))
+
       def unapply(so: SourceOrigin): Option[Int] = so match {
-        case SourceOrigin(s"Stage$num",null) => num.toIntOption
+        case SourceOrigin(s"Stage$num", null) => num.toIntOption
         case _ => None
       }
     }
   }
+
   /** Unlike the content of `BackgroundTheory`, Schemata (formerly Scrolls) operate on the Frame itself,
     * and should thus be first-class citizen of the Project.
     *
-    * @todo Actually implement this; The application of a Scheme is completely manual rn.
+    * @todo Actually implement this; The application of a Schema is completely manual rn.
     *       Also add a dedicated SourceOrigin/Extractor then.
     */
-  case class SolutionScheme(name: String, dataNeededToGenerateSchemeApplication: Any) extends ProjectEntry(SourceOrigin(name))
-  /** Helper Entry for the application of a Scheme */
-  case class SchemeApplication(num: Int) extends ProjectEntry(SchemeApplication.Origin(num))
-  object SchemeApplication {
+  case class SolutionSchema(name: String, dataNeededToGenerateSchemaApplication: Nothing) extends ProjectEntry(SourceOrigin(name)) {
+    def apply(stage: Stage, data: Nothing): Stage = ???
+  }
+
+  /** Helper Entry for the application of a Schema. For now it's easiest to just keep them around. */
+  case class SchemaApplication(num: Int) extends ProjectEntry(SchemaApplication.Origin(num))
+  object SchemaApplication {
     var counter = 0
-    def next: (SourceOrigin,String) = {
+    def next: (SourceOrigin, String) = {
       counter += 1
-      (Origin(counter),makeName(counter))
+      (Origin(counter), makeName(counter))
     }
-    private def makeName(num:Int) = s"Application$num"
+    private def makeName(num: Int) = s"Application$num"
     /** Extractor, because SourceOrigin is a case class and cannot be extended */
     object Origin {
       def apply(id: Int = counter): SourceOrigin = SourceOrigin(makeName(id))
+
       def unapply(so: SourceOrigin): Option[Int] = so match {
-        case SourceOrigin(s"Application$num",null) => num.toIntOption
+        case SourceOrigin(s"Application$num", null) => num.toIntOption
         case _ => None
       }
     }
@@ -107,18 +114,18 @@ class FrameITProject private()
     checkErrors()
   }
 
-  def applyScheme(scheme: String, requiredFacts: List[(String,String)], accquiredFacts: List[(String,String)]) = {
-    val (apOrigin,apName) = SchemeApplication.next
+  def applySchema(schema: String, requiredFacts: List[(String,String)], acquiredFacts: List[(String,String)]) = {
+    val (apOrigin,apName) = SchemaApplication.next
     val reqDecls = requiredFacts map {case (n, d) => s"$n = $d"} mkString " "
-    val apCode = s"theory t$apName{include ${Stage.current} realize $scheme $reqDecls} $apName = t$apName{}"
+    val apCode = s"theory t$apName{include ${Stage.current} realize $schema $reqDecls} $apName = t$apName{}"
     updateAndCheck(apOrigin,apCode)
-    val accDecls = accquiredFacts map {case (n, d) => s"$n = $apName.$d"} mkString " "
+    val accDecls = acquiredFacts map {case (n, d) => s"$n = $apName.$d"} mkString " "
     add(accDecls)
   }
 
   def reset(): Unit = {
     Stage.counter = 0
-    entries = entries.filterNot(e => e.isInstanceOf[Stage] || e.isInstanceOf[SchemeApplication])
+    entries = entries.filterNot(e => e.isInstanceOf[Stage] || e.isInstanceOf[SchemaApplication])
     SiTh.update()
   }
   def getSiThErrors: List[SError] = SiTh.errors.getErrors
@@ -130,7 +137,7 @@ class FrameITProject private()
   override def get(so: SourceOrigin): ProjectEntry = entries.find(_.source == so).getOrElse {
     val e = so match {
       case Stage.Origin(n) => Stage(n)
-      case SchemeApplication.Origin(n) => SchemeApplication(n)
+      case SchemaApplication.Origin(n) => SchemaApplication(n)
       case _ => new ProjectEntry(so)
     }
     entries = entries match {
@@ -176,9 +183,20 @@ object FrameITProject {
     proj.updateAndCheck(SourceOrigin("InitialStage"), isCode)
     proj
   }
+
+  /**
+    * Create a FrameIT project from a UPL project-file (*.pp)
+    *
+    * Relevant properties:
+    *  - "background" (or "source") files are considered background and all content is added to the project as is
+    *  - "schemata" ToDo Extract required and acquired facts from Schemata.
+    *  - "stageInit" the first listed file is used as content for [[FrameITProject.Stage]]0. All others are ignored
+    *
+    * @param setupFile A UPL project-file (*.pp)
+    * @return A fully set up FrameIt project
+    */
   def apply(setupFile: File): FrameITProject = {
     val project = new FrameITProject()
-    // The background is modular and may be spread over multiple files
     val (entries,siO) = unfoldProjectFile(setupFile)
     project.entries = entries ++: project.entries // prepend the background, SiTh remains last element
     val isCode = s"theory ${project.Stage.current}{${siO.getOrElse("")}}"
@@ -189,7 +207,7 @@ object FrameITProject {
 
   /** Kinda chimera of [[File.readPropertiesFromString]] and [[Project.fromFile]],
     * because both aren't quite flexible enough to be used here */
-  def unfoldProjectFile(projFile: File): (List[ProjectEntry], Option[String]) = {
+  protected def unfoldProjectFile(projFile: File): (List[ProjectEntry], Option[String]) = {
     val props = new mutable.HashMap[String, List[String]].withDefaultValue(Nil)
     if (projFile.getExtension contains "pp") {
       val r = scala.io.Source.fromFile(projFile.toJava)
@@ -208,7 +226,7 @@ object FrameITProject {
       props.mapValuesInPlace { (_, v) => v.reverse }
     }
     else {
-      props.update("source", Project.pFiles(projFile).map(_.toString))
+      props.update("background", Project.pFiles(projFile).map(_.toString))
     }
     val sourceProps = List("background","schemata","source") // List because we need the order for `entries`
     val stageInit = for {
@@ -216,7 +234,6 @@ object FrameITProject {
         name <- names.headOption
         f = projFile.up.resolve(name)
       } yield Parser.getFileContent(f)
-    props.filterInPlace((k,_) => sourceProps.contains(k))
     val entries = sourceProps.view
       .flatMap(props)
       .flatMap(s => Project.pFiles(projFile.up.resolve(s)))
@@ -242,7 +259,7 @@ object FrameIT_Backend {
   def main(args: Array[String]): Unit = {
     proj = FrameITProject(File("test/FrameIt/Gameplay_Example/gameplay.pp"))
     //proj add s1
-    proj applyScheme("_SimilarTriangles", assignments, List(("height", "__EA"))) // ("height_P","__EA_P") doesn't work
+    proj applySchema("_SimilarTriangles", assignments, List(("height", "__EA"))) // ("height_P","__EA_P") doesn't work
     println(proj.tryEval("SiTh{}.height"))
   }
 
