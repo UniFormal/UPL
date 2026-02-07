@@ -5,6 +5,6 @@ module Test200 {
     // local, regional, global contexts
 
     g: int -> int
-    g(x) = x
+    g = x -> x
 
 }

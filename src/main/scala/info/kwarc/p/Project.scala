@@ -249,7 +249,7 @@ object Project {
       File(pe.toString).up./(voc.decls.head.nameO.get + ".thy")
     }
     // render from checked vocabulary; compile the checked vocabulary (not the raw parsed AST)
-    val isabelleStrings = proj.entries.map(pe => Isabelle.toIsabelleCode(pe.getVocabulary))
+    val isabelleStrings = proj.entries.map(pe => IsabelleCompiler.toIsabelleCode(pe.getVocabulary))
     // write the strings to files
     (files zip isabelleStrings).foreach { case (f,s) => File.write(f,s) }
   }

@@ -32,6 +32,16 @@ class IsabelleCompiler(tv: TheoryValue, packString: String = "") {
 
 object IsabelleCompiler {
 
+  def toIsabelleCode(tv: TheoryValue): String = {
+    val isaComp = new IsabelleCompiler(tv)
+    /**
+     val isa = isaComp.compileToIsa()
+     val s = isa.toString
+     s
+     */
+    isaComp.compileToIsa().toString
+  }
+
   def compileIsabelle(tv: TheoryValue): IsaDecl = {
     // first and only declaration must be a module, is this ensured by the checker?
     assert(tv.decls.length == 1 && tv.decls.head.isInstanceOf[Module])
@@ -40,12 +50,12 @@ object IsabelleCompiler {
 
   def packageImportsString(m: Module): String = {
     /** finds the packages for 'imports' statement
-    * calls a Traverser method that indexes the packages
-    * default output: "Main" (base package)
-    *   (rat || real || complex) ---> "Complex_Main" (base package)
-    *   bag                      ---> [base package] "HOL-Library.Multiset"
-    *   (not yet implemented) ulist ---> [base package] "HOL-Library.FSet"
-    */
+     * calls a Traverser method that indexes the packages
+     * default output: "Main" (base package)
+     * (rat || real || complex) ---> "Complex_Main" (base package)
+     * bag                      ---> [base package] "HOL-Library.Multiset"
+     * (not yet implemented) ulist ---> [base package] "HOL-Library.FSet"
+     */
     IsabellePackageTraverser.importsString(GlobalContext.apply(m), m)
   }
 
@@ -54,7 +64,9 @@ object IsabelleCompiler {
     decl match {
       case m: Module =>
         // closed/open - theory/locale
-        if (!m.closed) { IsaTheory(m.name, compileDecls(m.df.decls), packageImportsString(m)) }
+        if (!m.closed) {
+          IsaTheory(m.name, compileDecls(m.df.decls), packageImportsString(m))
+        }
         else {
           IsaLocale(m.name, compileDeclsLocale(m.df.decls))
         }
@@ -143,17 +155,19 @@ object IsabelleCompiler {
       // todo: applied references, newly added for polymorphism?
       //case AppliedRef(ref, args) =>
 
-      case null => throw IError("Encountered unknown type in compileType case-matching.")
+      case _ => throw IError("Encountered unknown type in compileType case-matching.")
     }
   }
 
   def compileExpr(expr: Expression): IsaExpr = {
     /** All the case classes extending Expression
      * Expressions: This, Instance, ExprOver, Eval, Lambda, Application, Tuple, Projection, CollectionValue, ListElem,
-     *              Quantifier, Equality, Assert, UnitValue, BoolValue, NumberValue, ApproxReal, Rat, StringValue,
-     *              BaseOperator, UndefinedValue
+     * Quantifier, Equality, Assert, UnitValue, BoolValue, NumberValue, ApproxReal, Rat, StringValue,
+     * BaseOperator, UndefinedValue
      *
      * Standard programming language objects: EVarDecl, Assign, Block, IfThenElse, Match, MatchCase, For, While, Return,
+     *
+     * Ref (Expression, Type, Theory): OpenRef, ClosedRef, VarRef, AppliedRef, MaybeAppliedRef
      */
 
     expr match {
@@ -168,9 +182,9 @@ object IsabelleCompiler {
         case CollectionKind(false, true, false) => IsaMultiset(elems.map(compileExpr))
         case CollectionKind(true, false, false) => throw IError("ULists not yet implemented. Implement with distinct property or as finite sets")
       }
-      case ListElem(list, position) throw IError("ListElem in compileeExpr not yet implemented. Zero test coverage.")
+      case ListElem(list, position) => throw IError("ListElem in compileExpr not yet implemented. Zero test coverage.")
       case Quantifier(univ, vars, body) => IsaQuantifier(univ, compileExprs(vars.variables), compileExpr(body))
-      case Equality(positive, tp, left, right) => IsaEquality(compileType(tp), compileExpr(left), compileExpr(right))
+      case Equality(positive, tp, left, right) => IsaEquality(positive, compileType(tp), compileExpr(left), compileExpr(right))
       case Assert(formula) => throw IError("Assert in compileeExpr not yet implemented. Zero test coverage.")
       case UnitValue => IsaUnit()
       case BoolValue(b) => IsaBool(b)
@@ -181,10 +195,11 @@ object IsabelleCompiler {
       }
       // todo: test IntValue, possibly redundant to NumberValue
       case IntValue(i) => IsaInt(i)
-      case ApproxReal(value) => throw IError("ApproxReal in compileeExpr not yet implemented. Zero test coverage.")
-      case Rat(enu, deno) => throw IError("Rat in compileeExpr not yet implemented. Zero test coverage.")
+      // todo: ApproxReal? Rat?
+      //case ApproxReal(value) => throw IError("ApproxReal in compileeExpr not yet implemented. Zero test coverage.")
+      //case Rat(enu, deno) => throw IError("Rat in compileeExpr not yet implemented. Zero test coverage.")
       case StringValue(value) => IsaString(value)
-      case BaseOperator(operator, tp) => IsaBaseOperator(compileOp(operator), compileType(tp))
+      case BaseOperator(operator, tp) => IsaOperatorExpr(compileOp(operator), compileType(tp))
       // todo: look at UndefinedValue and test cases
       case uv: UndefinedValue if uv.label == "???" => IsaUndefinedProof(compileType(uv.tp))
       case UndefinedValue(tp) => throw IError("UndefinedValue for something other than proof terms not yet implemented")
@@ -205,11 +220,15 @@ object IsabelleCompiler {
       case While(cond, body) => throw IError("While in compileExpr not yet implemented. Zero test coverage.")
       case Return(exp, thrw) => IsaReturn(compileExpr(exp))
 
-      // todo: references as expressions
-      case VarRef(name) => IsaVarRef(name)
-      case ClosedRef(n) => IsaClosedRef(n)
+      /** references as expressions */
       // todo: OpenRef encountered in test42.p;
       case or: OpenRef => IsaVarRef(or.path.names.last)
+      case ClosedRef(n) => IsaClosedRef(n)
+      case VarRef(name) => IsaVarRef(name)
+      // todo: applied references, newly added for polymorphism?
+      //case AppliedRef(ref, args) =>
+
+      case _ => throw IError("Encountered unknown expression in compileExpr case-matching.")
     }
   }
 
@@ -219,25 +238,34 @@ object IsabelleCompiler {
 
   def compileOp(op: Operator): IsaOperator = {
     // todo: all operators (case objects)
+    /**
+     * Operators: And, Or, Not, Implies, Plus, Minus, Times, Divide, Minimum, Maximum, Power, UMinus, Less, LessEq,
+     * Greater, GreaterEq, Concat, In, Cons, Snoc, Equal, Inequal
+     */
     op match {
       case And => IsaAnd
       case Or => IsaOr
       case Not => IsaNot
       case Implies => IsaImplies
-
-      case Less => IsaLess
-      case LessEq => IsaLessEq
-
       case Plus => IsaPlus
       case Minus => IsaMinus
       case Times => IsaTimes
       case Divide => IsaDivide
-
-      case Equal => IsaEqual
-
+      case Minimum => IsaMinimum
+      case Maximum => IsaMaximum
+      // todo: how to distinguish between standard and real power, need to look up type of operands.
+      case Power => IsaStandardPower
       case UMinus => IsaUMinus
-
+      case Less => IsaLess
+      case LessEq => IsaLessEq
+      case Greater => IsaGreater
+      case GreaterEq => IsaGreaterEq
+      case Concat => IsaConcat
+      case In => IsaIn
       case Cons => IsaCons
+      case Snoc => IsaSnoc
+      case Equal => IsaEqual
+      case Inequal => IsaInequal
     }
   }
 
@@ -255,8 +283,16 @@ object IsabelleCompiler {
         }
       }
     }
+  }
 
 
-
+  def coerceIsaCollectionToIsaSet(expr: IsaExpr): IsaCollection = {
+    assert(expr.isInstanceOf[IsaCollection])
+    expr match {
+      case IsaOption(elems) => IsaSet(elems)
+      case IsaList(elems) => IsaSet(elems)
+      case s: IsaSet => s
+      case IsaMultiset(elems) => IsaSet(elems)
+    }
   }
 }
