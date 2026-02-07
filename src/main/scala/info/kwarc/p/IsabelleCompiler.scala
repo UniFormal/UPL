@@ -25,21 +25,10 @@ package info.kwarc.p
  *            Concat, In, Cons, Snoc, Equal, Inequal
  */
 
-class IsabelleCompiler(tv: TheoryValue, packString: String = "") {
-  // todo: refactor methods from object IsabelleCompiler into this class?
-  def compileToIsa(): IsaDecl = IsabelleCompiler.compileIsabelle(tv)
-}
-
 object IsabelleCompiler {
 
   def toIsabelleCode(tv: TheoryValue): String = {
-    val isaComp = new IsabelleCompiler(tv)
-    /**
-     val isa = isaComp.compileToIsa()
-     val s = isa.toString
-     s
-     */
-    isaComp.compileToIsa().toString
+    compileIsabelle(tv).toString
   }
 
   def compileIsabelle(tv: TheoryValue): IsaDecl = {
