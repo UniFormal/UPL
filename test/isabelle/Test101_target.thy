@@ -1,5 +1,5 @@
 
-theory Test5_target
+theory Test101_target
   imports Main
 begin
 
