@@ -201,6 +201,9 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     val ipO = run()
     if (dropToRepl) ipO foreach {ip => repl(ip)}
   }
+
+
+
 }
 
 object Project {
@@ -235,6 +238,29 @@ object Project {
       ProjectEntry(p)
     }
     new Project(es,mainE)
+  }
+
+  def toIsabelleFiles(proj: Project): Unit = {
+    // run a project-wide check to collect errors
+    val _ = proj.check(false)
+    // abort if there are errors (prints errors)
+    if (proj.checkErrors()) return
+    // ensure each entry's `checked` field is populated (so unknown types are inferred
+    // and duplicate/merged declarations are produced by the Checker)
+    proj.entries.foreach { pe =>
+      // this will set pe.checked and clear checkedIsDirty for the entry
+      proj.check(pe.source, false)
+    }
+    // create Isabelle file names using the UPL module names (Isabelle file and theory name must be the same)
+    val files: List[File] = proj.entries.map { pe =>
+      val voc = pe.getVocabulary
+      assert(voc.decls.size == 1 & voc.decls.head.isInstanceOf[Module])
+      File(pe.toString).up./(voc.decls.head.nameO.get + ".thy")
+    }
+    // render from checked vocabulary; compile the checked vocabulary (not the raw parsed AST)
+    val isabelleStrings = proj.entries.map(pe => IsabelleCompiler.toIsabelleCode(pe.getVocabulary))
+    // write the strings to files
+    (files zip isabelleStrings).foreach { case (f,s) => File.write(f,s) }
   }
 }
 
