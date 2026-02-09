@@ -174,7 +174,7 @@ object IsabelleCompiler {
       case ListElem(list, position) => throw IError("ListElem in compileExpr not yet implemented. Zero test coverage.")
       case Quantifier(univ, vars, body) => IsaQuantifier(univ, compileExprs(vars.variables), compileExpr(body))
       case Equality(positive, tp, left, right) => IsaEquality(positive, compileType(tp), compileExpr(left), compileExpr(right))
-      case Assert(formula) => throw IError("Assert in compileeExpr not yet implemented. Zero test coverage.")
+      case Assert(formula,_,_) => throw IError("Assert in compileeExpr not yet implemented. Zero test coverage.")
       case UnitValue => IsaUnit()
       case BoolValue(b) => IsaBool(b)
       // todo: convert Real to BigInt & compile to IsaInt, IsaReal; delete IsaNumber
@@ -196,7 +196,7 @@ object IsabelleCompiler {
       /** standard programming language objects */
       // todo: case EVarDecl after merge, what about TVarDecl?
       // todo: extend test cases, Block (in function definition), IfThenElse, Return
-      case VarDecl(name, tp, dfO, mutable, output) => dfO match {
+      case EVarDecl(name, tp, dfO, mutable, output) => dfO match {
         case Some(value) => null
         case None => IsaVarDecl(name, compileType(tp))
       }
@@ -253,8 +253,8 @@ object IsabelleCompiler {
       case In => IsaIn
       case Cons => IsaCons
       case Snoc => IsaSnoc
-      case Equal => IsaEqual
-      case Inequal => IsaInequal
+      //case Equal => IsaEqual
+      //case Inequal => IsaInequal
     }
   }
 
