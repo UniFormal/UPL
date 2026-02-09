@@ -81,6 +81,10 @@ object File {
     s.result()
   }
 
+  def readAsSource(f: File): (SourceOrigin, String) = {
+    (f.toSourceOrigin, Parser.getFileContent(f))
+  }
+
   /** convenience method to obtain a typical (buffered, UTF-8) reader for a file */
   def Reader(f: File): BufferedReader = new BufferedReader(new InputStreamReader(new FileInputStream(f.toJava),
     java.nio.charset.Charset.forName("UTF-8")))
