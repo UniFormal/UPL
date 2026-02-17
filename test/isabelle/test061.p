@@ -1,4 +1,4 @@
-module Test010 {
+module Test061 {
 
     // Isabelle doesn't have an any type. Model with type variables.
 

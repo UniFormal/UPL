@@ -45,11 +45,23 @@ case class IsaDefiniton(name: String, tp: IsaType, exprO: Option[IsaExpr]) exten
 
 case class IsaExprDecl(name: String, tp: IsaType, exprO: Option[IsaExpr]) extends IsaDecl {
   def isa_keyword: String = tp match {
-    case _: IsaFunType => "fun"
+    case _: IsaFunType => "definition" //"fun"
     case _ => "definition"
   }
 
+
   override def toString = exprO match {
+    case Some(IsaFun(ins, IsaFunMatch(expr, cases))) =>
+      assert(tp.isInstanceOf[IsaFunType])
+      assert(ins.length > 0)
+      // todo: figure out which of the inputs is matched
+      val ins_idx = ins.map(_.toString).indexOf(expr.toString)
+      s"fun $name :: \"$tp\" where\n" +
+      cases.map {
+        case IsaFunCase(pattern, body) => "\"" + name + ins.updated(ins_idx, pattern).mkString(" ", " ", " ") + "= " + body.toString + "\""
+        case _ => throw IError("Shouldn't be different to IsaFunCase")
+      }.mkString("\n| ")
+    case Some(IsaFun(ins, body)) => throw IError("body of IsaFun must be IsaFunMatch.")
     // todo: only parenthesize complex types
     case Some(expr) => s"$isa_keyword $name :: \"$tp\" where\n" +
       // todo: better solution for handling "=" in 'definition' versus 'fun'.
@@ -62,14 +74,17 @@ case class IsaExprDecl(name: String, tp: IsaType, exprO: Option[IsaExpr]) extend
     case None =>
       // todo: handle type empty & expression declarations without definiens
       // todo:
-      if (tp.isInstanceOf[IsaEmptyType])
+      /*if (tp.isInstanceOf[IsaEmptyType])
         /*"typedecl empty\n" +
           "definition e :: \"empty\" where\n  \"e = undefined\""
          */
-        throw IError("Can't translate empty type to Isabelle")
-      else
-        s"$isa_keyword $name :: $tp where\n" +
-        s"\"$name = undefined\""
+      else {*/
+        tp match {
+          case IsaEmptyType() => throw IError("Can't translate empty type to Isabelle")
+            /*case IsaFunType(ins, out, nested) => s"$isa_keyword $name :: \"$tp\" where\n" +
+            s"\"$name" + ins.map(_.name).mkString(" ", " ", " ") + "= undefined\""*/
+          case _ => s"$isa_keyword $name :: \"$tp\" where\n" + s"\"$name = undefined\""
+      }
   }
 }
 
@@ -155,28 +170,43 @@ case class IsaEmptyType() extends IsaType {
 }
 
 
-case class IsaFunType(ins: List[IsaType], out: IsaType, nested: Boolean = false) extends IsaType {
-  def name: String = out match {
+case class IsaFunType(ins: List[IsaType], out: IsaType, inner: Boolean = false) extends IsaType {
+  /*def name: String = out match {
     // todo: possibly need this structure if only parenthesize complex types
     case IsaFunType(ins2, out2, _) =>
       if (nested) {
-        ins.mkString(" => ") + " => " + IsaFunType(ins2, out2, nested = true)
+        "(" + ins.mkString(" => ") + " => " + IsaFunType(ins2, out2, nested = true) + ")"
       } else {
         ins.mkString(" => ") + " => " + IsaFunType(ins2, out2, nested = true)
       }
     case _ =>
       if (nested) {
-        ins.mkString(" => ") + " => " + s"$out"
+        "(" + ins.mkString(" => ") + " => " + s"$out" + ")"
       } else {
         ins.mkString(" => ") + " => " + s"$out"
       }
+  }*/
+  def name: String = (ins :+ out).map(inner_funType).mkString(" => ")
+  def inner_funType(tp: IsaType): IsaType = {
+    tp match {
+      case IsaFunType(ins, out, _) => IsaFunType(ins, out, true)
+      case tp => tp
+    }
   }
-  override def toString: String = name
+  override def toString: String = if (inner) {s"($name)"} else name
+}
+
+case class IsaOpenRefType(name: String) extends IsaType {
+
 }
 
 case class IsaClosedRefType(n: String) extends IsaType {
   def name: String = n
   //override def toString: String = name
+}
+
+case class IsaTypeVar(name: String) extends IsaType {
+  override def toString: String = s"'$name"
 }
 
 case class IsaUnitType() extends IsaType {
@@ -278,6 +308,24 @@ case class IsaTuple(comps: List[IsaExpr]) extends IsaExpr {
   override def toString = comps.mkString("(", ",", ")")
 }
 
+case class IsaProjection(tuple: IsaExpr, index: Int) extends IsaExpr {
+  override def toString = tuple match {
+    case IsaTuple(comps) =>
+      /** mapping follows a recursive "walk" down the right-hand side of the pairs.
+       * For index $i < n$: Use fst after $i-1$ applications of snd.
+       * For index $i = n$: Use $i-1$ applications of snd.
+       */
+      assert(1 <= index & index <= comps.length)
+      if (index == comps.length) "snd (" * (index-1) + tuple.toString + ")" * (index -1)
+      else "fst (" + "snd (" * (index-1) + tuple.toString + ")" * (index -1) + ")"
+    case IsaOpenRef(name, resolvedO) => resolvedO match {
+      case Some(x) => "asdf"
+      case None => throw IError("IsaProjection case None.")
+    }
+    case _ => throw IError("Error in IsaProjection toString method. Expression is not a tuple.")
+  }
+}
+
 sealed abstract class IsaCollection extends IsaExpr {
   val elems: List[IsaExpr]
 }
@@ -308,13 +356,13 @@ case class IsaLambda(args: List[IsaExpr], body: IsaExpr, unparseAsFun: Boolean =
   // probably body: IsaBody
   override def toString = if (!unparseAsFun) {
     // todo: flatten multiple lambdas, i.e. \x.\y.xy = \x y.xy
-    "= \\<lambda>" + args.mkString(" ") + "." + body.toString
+    "(\\<lambda>" + args.mkString(" ") + "." + " " + body.toString + ")"
   } else {
     body match {
       case IsaLambda(args2, body2, unparseAsFun2, nested2) => IsaLambda(args ::: args2, body2, unparseAsFun2, nested = true).toString
-      case IsaVarRef(name2) => args.map(_.toString).mkString(" ") + " = " + body.toString
+      case IsaVarRef(name2, _) => args.map(_.toString).mkString(" ") + " = " + body.toString
       // todo: implement IsaContexts to merge type and function definitions with closed references
-      case IsaClosedRef(n) => n
+      case IsaClosedRef(n, _) => n
       case app: IsaApplication => app.args.map(_.toString).mkString(" ") + " = " + app.toString
       //case IsaBlock(exprs) => IsabelleCompiler.compileBlockToFun(exprs)
     }
@@ -329,12 +377,18 @@ case class IsaVarDecl(name: String, tp: IsaType) extends IsaExpr {
 
 //case class IsaRef
 
-case class IsaVarRef(name: String) extends IsaExpr {
+case class IsaOpenRef(name: String, resolvedO: Option[NamedDeclaration] = None) extends IsaExpr {
   override def toString = name
 }
-case class IsaClosedRef(n: String) extends IsaExpr {
+
+case class IsaVarRef(name: String, resolvedO: Option[VarDecl] = None) extends IsaExpr {
+  override def toString = name
+}
+
+case class IsaClosedRef(n: String, resolvedO: Option[NamedDeclaration] = None) extends IsaExpr {
   override def toString = n
 }
+
 
 case class IsaApplication(fun: IsaExpr, args: List[IsaExpr]) extends IsaExpr {
   //assert(fun.isInstanceOf[IsaOperatorExpr])
@@ -359,7 +413,11 @@ case class IsaApplication(fun: IsaExpr, args: List[IsaExpr]) extends IsaExpr {
           assert(args.length == 2)
           "(" + binPrefOp.toString + " " + args.mkString(" ") + ")"
       }
-    case IsaClosedRef(n) => n + " " + args.map(_.toString).mkString(" ")
+    case IsaClosedRef(n, _) => "(" + n + " " + args.map(_.toString).mkString(" ") + ")"
+    case IsaVarRef(name, _) => "(" + name + " " + args.map(_.toString).mkString(" ") + ")"
+    case _: IsaApplication =>
+      val argss = args.mkString(" ")
+      fun.toString + " " + args.mkString(" ")
     case _ => throw IError("unknown case in IsaApplication toString case-matching")
   }
 }
@@ -439,3 +497,15 @@ case object IsaSnoc extends IsaInfixOperator("@") with IsaCollectionOperator
 case object IsaEqual extends IsaInfixOperator("=") with IsaComparison
 case object IsaInequal extends IsaInfixOperator("\\<noteq>") with IsaComparison
 
+
+case class IsaFun(ins: List[IsaExpr], body: IsaExpr) extends IsaExpr {
+  override def toString: String = throw IError("not reached")
+}
+
+case class IsaFunMatch(expr: IsaExpr, cases: List[IsaExpr]) extends IsaExpr {
+  override def toString: String = throw IError("not reached")
+}
+
+case class IsaFunCase(pattern: IsaExpr, body: IsaExpr) extends IsaExpr {
+  override def toString: String = body.toString
+}

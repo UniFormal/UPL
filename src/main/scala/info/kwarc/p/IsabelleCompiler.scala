@@ -32,9 +32,14 @@ object IsabelleCompiler {
   }
 
   def compileIsabelle(tv: TheoryValue): IsaDecl = {
-    // first and only declaration must be a module, is this ensured by the checker?
+    /** todo: support for multiple sequential (unnested) modules
+    problem: modules are open; written to separate files and Isabelle theories; cross-references between theories in Isabelle?
+     */
+    // first and only declaration must be a module
     assert(tv.decls.length == 1 && tv.decls.head.isInstanceOf[Module])
-    compileDecl(tv.decls.head)
+    val m: Module = tv.decls.head.asInstanceOf[Module]
+    val gc: GlobalContext = GlobalContext.apply(m)
+    compileToplevelModule(tv.decls.head, gc)
   }
 
   def packageImportsString(m: Module): String = {
@@ -48,58 +53,66 @@ object IsabelleCompiler {
     IsabellePackageTraverser.importsString(GlobalContext.apply(m), m)
   }
 
+  def compileToplevelModule(decl: Declaration, gc: GlobalContext): IsaDecl = {
+    decl match {
+      case m: Module if !m.closed => IsaTheory(m.name, compileDecls(m.df.decls, gc), packageImportsString(m))
+      case _ => throw IError("Must be a toplevel module.")
+    }
+  }
 
-  def compileDecl(decl: Declaration): IsaDecl = {
+
+  def compileDecl(decl: Declaration, gc: GlobalContext): IsaDecl = {
     decl match {
       case m: Module =>
         // closed/open - theory/locale
         if (!m.closed) {
-          IsaTheory(m.name, compileDecls(m.df.decls), packageImportsString(m))
+          //IsaTheory(m.name, compileDecls(m.df.decls), packageImportsString(m))
+          throw IError("Nested modules can't be parsed to Isabelle theories.")
         }
         else {
-          IsaLocale(m.name, compileDeclsLocale(m.df.decls))
+          IsaLocale(m.name, compileDeclsLocale(m.df.decls, gc))
         }
       //case ed: ExprDecl => IsaDefiniton(ed.name, compileType(ed.tp), compileExpr(ed.dfO.get))  // IsaExprDecl(name, type, definiens), compileType, compileExpr
       case ed: ExprDecl =>
         ed.tp match {
           case _: ProofType =>
             ed.dfO match {
-              case Some(proof_term) => IsaTheorem(ed.name, compileType(ed.tp), compileExpr(proof_term))
-              case None => IsaTheorem(ed.name, compileType(ed.tp), IsaEmptyProof())
+              case Some(proof_term) => IsaTheorem(ed.name, compileType(ed.tp, gc), compileExpr(proof_term, gc))
+              case None => IsaTheorem(ed.name, compileType(ed.tp, gc), IsaEmptyProof())
             }
           case _ =>
             ed.dfO match {
-              case Some(expr) => IsaExprDecl(ed.name, compileType(ed.tp), Some(compileExpr(expr)))
-              case None => IsaExprDecl(ed.name, compileType(ed.tp), None)
+              case Some(expr) => IsaExprDecl(ed.name, compileType(ed.tp, gc), Some(compileExpr(expr, gc)))
+              case None => IsaExprDecl(ed.name, compileType(ed.tp, gc), None)
             }
         }
       case td: TypeDecl => td.dfO match {
-        case Some(tp) => IsaTypeDef(td.name, Some(compileType(tp)))
+        case Some(tp) => IsaTypeDef(td.name, Some(compileType(tp, gc)))
         case None => IsaTypeDef(td.name, None)
       }
     }
   }
 
-  def compileDeclLocale(decl: Declaration): IsaDecl = {
+  def compileDeclLocale(decl: Declaration, gc: GlobalContext): IsaDecl = {
     decl match {
       case ed: ExprDecl => ed.tp match {
-        case tp: ProofType => IsaLocaleAssumption(ed.name, compileType(tp))
-        case tp => IsaLocaleFixes(ed.name, compileType(tp))
+        case tp: ProofType => IsaLocaleAssumption(ed.name, compileType(tp, gc))
+        case tp => IsaLocaleFixes(ed.name, compileType(tp, gc))
       }
       case td: TypeDecl => IsaLocaleTypeDummy()
       case i: Include => IsaLocaleImport(i.dom.label)
     }
   }
 
-  def compileDecls(decls: List[Declaration]): IsaBody = {
-    IsaBody(decls.map(compileDecl))
+  def compileDecls(decls: List[Declaration], gc: GlobalContext): IsaBody = {
+    IsaBody(decls.map(d => compileDecl(d, gc)))
   }
 
-  def compileDeclsLocale(decls: List[Declaration]): IsaBody = {
-    IsaBody(decls.map(compileDeclLocale), true)
+  def compileDeclsLocale(decls: List[Declaration], gc: GlobalContext): IsaBody = {
+    IsaBody(decls.map(compileDeclLocale(_, gc)), indent=true)
   }
 
-  def compileType(tp: Type): IsaType = {
+  def compileType(tp: Type, gc: GlobalContext): IsaType = {
     /** Compiles all the case classes extending Type in the UPL AST:
      * UnknownType, ClassType, ExprsOver, EmptyType, UnitType, BoolType, StringType,
      * AnyType, ExceptionType, NumberType, IntervalType, FunType, ProdType, CollectionType, ProofType
@@ -109,14 +122,14 @@ object IsabelleCompiler {
      */
 
     tp match {
-      case utp: UnknownType => compileType(utp.container.tp)
+      case utp: UnknownType => if (utp.container.tp == null) IsaUnknownType("null") else compileType(utp.container.tp, gc)
       case ClassType(domain) => throw IError("ClassType not yet implemented. Zero test coverage.")
       case ExprsOver(scope, tp) => throw IError("ExprsOver not yet implemented. Zero test coverage.")
       case EmptyType => IsaEmptyType()
       case UnitType => IsaUnitType()
       case BoolType => IsaBoolType(tp.label)
       case StringType => IsaStringType()
-      case AnyType => throw IError("AnyType not yet implemented. Zero test coverage.")
+      case AnyType => IsaTypeVar("new_name")//throw IError("AnyType not yet implemented. Zero test coverage.")
       case ExceptionType => throw IError("ExceptionType not yet implemented. Zero test coverage.")
       // todo: remove String argument in isabelle number types representation
       case NumberType(false, false, false, false, false) => IsaNatType("nat")
@@ -125,22 +138,23 @@ object IsabelleCompiler {
       case NumberType(true, true, true, false, false) => IsaComplexType("complex")
       case NumberType(true, true, false, true, true) => IsaRealType("real")
       case IntervalType(lower, upper) => throw IError("Isabelle does not have native interval types.")
-      case FunType(ins, out) => IsaFunType(ins.variables.map(vd => compileType(vd.tp)), compileType(out))
-      case ProdType(comps) => IsaProdType(comps.variables.reverseMap(vd => compileType(vd.tp)))
+      case FunType(ins, out) => IsaFunType(ins.variables.map(vd => compileType(vd.tp, gc)), compileType(out, gc))
+      case ProdType(comps) => IsaProdType(comps.variables.reverseMap(vd => compileType(vd.tp, gc)))
       case CollectionType(elem, kind) => kind match {
-        case CollectionKind(false, false, true) => IsaOptionType(compileType(elem))
-        case CollectionKind(false, false, false) => IsaListType(compileType(elem))
-        case CollectionKind(true, true, false) => IsaSetType(compileType(elem))
-        case CollectionKind(false, true, false) => IsaMultisetType(compileType(elem))
+        case CollectionKind(false, false, true) => IsaOptionType(compileType(elem, gc))
+        case CollectionKind(false, false, false) => IsaListType(compileType(elem, gc))
+        case CollectionKind(true, true, false) => IsaSetType(compileType(elem, gc))
+        case CollectionKind(false, true, false) => IsaMultisetType(compileType(elem, gc))
         case CollectionKind(true, false, false) => throw IError("ULists not yet implemented. Implement with distint property or as finite sets")
       }
       // todo: implement a flag that indicates inside or outside locale
-      case ProofType(formula) => IsaProofType(compileExpr(formula))
-      case ProofType(formula) => IsaLocaleAssumptionType(compileExpr(formula))
+      case ProofType(formula) => IsaProofType(compileExpr(formula, gc))
+      case ProofType(formula) => IsaLocaleAssumptionType(compileExpr(formula, gc))
       // todo: references that are passed as types
-      case OpenRef(path) => throw IError("OpenRef in compileType not yet implemented. Zero test coverage.")
+      case OpenRef(path) => IsaOpenRefType(path.names.last)//throw IError("OpenRef in compileType not yet implemented. Zero test coverage.")
       case ClosedRef(name) => IsaClosedRefType(name)
-      case VarRef(name) => throw IError("VarRef in compileType not yet implemented. Zero test coverage.")
+      /** VarRef as a type variable, is it always the case? */
+      case VarRef(name) => IsaTypeVar(name) //throw IError("VarRef in compileType not yet implemented. Zero test coverage.")
       // todo: applied references, newly added for polymorphism?
       //case AppliedRef(ref, args) =>
 
@@ -148,7 +162,7 @@ object IsabelleCompiler {
     }
   }
 
-  def compileExpr(expr: Expression): IsaExpr = {
+  def compileExpr(expr: Expression, gc: GlobalContext): IsaExpr = {
     /** All the case classes extending Expression
      * Expressions: This, Instance, ExprOver, Eval, Lambda, Application, Tuple, Projection, CollectionValue, ListElem,
      * Quantifier, Equality, Assert, UnitValue, BoolValue, NumberValue, ApproxReal, Rat, StringValue,
@@ -160,21 +174,47 @@ object IsabelleCompiler {
      */
 
     expr match {
-      case Lambda(ins, body, mayReturn) => IsaLambda(ins.variables.map(compileExpr), compileExpr(body), true)
-      case Application(fun, args) => IsaApplication(compileExpr(fun), compileExprs(args))
-      case Tuple(comps) => IsaTuple(comps.map(compileExpr))
-      case Projection(tuple, index) => throw IError("Projection in compileeExpr not yet implemented. Zero test coverage.")
+      case Lambda(ins, body, mayReturn) =>
+        // todo: if the body is a Lambda, it must be unparsed as a lambda expression (flagged with false)
+        // todo: how to best handle? Here or in the toString method? We do it here
+        /**
+        val body_expr = compileExpr(body)
+        body_expr match {
+          case IsaLambda(args, body2, _, _) => IsaLambda(ins.variables.map(compileExpr), IsaLambda(args, body2, false), true)
+          case _ => IsaLambda (ins.variables.map (compileExpr), body_expr, true)
+        }
+        */
+        // todo: UPLs functions are all lambda expressions. Compile to Isabelle definitions with lambda expressions.
+        /** Check for top-level pattern matching of function arguments in body of lambda-expression*/
+        // todo: top-level pattern matching
+        def topLevelMatchP(body: Expression): Boolean = {
+          body match {
+            case Lambda(ins, body, mayReturn) => topLevelMatchP(body)
+            case Block(exprs) if (exprs.length == 1 & exprs.head.isInstanceOf[Match]) => true
+            case _ => false
+          }
+        }
+        if (topLevelMatchP(body)) {
+          def ins_vars_flattened(body: Expression): List[Expression] = body match {
+            case Lambda(ins, body, mayReturn) => ins.variables ++ ins_vars_flattened(body)
+            case _ => List()
+          }
+          IsaFun(compileExprs(ins.variables ++ ins_vars_flattened(body), gc), compileTopLevelMatchFun(body, gc))
+        } else IsaLambda(compileExprs(ins.variables, gc), compileExpr(body, gc))
+      case Application(fun, args) => IsaApplication(compileExpr(fun, gc), compileExprs(args, gc))
+      case Tuple(comps) => IsaTuple(comps.map(compileExpr(_, gc)))
+      case Projection(tuple, index) => IsaProjection(compileExpr(tuple, gc), index)
       case CollectionValue(elems, kind) => kind match {
-        case CollectionKind(false, false, true) => IsaOption(elems.map(compileExpr))
-        case CollectionKind(false, false, false) => IsaList(elems.map(compileExpr))
-        case CollectionKind(true, true, false) => IsaSet(elems.map(compileExpr))
-        case CollectionKind(false, true, false) => IsaMultiset(elems.map(compileExpr))
+        case CollectionKind(false, false, true) => IsaOption(elems.map(compileExpr(_, gc)))
+        case CollectionKind(false, false, false) => IsaList(elems.map(compileExpr(_, gc)))
+        case CollectionKind(true, true, false) => IsaSet(elems.map(compileExpr(_, gc)))
+        case CollectionKind(false, true, false) => IsaMultiset(elems.map(compileExpr(_, gc)))
         case CollectionKind(true, false, false) => throw IError("ULists not yet implemented. Implement with distinct property or as finite sets")
       }
       case ListElem(list, position) => throw IError("ListElem in compileExpr not yet implemented. Zero test coverage.")
-      case Quantifier(univ, vars, body) => IsaQuantifier(univ, compileExprs(vars.variables), compileExpr(body))
-      case Equality(positive, tp, left, right) => IsaEquality(positive, compileType(tp), compileExpr(left), compileExpr(right))
-      case Assert(formula) => throw IError("Assert in compileeExpr not yet implemented. Zero test coverage.")
+      case Quantifier(univ, vars, body) => IsaQuantifier(univ, compileExprs(vars.variables, gc), compileExpr(body, gc))
+      case Equality(positive, tp, left, right) => IsaEquality(positive, compileType(tp, gc), compileExpr(left, gc), compileExpr(right, gc))
+      case Assert(test, tp, expected) => throw IError("Assert in compileeExpr not yet implemented. Zero test coverage.")
       case UnitValue => IsaUnit()
       case BoolValue(b) => IsaBool(b)
       // todo: convert Real to BigInt & compile to IsaInt, IsaReal; delete IsaNumber
@@ -188,32 +228,39 @@ object IsabelleCompiler {
       //case ApproxReal(value) => throw IError("ApproxReal in compileeExpr not yet implemented. Zero test coverage.")
       //case Rat(enu, deno) => throw IError("Rat in compileeExpr not yet implemented. Zero test coverage.")
       case StringValue(value) => IsaString(value)
-      case BaseOperator(operator, tp) => IsaOperatorExpr(compileOp(operator), compileType(tp))
+      case BaseOperator(operator, tp) => IsaOperatorExpr(compileOp(operator), compileType(tp, gc))
       // todo: look at UndefinedValue and test cases
-      case uv: UndefinedValue if uv.label == "???" => IsaUndefinedProof(compileType(uv.tp))
+      case uv: UndefinedValue if uv.label == "???" => IsaUndefinedProof(compileType(uv.tp, gc))
       case UndefinedValue(tp) => throw IError("UndefinedValue for something other than proof terms not yet implemented")
 
       /** standard programming language objects */
       // todo: case EVarDecl after merge, what about TVarDecl?
       // todo: extend test cases, Block (in function definition), IfThenElse, Return
-      case VarDecl(name, tp, dfO, mutable, output) => dfO match {
+      case EVarDecl(name, tp, dfO, mutable, output) => dfO match {
         case Some(value) => null
-        case None => IsaVarDecl(name, compileType(tp))
+        case None => IsaVarDecl(name, compileType(tp, gc))
       }
+      //case TVarDecl
       case Assign(target, value) => throw IError("Assign in compileExpr not yet implemented. Zero test coverage.")
-      case Block(exprs) => IsaBlock(compileExprs(exprs))
-      case IfThenElse(cond, thn, els) => IsaIfThenElse(compileExpr(cond), compileExpr(thn), els.map(compileExpr))
+      case Block(exprs) => IsaBlock(compileExprs(exprs, gc))
+      case IfThenElse(cond, thn, els) => IsaIfThenElse(compileExpr(cond, gc), compileExpr(thn, gc), els.map(compileExpr(_, gc)))
       case Match(expr, cases, handler) => throw IError("Match in compileExpr not yet implemented. Zero test coverage.")
       case MatchCase(context, pattern, body) => throw IError("MatchCase in compileExpr not yet implemented. Zero test coverage.")
       case For(vd, range, body) => throw IError("For in compileExpr not yet implemented. Zero test coverage.")
       case While(cond, body) => throw IError("While in compileExpr not yet implemented. Zero test coverage.")
-      case Return(exp, thrw) => IsaReturn(compileExpr(exp))
+      case Return(exp, thrw) => IsaReturn(compileExpr(exp, gc))
 
       /** references as expressions */
       // todo: OpenRef encountered in test42.p;
-      case or: OpenRef => IsaVarRef(or.path.names.last)
-      case ClosedRef(n) => IsaClosedRef(n)
-      case VarRef(name) => IsaVarRef(name)
+      case or: OpenRef =>
+        val resolvedO = gc.lookupGlobal(or.path)
+        IsaOpenRef(or.path.names.last, resolvedO)
+      case ClosedRef(n) =>
+        val resolvedO = gc.lookupRegional(n)
+        IsaClosedRef(n, resolvedO)
+      case VarRef(name) =>
+        val resolvedO = gc.lookupLocal(name)
+        IsaVarRef(name, resolvedO)
       // todo: applied references, newly added for polymorphism?
       //case AppliedRef(ref, args) =>
 
@@ -221,8 +268,8 @@ object IsabelleCompiler {
     }
   }
 
-  def compileExprs(exprs: List[Expression]): List[IsaExpr] = {
-    exprs.map(compileExpr)
+  def compileExprs(exprs: List[Expression], gc: GlobalContext): List[IsaExpr] = {
+    exprs.map(compileExpr(_, gc))
   }
 
   def compileOp(op: Operator): IsaOperator = {
@@ -253,8 +300,8 @@ object IsabelleCompiler {
       case In => IsaIn
       case Cons => IsaCons
       case Snoc => IsaSnoc
-      case Equal => IsaEqual
-      case Inequal => IsaInequal
+      /*case Equal => IsaEqual
+      case Inequal => IsaInequal*/
     }
   }
 
@@ -282,6 +329,18 @@ object IsabelleCompiler {
       case IsaList(elems) => IsaSet(elems)
       case s: IsaSet => s
       case IsaMultiset(elems) => IsaSet(elems)
+    }
+  }
+
+  def compileTopLevelMatchFun(expr: Expression, gc: GlobalContext): IsaExpr = {
+    expr match {
+      case Lambda(ins, body, mayReturn) => compileTopLevelMatchFun(body, gc)
+      case Block(exprs) =>
+        assert(exprs.length == 1 & exprs.head.isInstanceOf[Match])
+        compileTopLevelMatchFun(exprs.head, gc)
+      case Match(expr, cases, handler) => IsaFunMatch(compileExpr(expr, gc), cases.map(compileTopLevelMatchFun(_, gc)))
+      case MatchCase(context, pattern, body) => IsaFunCase(compileExpr(pattern, gc), compileExpr(body, gc))
+
     }
   }
 }

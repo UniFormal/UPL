@@ -1,10 +1,11 @@
 
 module Test200 {
 
-    // need context to merge declarations into one definition
-    // local, regional, global contexts
+    // tests merging of declarations with the same name by checker
 
     g: int -> int
     g = x -> x
+
+    y = g(1)
 
 }
