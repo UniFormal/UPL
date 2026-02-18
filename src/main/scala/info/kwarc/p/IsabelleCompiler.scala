@@ -27,18 +27,20 @@ package info.kwarc.p
 
 object IsabelleCompiler {
 
-  def toIsabelleCode(tv: TheoryValue): String = {
-    compileIsabelle(tv).toString
+  def toIsabelleCode(tv: TheoryValue, gc: GlobalContext): String = {
+    compileIsabelle(tv, gc).toString
   }
 
-  def compileIsabelle(tv: TheoryValue): IsaDecl = {
+  def compileIsabelle(tv: TheoryValue, gc: GlobalContext): IsaDecl = {
     /** todo: support for multiple sequential (unnested) modules
     problem: modules are open; written to separate files and Isabelle theories; cross-references between theories in Isabelle?
      */
+    // simple debug helper to verify declarations are in context
+    debugPrintContext(gc)
     // first and only declaration must be a module
     assert(tv.decls.length == 1 && tv.decls.head.isInstanceOf[Module])
-    val m: Module = tv.decls.head.asInstanceOf[Module]
-    val gc: GlobalContext = GlobalContext.apply(m)
+    /*val m: Module = tv.decls.head.asInstanceOf[Module]
+    val gc: GlobalContext = GlobalContext.apply(m)*/
     compileToplevelModule(tv.decls.head, gc)
   }
 
@@ -253,14 +255,14 @@ object IsabelleCompiler {
       /** references as expressions */
       // todo: OpenRef encountered in test42.p;
       case or: OpenRef =>
-        val resolvedO = gc.lookupGlobal(or.path)
-        IsaOpenRef(or.path.names.last, resolvedO)
+        val resolved = compileDecl(gc.lookupGlobal(or.path).getOrElse(throw IError("Global context lookup returns None.")), gc)
+        IsaOpenRef(or.path.names.last, resolved)
       case ClosedRef(n) =>
-        val resolvedO = gc.lookupRegional(n)
-        IsaClosedRef(n, resolvedO)
+        val resolved = compileDecl(gc.lookupRegional(n).getOrElse(throw IError("Regional context lookup returns None.")), gc)
+        IsaClosedRef(n, resolved)
       case VarRef(name) =>
-        val resolvedO = gc.lookupLocal(name)
-        IsaVarRef(name, resolvedO)
+        val resolved = compileVarDecl(gc.lookupLocal(name).getOrElse(throw IError("Local context lookup returns None.")), gc)
+        IsaVarRef(name, resolved)
       // todo: applied references, newly added for polymorphism?
       //case AppliedRef(ref, args) =>
 
@@ -270,6 +272,17 @@ object IsabelleCompiler {
 
   def compileExprs(exprs: List[Expression], gc: GlobalContext): List[IsaExpr] = {
     exprs.map(compileExpr(_, gc))
+  }
+
+  def compileVarDecl(vd: VarDecl, gc: GlobalContext): IsaExpr = {
+    /** Compile all case classes inheriting from VarDecl (Context.scala). */
+    vd match {
+      case EVarDecl(name, tp, dfO, mutable, output) => dfO match {
+        case Some(value) => null
+        case None => IsaVarDecl(name, compileType(tp, gc))
+      }
+      case _ => throw IError("Unknown VarDecl.")
+    }
   }
 
   def compileOp(op: Operator): IsaOperator = {
@@ -341,6 +354,26 @@ object IsabelleCompiler {
       case Match(expr, cases, handler) => IsaFunMatch(compileExpr(expr, gc), cases.map(compileTopLevelMatchFun(_, gc)))
       case MatchCase(context, pattern, body) => IsaFunCase(compileExpr(pattern, gc), compileExpr(body, gc))
 
+    }
+  }
+
+  def debugPrintContext(gc: GlobalContext): Unit = {
+    val voc = gc.voc
+    println("Available declarations in context:")
+    voc.decls.foreach { d =>
+      d match {
+        case m: Module =>
+          println(s"  - Module: ${m.name}")
+          // Traverse the module's declarations
+          m.df.decls.foreach { decl =>
+            decl match {
+              case nd: NamedDeclaration => println(s"      - ${nd.name}")
+              case _ => ()
+            }
+          }
+        case nd: NamedDeclaration => println(s"  - ${nd.name}")
+        case _ => ()
+      }
     }
   }
 }

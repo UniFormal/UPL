@@ -318,9 +318,16 @@ case class IsaProjection(tuple: IsaExpr, index: Int) extends IsaExpr {
       assert(1 <= index & index <= comps.length)
       if (index == comps.length) "snd (" * (index-1) + tuple.toString + ")" * (index -1)
       else "fst (" + "snd (" * (index-1) + tuple.toString + ")" * (index -1) + ")"
-    case IsaOpenRef(name, resolvedO) => resolvedO match {
-      case Some(x) => "asdf"
-      case None => throw IError("IsaProjection case None.")
+    case IsaOpenRef(name, resolved) => resolved match {
+      case IsaExprDecl(name, tp, exprO) =>
+        exprO.getOrElse(throw IError("Definiens is None.")) match {
+          case IsaTuple(comps) =>
+            assert(1 <= index & index <= comps.length)
+            if (index == comps.length) "snd (" * (index-1) + tuple.toString + ")" * (index -1)
+            else "fst (" + "snd (" * (index-1) + tuple.toString + ")" * (index -1) + ")"
+          case _ => throw IError("Expected a tuple.")
+        }
+      case _ => throw IError("Expected ExprDecl.")
     }
     case _ => throw IError("Error in IsaProjection toString method. Expression is not a tuple.")
   }
@@ -377,18 +384,18 @@ case class IsaVarDecl(name: String, tp: IsaType) extends IsaExpr {
 
 //case class IsaRef
 
-case class IsaOpenRef(name: String, resolvedO: Option[NamedDeclaration] = None) extends IsaExpr {
+case class IsaOpenRef(name: String, resolved: IsaDecl) extends IsaExpr {
   override def toString = name
 }
 
-case class IsaVarRef(name: String, resolvedO: Option[VarDecl] = None) extends IsaExpr {
-  override def toString = name
-}
-
-case class IsaClosedRef(n: String, resolvedO: Option[NamedDeclaration] = None) extends IsaExpr {
+case class IsaClosedRef(n: String, resolved: IsaDecl) extends IsaExpr {
   override def toString = n
 }
 
+// todo: adapt inheritance hierarchy for VarDecl, mirror UPL hierarchy.
+case class IsaVarRef(name: String, resolved: IsaDecl) extends IsaExpr {
+  override def toString = name
+}
 
 case class IsaApplication(fun: IsaExpr, args: List[IsaExpr]) extends IsaExpr {
   //assert(fun.isInstanceOf[IsaOperatorExpr])
