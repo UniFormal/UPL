@@ -1,0 +1,6 @@
+schema: Data.Test
+1, 5, "a"
+2, 6, "b"
+schema: Data.Test2
+1, 2, 7
+2, 1, 9
