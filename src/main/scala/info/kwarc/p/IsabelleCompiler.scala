@@ -139,8 +139,18 @@ object IsabelleCompiler {
       case NumberType(true, true, false, false, false) => IsaRatType("rat")
       case NumberType(true, true, true, false, false) => IsaComplexType("complex")
       case NumberType(true, true, false, true, true) => IsaRealType("real")
+      // todo: ratCF
+      case NumberType(true, true, true, true, false) => IsaRealType("real")
+      // todo: test080.p j produces NumberType ratCFI and Isabelle doesn't type-check
+      case NumberType(true, true, true, true, true) => IsaRealType("real")
       case IntervalType(lower, upper) => throw IError("Isabelle does not have native interval types.")
-      case FunType(ins, out) => IsaFunType(ins.variables.map(vd => compileType(vd.tp, gc)), compileType(out, gc))
+      case FunType(ins, out) =>
+        /** One input argument of type unit. basics009.p*/
+        // todo: test with functions of zero input arguments
+        if (ins.variables.size == 0)
+          IsaFunType(List(IsaUnitType()), compileType(out, gc))
+        else
+          IsaFunType(ins.variables.map(vd => compileType(vd.tp, gc)), compileType(out, gc))
       case ProdType(comps) => IsaProdType(comps.variables.reverseMap(vd => compileType(vd.tp, gc)))
       case CollectionType(elem, kind) => kind match {
         case CollectionKind(false, false, true) => IsaOptionType(compileType(elem, gc))
@@ -202,7 +212,11 @@ object IsabelleCompiler {
             case _ => List()
           }
           IsaFun(compileExprs(ins.variables ++ ins_vars_flattened(body), gc), compileTopLevelMatchFun(body, gc))
-        } else IsaLambda(compileExprs(ins.variables, gc), compileExpr(body, gc))
+        } else if (ins.variables.size == 0) {
+          /** In this case (basics009.p), one input argument of type unit which is value () */
+          IsaLambda(List(IsaUnit()), compileExpr(body, gc))
+        } else
+          IsaLambda(compileExprs(ins.variables, gc), compileExpr(body, gc))
       case Application(fun, args) => IsaApplication(compileExpr(fun, gc), compileExprs(args, gc))
       case Tuple(comps) => IsaTuple(comps.map(compileExpr(_, gc)))
       case Projection(tuple, index) => IsaProjection(compileExpr(tuple, gc), index)
@@ -230,7 +244,9 @@ object IsabelleCompiler {
       //case ApproxReal(value) => throw IError("ApproxReal in compileeExpr not yet implemented. Zero test coverage.")
       //case Rat(enu, deno) => throw IError("Rat in compileeExpr not yet implemented. Zero test coverage.")
       case StringValue(value) => IsaString(value)
-      case BaseOperator(operator, tp) => IsaOperatorExpr(compileOp(operator), compileType(tp, gc))
+      case BaseOperator(operator, tp) =>
+        val isa_tp = compileType(tp, gc)
+        IsaOperatorExpr(compileOp(operator, tp), compileType(tp, gc))
       // todo: look at UndefinedValue and test cases
       case uv: UndefinedValue if uv.label == "???" => IsaUndefinedProof(compileType(uv.tp, gc))
       case UndefinedValue(tp) => throw IError("UndefinedValue for something other than proof terms not yet implemented")
@@ -238,10 +254,7 @@ object IsabelleCompiler {
       /** standard programming language objects */
       // todo: case EVarDecl after merge, what about TVarDecl?
       // todo: extend test cases, Block (in function definition), IfThenElse, Return
-      case EVarDecl(name, tp, dfO, mutable, output) => dfO match {
-        case Some(value) => null
-        case None => IsaVarDecl(name, compileType(tp, gc))
-      }
+      case EVarDecl(name, tp, dfO, mutable, output) => IsaVarDecl(name, compileType(tp, gc), dfO.map(compileExpr(_, gc)))
       //case TVarDecl
       case Assign(target, value) => throw IError("Assign in compileExpr not yet implemented. Zero test coverage.")
       case Block(exprs) => IsaBlock(compileExprs(exprs, gc))
@@ -261,8 +274,9 @@ object IsabelleCompiler {
         val resolved = compileDecl(gc.lookupRegional(n).getOrElse(throw IError("Regional context lookup returns None.")), gc)
         IsaClosedRef(n, resolved)
       case VarRef(name) =>
-        val resolved = compileVarDecl(gc.lookupLocal(name).getOrElse(throw IError("Local context lookup returns None.")), gc)
-        IsaVarRef(name, resolved)
+        //val resolved = compileVarDecl(gc.lookupLocal(name).getOrElse(throw IError("Local context lookup returns None.")), gc)
+        val resolvedO = gc.lookupLocal(name).map(compileVarDecl(_, gc))
+        IsaVarRef(name, resolvedO)
       // todo: applied references, newly added for polymorphism?
       //case AppliedRef(ref, args) =>
 
@@ -277,15 +291,12 @@ object IsabelleCompiler {
   def compileVarDecl(vd: VarDecl, gc: GlobalContext): IsaExpr = {
     /** Compile all case classes inheriting from VarDecl (Context.scala). */
     vd match {
-      case EVarDecl(name, tp, dfO, mutable, output) => dfO match {
-        case Some(value) => null
-        case None => IsaVarDecl(name, compileType(tp, gc))
-      }
+      case EVarDecl(name, tp, dfO, mutable, output) => IsaVarDecl(name, compileType(tp, gc), dfO.map(compileExpr(_, gc)))
       case _ => throw IError("Unknown VarDecl.")
     }
   }
 
-  def compileOp(op: Operator): IsaOperator = {
+  def compileOp(op: Operator, tp: Type): IsaOperator = {
     // todo: all operators (case objects)
     /**
      * Operators: And, Or, Not, Implies, Plus, Minus, Times, Divide, Minimum, Maximum, Power, UMinus, Less, LessEq,
@@ -299,11 +310,24 @@ object IsabelleCompiler {
       case Plus => IsaPlus
       case Minus => IsaMinus
       case Times => IsaTimes
-      case Divide => IsaDivide
+      case Divide => {
+        val fun_tp = tp.asInstanceOf[FunType]
+        if (fun_tp.ins.variables.forall(_.tp == NumberType.Int)
+          & (fun_tp.out.label == "rat"))
+        IsaFract
+        else IsaFieldDivision
+      }
       case Minimum => IsaMinimum
       case Maximum => IsaMaximum
-      // todo: how to distinguish between standard and real power, need to look up type of operands.
-      case Power => IsaStandardPower
+      case Power =>
+        val fun_tp = tp.asInstanceOf[FunType]
+        assert(fun_tp.ins.variables.length == 2)
+        // todo: FunType label is correct with exponent second; in variables list exponent is first (index 0)...
+        fun_tp.ins.variables(0).tp match {
+          case NumberType(_, false, false, _, _) => IsaStandardPower
+          case NumberType(_, _, _, _, _) => IsaRealPower
+          case _ => throw IError("Must be of NumberType.")
+        }
       case UMinus => IsaUMinus
       case Less => IsaLess
       case LessEq => IsaLessEq
@@ -375,5 +399,14 @@ object IsabelleCompiler {
         case _ => ()
       }
     }
+  }
+
+  def compileName(name: String): String = {
+    /** Compiles (variable) names. Reserved names (commands, keywords, reserved function names, ...) need to be escaped.
+     * Collect all reserved names:
+     *    commands: theory, begin, end, locale, definition, theorem, lemma, ...
+     *    reserved function names: hd, tl, o, ...
+     *    */
+    "o'"
   }
 }

@@ -83,7 +83,7 @@ case class IsaExprDecl(name: String, tp: IsaType, exprO: Option[IsaExpr]) extend
           case IsaEmptyType() => throw IError("Can't translate empty type to Isabelle")
             /*case IsaFunType(ins, out, nested) => s"$isa_keyword $name :: \"$tp\" where\n" +
             s"\"$name" + ins.map(_.name).mkString(" ", " ", " ") + "= undefined\""*/
-          case _ => s"$isa_keyword $name :: \"$tp\" where\n" + s"\"$name = undefined\""
+          case _ => s"$isa_keyword $name :: \"$tp\" where\n" + s"  \"$name = undefined\""
       }
   }
 }
@@ -376,7 +376,7 @@ case class IsaLambda(args: List[IsaExpr], body: IsaExpr, unparseAsFun: Boolean =
   }
 }
 
-case class IsaVarDecl(name: String, tp: IsaType) extends IsaExpr {
+case class IsaVarDecl(name: String, tp: IsaType, dfO: Option[IsaExpr]) extends IsaExpr {
   // extend with definiens, mutable, output?
   // VarDecl inside Lambda
   override def toString = name
@@ -393,7 +393,9 @@ case class IsaClosedRef(n: String, resolved: IsaDecl) extends IsaExpr {
 }
 
 // todo: adapt inheritance hierarchy for VarDecl, mirror UPL hierarchy.
-case class IsaVarRef(name: String, resolved: IsaDecl) extends IsaExpr {
+// todo: difference between Open, Closed, Var? Use tests to debug (Is VarRef used by tuple tests?)
+// todo: VarRef used for function arguments (basics003.p)
+case class IsaVarRef(name: String, resolvedO: Option[IsaDecl]) extends IsaExpr {
   override def toString = name
 }
 
@@ -401,13 +403,15 @@ case class IsaApplication(fun: IsaExpr, args: List[IsaExpr]) extends IsaExpr {
   //assert(fun.isInstanceOf[IsaOperatorExpr])
   override def toString = fun match {
     case IsaOperatorExpr(op, tp) =>
-      assert(op.arity.get == args.length)
+      /* assert(op.arity.get == args.length) assertion fails for 1+2+3. In this case,
+      fun is parsed as a ternary function while op remains of arity 2. */
       op match {
         case infOp: IsaInfixOperator =>
-          assert(args.length == 2)
+          /* assert(args.length == 2) assertion fails, see comment above */
           /** in operator in Isabelle only works for sets
            * todo: search for better solution regarding type coercions */
           if (op.symbol == "\\<in>") {
+            // todo: subtyping, Isabelle has none, set inclusion only works for sets.
             val argsc = args.updated(1, IsabelleCompiler.coerceIsaCollectionToIsaSet(args(1)))
             "(" + argsc.mkString(" " + infOp.toString + " ") + ")"
           } else {
@@ -420,6 +424,8 @@ case class IsaApplication(fun: IsaExpr, args: List[IsaExpr]) extends IsaExpr {
           assert(args.length == 2)
           "(" + binPrefOp.toString + " " + args.mkString(" ") + ")"
       }
+    // todo figure out References, wen open,closed,var? OpenRef in basics003 f5_multiarg application.
+    case IsaOpenRef(name, _) => "(" + name + " " + args.map(_.toString).mkString(" ") + ")"
     case IsaClosedRef(n, _) => "(" + n + " " + args.map(_.toString).mkString(" ") + ")"
     case IsaVarRef(name, _) => "(" + name + " " + args.map(_.toString).mkString(" ") + ")"
     case _: IsaApplication =>
@@ -484,7 +490,10 @@ case object IsaImplies extends IsaInfixOperator("\\<longrightarrow>") with IsaCo
 case object IsaPlus extends IsaInfixOperator("+") with IsaArithmetic
 case object IsaMinus extends IsaInfixOperator("-") with IsaArithmetic
 case object IsaTimes extends IsaInfixOperator("*") with IsaArithmetic
-case object IsaDivide extends IsaInfixOperator("/") with IsaArithmetic
+case object IsaFieldDivision extends IsaInfixOperator("/") with IsaArithmetic
+case object IsaDiv extends IsaInfixOperator("div") with IsaArithmetic
+case object IsaFract extends IsaBinaryPrefixOperator("Fract") with IsaArithmetic
+
 case object IsaMinimum extends IsaBinaryPrefixOperator("min") with IsaNumberOperator
 case object IsaMaximum extends IsaBinaryPrefixOperator("max") with IsaNumberOperator
 case object IsaStandardPower extends IsaInfixOperator("^") with IsaArithmetic

@@ -1,4 +1,4 @@
-theory Test070_target
+theory Test072_target
   imports Main
 begin
 
