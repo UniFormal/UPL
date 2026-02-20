@@ -45,7 +45,7 @@ module Operators {
       Magic{x=i}
     }
   }
-  a = A{x=1}
+  a = Magic{x=1}
   test = {ASSERT((a++2).x,3); ASSERT(〈a,a,a〉.x,3); ASSERT(a〈a,a〉.x,3); ASSERT(($a).x, 2);  ASSERT(a⁻.x, 0)}
 
   // There are magic functions that are used for converting instances to other types.
