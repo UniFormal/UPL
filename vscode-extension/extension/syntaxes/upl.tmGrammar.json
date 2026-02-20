@@ -19,12 +19,12 @@
       "name": "constant.numeric"
     },
     {
-      "match": "=|:|#",
-      "name": "keyword.other.separator.upl"
-    },
-    {
       "match": "->|==|=>|forall|exists|\\|-|\\+|\\*|\\-|\\.|\\&|\\!|<|>|\\|",
       "name": "keyword.operator.upl"
+    },
+    {
+      "match": "=|:|#",
+      "name": "keyword.other.separator.upl"
     },
     {
       "match": "(include|realize|while|if|else|for|match|catch|in)\\b",
