@@ -1,5 +1,5 @@
 
-theory reserved_names
+theory reserved_names_target
   imports Complex_Main
 begin
 
@@ -67,6 +67,8 @@ definition add :: int where
 
 definition Suc :: int where
   "Suc = 1"
+
+value "hd [1,2,3]"
 
 
 end

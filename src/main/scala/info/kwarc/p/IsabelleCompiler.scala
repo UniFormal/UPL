@@ -429,7 +429,7 @@ object IsabelleCompiler {
     }
 
     def reserved_function_names(name: String): Boolean = {
-      val res_fun_names = List("o")
+      val res_fun_names = List("o", "hd", "tl", "last", "butlast")
       res_fun_names.contains(name)
     }
 
