@@ -56,14 +56,14 @@ case class IsaExprDecl(name: String, tp: IsaType, exprO: Option[IsaExpr]) extend
       assert(ins.length > 0)
       // todo: figure out which of the inputs is matched
       val ins_idx = ins.map(_.toString).indexOf(expr.toString)
-      s"fun $name :: \"$tp\" where\n" +
+      s"fun \"$name\" :: \"$tp\" where\n" +
       cases.map {
         case IsaFunCase(pattern, body) => "\"" + name + ins.updated(ins_idx, pattern).mkString(" ", " ", " ") + "= " + body.toString + "\""
         case _ => throw IError("Shouldn't be different to IsaFunCase")
       }.mkString("\n| ")
     case Some(IsaFun(ins, body)) => throw IError("body of IsaFun must be IsaFunMatch.")
     // todo: only parenthesize complex types
-    case Some(expr) => s"$isa_keyword $name :: \"$tp\" where\n" +
+    case Some(expr) => s"$isa_keyword \"$name\" :: \"$tp\" where\n" +
       // todo: better solution for handling "=" in 'definition' versus 'fun'.
       {if (isa_keyword == "fun")
         {expr match {
@@ -83,12 +83,13 @@ case class IsaExprDecl(name: String, tp: IsaType, exprO: Option[IsaExpr]) extend
           case IsaEmptyType() => throw IError("Can't translate empty type to Isabelle")
             /*case IsaFunType(ins, out, nested) => s"$isa_keyword $name :: \"$tp\" where\n" +
             s"\"$name" + ins.map(_.name).mkString(" ", " ", " ") + "= undefined\""*/
-          case _ => s"$isa_keyword $name :: \"$tp\" where\n" + s"  \"$name = undefined\""
+          case _ => s"$isa_keyword \"$name\" :: \"$tp\" where\n" + s"  \"$name = undefined\""
       }
   }
 }
 
 case class IsaBlock(exprs: List[IsaExpr]) extends IsaExpr {
+  override def toString = throw IError("Block not yet implemented. Only in compileToplevelMatchFun.")
 }
 
 case class IsaIfThenElse(cond: IsaExpr, thn: IsaExpr, els: Option[IsaExpr]) extends IsaExpr {
@@ -101,6 +102,7 @@ case class IsaReturn(expr: IsaExpr) extends IsaExpr {
 
 case class IsaTypeDef(name: String, tpO: Option[IsaType]) extends IsaDecl {
   override def toString = tpO match {
+    // todo: parenthesis?
     case Some(tp) => s"type_synonym $name = $tp"
     // todo: what about type declarations without definiens? (see test3.p)
     // todo: answer use keyword 'typedecl'.
@@ -137,27 +139,34 @@ trait IsaType extends IsaDecl {
 case class IsaUnknownType(name: String) extends IsaType {
 }
 
-case class IsaNatType(name: String) extends IsaType {
+case class IsaNatType() extends IsaType {
+  val name = "nat"
+  override def toString: String = name
 }
 
-case class IsaIntType(name: String) extends IsaType {
-  override def toString = s"$name"
+case class IsaIntType() extends IsaType {
+  val name = "int"
+  override def toString = name
 }
 
-case class IsaRatType(name: String) extends IsaType {
-  override def toString = s"$name"
+case class IsaRatType() extends IsaType {
+  val name = "rat"
+  override def toString = name
 }
 
-case class IsaRealType(name: String) extends IsaType {
-  override def toString = s"$name"
+case class IsaRealType() extends IsaType {
+  val name = "real"
+  override def toString = name
 }
 
-case class IsaComplexType(name: String) extends IsaType {
-  override def toString = s"$name"
+case class IsaComplexType() extends IsaType {
+  val name = "complex"
+  override def toString = name
 }
 
-case class IsaBoolType(name: String) extends IsaType {
-  override def toString = s"$name"
+case class IsaBoolType() extends IsaType {
+  val name = "bool"
+  override def toString = name
 }
 
 case class IsaStringType() extends IsaType {
@@ -349,6 +358,10 @@ case class IsaOption(elems: List[IsaExpr]) extends IsaCollection {
 
 case class IsaList(elems: List[IsaExpr]) extends IsaCollection {
   override def toString = elems.mkString("[", ",", "]")
+}
+
+case class IsaListElem(list: IsaExpr, position: IsaExpr) extends IsaExpr {
+  override def toString: String = s"$list ! $position"
 }
 
 case class IsaSet(elems: List[IsaExpr]) extends IsaCollection {
