@@ -4,7 +4,7 @@ The tests are contained in the folders `tests`, `basics` and `negative-test`.
 The folder `targets` contains Isabelle code files that correspond to
 targeted compilation output of some of the UPL test files. <br>
 
-The folder `tests` contains a test suite of small test that are helpful for development and debugging.
+The folder `tests` contains a test suite of small test that are helpful for development and debugging. <br>
 A single test file can be run with <br>
 `--isabelle test/isabelle/tests/test000.p` <br>
 and the whole folder with <br>
