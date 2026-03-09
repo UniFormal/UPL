@@ -44,6 +44,6 @@ These failing tests reflect the issues and challenges for translation: <br>
 No direct correspondence between UPL module and Isabelle theory,
 No while and for loops,
 (mutual) recursion (need Analyzer to prevent stack overflow and use appropriate
-Isabelle/HOL command `fun`, `primrec`, etc.,
+Isabelle/HOL command `fun`, `primrec`, etc.),
 no empty type, no interval types, no snoc,
 no exceptions, no imperative program blocks, mutable variable assignment.
