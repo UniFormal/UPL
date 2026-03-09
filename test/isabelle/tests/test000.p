@@ -8,7 +8,6 @@ module Test000 {
     b: bool
     m: int
 
-    // is a problem
-    //f: int -> bool
+    f: int -> bool
 
 }

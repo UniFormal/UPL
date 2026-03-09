@@ -256,7 +256,7 @@ object Project {
       val voc = pe.getVocabulary
       /** todo: implement support for multiple sequential (unnested) modules.
        * written to multiple separate files each containing an Isabelle theory corresponding to the module
-       * problem with module namespaces and dot references
+       * problem with module namespaces and dot references, possibly solved with imports
        */
       if (voc.decls.length > 1 & voc.decls.forall(_.isInstanceOf[Module])) throw IError("Not yet implemented. No support for multiple top-level modules, i.e., two or more sequential unnested modules.")
       // Only support for a single module per UPL file.
@@ -264,7 +264,6 @@ object Project {
       File(pe.toString).up./(voc.decls.head.nameO.get + ".thy")
     }
     // render from checked vocabulary; compile the checked vocabulary (not the raw parsed AST)
-    // add global context
     val gc: GlobalContext = proj.makeGlobalContext()
     val isabelleStrings = proj.entries.map(pe => IsabelleCompiler.toIsabelleCode(pe.getVocabulary, gc))
     // write the strings to files

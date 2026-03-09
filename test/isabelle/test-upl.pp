@@ -1,2 +1,2 @@
-source: test070.p
-main: Test070.t_107
+source: reserved-names.p
+main: Reserved_Names.set

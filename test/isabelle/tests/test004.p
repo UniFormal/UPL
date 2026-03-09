@@ -1,11 +1,8 @@
 module Test004 {
 
-    // number types
+    // bool and string types
 
-    a: nat = 1
-    b: int = -1
-    c: rat = 1/3
-    d: comp = 1+1
-    e: float = 1.213
+    b: bool = true
 
+    s: string = "Hello Isabelle!"
 }

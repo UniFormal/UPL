@@ -1,7 +1,11 @@
 module Test003 {
 
-    type a = bool
-    type number = int
+    // number types
 
-    type b
+    a: nat = 1
+    b: int = -1
+    c: rat = 1/3
+    d: comp = 1+1
+    e: float = 1.213
+
 }

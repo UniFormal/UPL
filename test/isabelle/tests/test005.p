@@ -1,8 +1,8 @@
 module Test005 {
 
-    // bool and string types
+    // unit type
 
-    b: bool = true
+    u1: () = ()
 
-    s: string = "Hello Isabelle!"
+
 }

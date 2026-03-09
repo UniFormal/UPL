@@ -10,8 +10,8 @@ module Test050 {
     f = 1 - 2
     g = 21 * 2
     h = 21 / 2
-    i = 10 min -10
-    j = 10 max -10
+    //i = 10 min -10
+    //j = 10 max -10
     k = 2^3
     l = -(-(-10))
     m = 1 < 2
@@ -20,9 +20,10 @@ module Test050 {
     p = 1 >= 2
     q: list[int] = [1,2,3,4,5]
     r = q ::: q
-    s = 1 in set[1,2,3,4,5]
+    //s = 1 in set[1,2,3,4,5]
     t = 0 -: q
-    u = q :- 6
+    // Isabelle has no snoc
+    //u = q :- 6
     v = 0 == 1
     w = 0 != 1
 

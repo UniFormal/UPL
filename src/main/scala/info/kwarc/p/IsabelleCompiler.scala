@@ -30,7 +30,7 @@ import scala.annotation.tailrec
 object IsabelleCompiler {
 
   def toIsabelleCode(tv: TheoryValue, gc: GlobalContext): String = {
-    /** Compiles a theory value with a single toplevel module to Isabelle/HOL source code string.
+    /** Compiles a theory value with a single top-level module to Isabelle/HOL source code string.
      * Is called from Project. */
     compileIsabelle(tv, gc).toString
   }
@@ -40,7 +40,7 @@ object IsabelleCompiler {
      * problem: modules are open; written to separate files and Isabelle theories; cross-references between theories in Isabelle?
      */
     /** simple debug helper to verify declarations are in context */
-    debugPrintContext(gc)
+    //debugPrintContext(gc)
     /** first and only declaration must be a module (no nested or consecutive modules) */
     assert(tv.decls.length == 1 && tv.decls.head.isInstanceOf[Module])
     compileToplevelModule(tv.decls.head, gc)
@@ -120,7 +120,8 @@ object IsabelleCompiler {
      */
 
     tp match {
-      case utp: UnknownType => if (utp.container.tp == null) IsaUnknownType("null") else compileType(utp.container.tp, gc)
+      case utp: UnknownType => IsaUnknownType("unknown") //throw IError("UnknownType in compileType shouldn't happen because of type checking and inference.")
+        /*if (utp.container.tp == null) IsaUnknownType("null") else compileType(utp.container.tp, gc)*/
       case ClassType(domain) => throw IError("ClassType not yet implemented. Zero test coverage.")
       case ExprsOver(scope, tp) => throw IError("ExprsOver not yet implemented. Zero test coverage.")
       case EmptyType => IsaEmptyType()
@@ -130,14 +131,19 @@ object IsabelleCompiler {
       case AnyType => IsaTypeVar("new_name")//throw IError("AnyType not yet implemented. Zero test coverage.")
       case ExceptionType => throw IError("ExceptionType not yet implemented. Zero test coverage.")
       case NumberType(false, false, false, false, false) => IsaNatType()
-      case NumberType(true, false, false, false, false) => IsaIntType()
-      case NumberType(true, true, false, false, false) => IsaRatType()
-      case NumberType(true, true, true, false, false) => IsaComplexType()
-      case NumberType(true, true, false, true, true) => IsaRealType()
+      case NumberType(true,  false, false, false, false) => IsaIntType()
+      case NumberType(false, true,  false, false, false) => throw IError("NumberType PRat not yet implemented.")
+      case NumberType(true,  true,  false, false, false) => IsaRatType()
+      case NumberType(false, false, true,  false, false) => throw IError("NumberType NatComp not yet implemented.")
+      case NumberType(true,  false, true,  false, false) => throw IError("NumberType IntComp not yet implemented.")
+      case NumberType(false, true,  true,  false, false) => throw IError("NumberType PRatComp not yet implemented.")
+      case NumberType(true,  true,  true,  false, false) => IsaComplexType()
+      case NumberType(true,  true,  false, true,  true ) => IsaRealType()
       // todo: ratCF
-      case NumberType(true, true, true, true, false) => IsaRealType()
+      case NumberType(true,  true,  true,  true,  false) => IsaRealType()
       // todo: test080.p j produces NumberType ratCFI and Isabelle doesn't type-check
-      case NumberType(true, true, true, true, true) => IsaRealType()
+      case NumberType(true,  true,  true,  true,  true ) => throw IError("NumberType ratCFI not yet implemented.")//IsaRealType()
+      case NumberType(_   , _    , _    , _    , _     ) => throw IError("NumberType Unknown not yet implemented.")
       case IntervalType(lower, upper) => throw IError("Isabelle does not have native interval types.")
       case FunType(ins, out) =>
         /** Empty input variables list means one input argument of type unit. basics009.p*/
@@ -154,7 +160,7 @@ object IsabelleCompiler {
         case CollectionKind(false, true, false) => IsaMultisetType(compileType(elem, gc))
         case CollectionKind(true, false, false) => throw IError("ULists not yet implemented. Implement with distinct property or as finite sets")
       }
-      // todo: implement a flag that indicates inside or outside locale
+      // todo: implement a flag that indicates inside or outside locale or solve with method compileTypeLocale
       case ProofType(formula) => IsaProofType(compileExpr(formula, gc))
       case ProofType(formula) => IsaLocaleAssumptionType(compileExpr(formula, gc))
       // todo: references that are passed as types
@@ -179,19 +185,8 @@ object IsabelleCompiler {
      *
      * Ref (Expression, Type, Theory): OpenRef, ClosedRef, VarRef, AppliedRef, MaybeAppliedRef
      */
-
     expr match {
       case Lambda(ins, body, mayReturn) =>
-        // todo: if the body is a Lambda, it must be unparsed as a lambda expression (flagged with false)
-        // todo: how to best handle? Here or in the toString method? We do it here
-        /**
-        val body_expr = compileExpr(body)
-        body_expr match {
-          case IsaLambda(args, body2, _, _) => IsaLambda(ins.variables.map(compileExpr), IsaLambda(args, body2, false), true)
-          case _ => IsaLambda (ins.variables.map (compileExpr), body_expr, true)
-        }
-        */
-        // todo: UPLs functions are all lambda expressions. Compile to Isabelle definitions with lambda expressions.
         /** Check for top-level pattern matching of function arguments in body of lambda-expression*/
         // todo: top-level pattern matching
         @tailrec
@@ -255,6 +250,7 @@ object IsabelleCompiler {
       case Assign(target, value) => throw IError("Assign in compileExpr not yet implemented. Zero test coverage.")
       case Block(exprs) => IsaBlock(compileExprs(exprs, gc))
       case IfThenElse(cond, thn, els) => IsaIfThenElse(compileExpr(cond, gc), compileExpr(thn, gc), els.map(compileExpr(_, gc)))
+      // todo: implement match with inner syntax keyword case
       case Match(expr, cases, handler) => throw IError("Match in compileExpr not yet implemented. Zero test coverage.")
       case MatchCase(context, pattern, body) => throw IError("MatchCase in compileExpr not yet implemented. Zero test coverage.")
       case For(vd, range, body) => throw IError("For in compileExpr not yet implemented. Zero test coverage.")
@@ -293,8 +289,7 @@ object IsabelleCompiler {
   }
 
   private def compileOp(op: Operator, tp: Type): IsaOperator = {
-    // todo: all operators (case objects)
-    /**
+    /** all operators (case objects)
      * Operators: And, Or, Not, Implies, Plus, Minus, Times, Divide, Minimum, Maximum, Power, UMinus, Less, LessEq,
      * Greater, GreaterEq, Concat, In, Cons, Snoc, Equal, Inequal
      */
@@ -309,8 +304,9 @@ object IsabelleCompiler {
       case Divide => {
         val fun_tp = tp.asInstanceOf[FunType]
         if (fun_tp.ins.variables.forall(_.tp == NumberType.Int)
-          & (fun_tp.out.label == "rat"))
-        IsaFract
+          & (fun_tp.out.label == "rat")
+          & (fun_tp.ins.variables.size == 2))
+          IsaFract
         else IsaFieldDivision
       }
       case Minimum => IsaMinimum
@@ -393,7 +389,6 @@ object IsabelleCompiler {
   }
 
   def compileName(name: String): String = {
-    // todo: call in compiler above
     /** Isabelle/HOL "names" are of the following kinds:
      * Types, Values, Commands, Commands for proofs, Isar commands, Packages, Reserved function names
      * -----
@@ -401,16 +396,19 @@ object IsabelleCompiler {
      * Values: True, False, 0, 1, 2, ''string'', [1,2,3], {1,2,3}, ...
      * Logical Symbols: <\forall>, -->, /\, ...
      * Formulas: "True /\ True"
-     * Language constructs: if then else, let in, case
-     * Commands: theory, imports, begin, end, datatype, type_synonym, fun, where, lemma, thm, theorem, definition, abbreviation,
+     * Language constructs (inner syntax): if then else, let in, case
+     * Commands (outer syntax): theory, imports, begin, end, datatype, type_synonym, fun, where, lemma, thm, theorem, definition, abbreviation,
      *        inductive for where, locale, ...
      * Commands for proofs: apply() done, by, try, try0, declare, ...
      * Proof methods: auto, induct, induction, simp add del split, simp_all, intro, blast intro dest, rule,
-     * fastforce, sledgehammer, metis step, arith, assumption,
+     *        fastforce, sledgehammer, metis step, arith, assumption,
      * Isar commands: proof, fix, assume, have, by, show, qed, from, then, thus, hence, fixes, assumes, shows, proof cases, next,
      *        obtain, also, finally, also from calculation, moreover, ultimately, from this,
      * Packages: Main, Complex_Main, ...
-     * Reserved function names: o, hd, tl, add?, Suc Node
+     * Reserved function names frequently used in Main (the standard library), some can be overwritten:
+     *    List Ops: hd, tl, last, butlast, set, map, filter, length, rev, zip, fold, concat, Cons
+     *    Functional: o (function composition), id, curry, uncurry
+     *    Math/Logic: Suc, min, max, sum, prod, least, Greatest, All, Ex
      * -----
      * Types: can use as names in definitions, and overwrite with type_synonym
      * Values: _, Logical Symbols: _, Formulas: _
@@ -423,18 +421,29 @@ object IsabelleCompiler {
      * Reserved functions names (parenthesize)
      * */
 
-    def language_construct(name: String): Boolean = {
-      val language_contruct_names = List("if", "then", "else", "let", "in", "case")
-      language_contruct_names.contains(name)
-    }
+    // todo: Types, apostrophe only when used in type declarations.
+    val typeNames = Set(
+      "bool", "nat", "int", "real", "complex", "list", "set" // , ...
+    )
 
-    def reserved_function_names(name: String): Boolean = {
-      val res_fun_names = List("o", "hd", "tl", "last", "butlast")
-      res_fun_names.contains(name)
-    }
+    val valueNames = Set(
+      "True", "False", "Nil"
+    )
 
-    if (language_construct(name)) name + "'"
-    else if (reserved_function_names(name)) name + "'"
-    else name
+    val syntaxKeywords = Set(
+      "if", "then", "else", "let", "in", "case", "of", "where", "for"
+    )
+
+    val commonLibraryNames = Set(
+      "hd", "tl", "Cons", "last", "butlast", "set", "map", "filter", "length", "rev", "zip", "fold", "concat",
+      "o", "id", "curry", "uncurry",
+      "Suc", "min", "max", "sum", "prod", "least", "Greatest", "All", "Ex"
+    )
+
+    if (valueNames.contains(name) || syntaxKeywords.contains(name) || commonLibraryNames.contains(name)) {
+      name + "'"
+    } else {
+      name
+    }
   }
 }
