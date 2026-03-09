@@ -2,8 +2,8 @@ This README documents the tests for the UPL to Isabelle/HOL compilers.
 
 The tests are contained in the folders `tests`, `basics` and `negative-test`.
 The folder `targets` contains Isabelle code files that correspond to
-targeted compilation output of some of the UPL test files.
-R
+targeted compilation output of some of the UPL test files. <br> <br>
+
 The folder `tests` contains a test suite of small test that are helpful for development and debugging.
 A single test file can be run with <br>
 `--isabelle test/isabelle/tests/test000.p` <br>
@@ -40,9 +40,9 @@ The folder `negative-tests` contains tests that fail for various
 reasons. These include nesting of modules, object-oriented programming 
 features, interval types, (mutual) recursion, subtyping, and 
 theories/locales.
-These failing tests reflect the issues and challenges for translation: <br>
+These failing tests reflect the issues and challenges for translation:
 No direct correspondence between UPL module and Isabelle theory,
-No while and for loops,
+no while and for loops,
 (mutual) recursion (need Analyzer to prevent stack overflow and use appropriate
 Isabelle/HOL command `fun`, `primrec`, etc.),
 no empty type, no interval types, no snoc,
