@@ -1,7 +1,10 @@
 package info.kwarc.p
 
+import info.kwarc.p.File.{read, readAsSource}
+
 import scala.collection.mutable
-import scala.scalajs.js.annotation._
+import scala.scalajs.js
+import js.annotation._
 import scala.util.Try
 
 /**
@@ -175,13 +178,47 @@ class FrameITProject private()
 object FrameITProject {
   // SiTh: SituationTheory
   private val SiThOrigin: SourceOrigin = SourceOrigin("SiTh")
-  def apply(backgroundContent: String, initialStageContent:String=""): FrameITProject = {
-    val proj = new FrameITProject()
-    proj.updateAndCheck(SourceOrigin("BackgroundTheory"), backgroundContent)
-    val isCode = s"theory ${proj.Stage.current}{$initialStageContent}"
-    /** The initial Stage is not stored in a [[proj.Stage]], to be save from [[proj.reset]] */
-    proj.updateAndCheck(SourceOrigin("InitialStage"), isCode)
-    proj
+
+  /**
+    * Create a FrameIT project from an unfolded UPL project-file
+    * Using LazyLists means we don't need to keep all file contents in Memory.
+    *
+    * This implementation avoids using files explicitly, so it can be exported via scala.js
+    *
+    * @param fileContents An unfolded UPL project-file (*.pp)
+    *                     Relevant keys:
+    *   - "background" (or "source") files are considered background and all content is added to the project as is
+    *   - "schemata" ToDo Extract required and acquired facts from Schemata.
+    *   - "stageInit" the first listed file is used as content for [[FrameITProject.Stage]]0. All others are ignored
+    * @return A fully set up FrameIt project
+    */
+  def apply(fileContents: Map[String, LazyList[(SourceOrigin, String)]]): FrameITProject = {
+    val saveFileContents =  fileContents.withDefaultValue(LazyList.empty)
+    val sourceKinds = List("background", "source", "schemata").view // List because we need the order for `entries`
+    val entries = for {
+      k <- sourceKinds
+      (source, content) <- saveFileContents(k)
+    } yield ProjectEntry(source, content)
+    val project = new FrameITProject()
+    project.entries = entries ++: project.entries // prepend the background, SiTh remains last element
+    val siO = for {
+      l <- fileContents get "stageInit"
+      (_ , c) <- l.headOption
+    } yield c
+    val stageInitCode = s"theory ${project.Stage.current}{${siO.getOrElse("")}}"
+    project.update(SourceOrigin("InitialStage"), stageInitCode)
+    project.checkAll()
+    project
+  }
+
+  /** Convenience method for providing a single background, ect. in code  */
+  def apply(backgroundContent: String, schemataContent:String, initialStageContent:String=""): FrameITProject = {
+    val contents: Map[String, LazyList[(SourceOrigin, String)]] = Map(
+      ("background", LazyList((SourceOrigin("Background"), backgroundContent))),
+      ("schemata",   LazyList((SourceOrigin("Background"), schemataContent))),
+      ("stageInit",  LazyList((SourceOrigin("InitialStage"), initialStageContent)))
+    )
+    FrameITProject(contents)
   }
 
   /**
@@ -195,51 +232,36 @@ object FrameITProject {
     * @param setupFile A UPL project-file (*.pp)
     * @return A fully set up FrameIt project
     */
-  def apply(setupFile: File): FrameITProject = {
-    val project = new FrameITProject()
-    val (entries,siO) = unfoldProjectFile(setupFile)
-    project.entries = entries ++: project.entries // prepend the background, SiTh remains last element
-    val isCode = s"theory ${project.Stage.current}{${siO.getOrElse("")}}"
-    project.update(SourceOrigin("InitialStage"), isCode)
-    project.checkAll()
-    project
-  }
+  def apply(setupFile: File): FrameITProject = FrameITProject(unfoldProjectFile(setupFile))
+
 
   /** Kinda chimera of [[File.readPropertiesFromString]] and [[Project.fromFile]],
-    * because both aren't quite flexible enough to be used here */
-  protected def unfoldProjectFile(projFile: File): (List[ProjectEntry], Option[String]) = {
-    val props = new mutable.HashMap[String, List[String]].withDefaultValue(Nil)
-    if (projFile.getExtension contains "pp") {
-      val r = scala.io.Source.fromFile(projFile.toJava)
-      r.getLines()
-        .map(_.strip())
-        .filter(!_.startsWith("//"))
-        .foreach { line =>
-          val p +: v = line.split(":", 2).toList
-          if (p.nonEmpty && v.nonEmpty) { // make sure line contains colon and the key is non-empty
-            val key = p.strip()
-            val value = v.flatMap(_.split("\\s")).filter(_.nonEmpty)
-            props.updateWith(key) {
-              case None => Option(value)
-              case Some(old) => Option(value reverse_::: old)
-        } } }
-      props.mapValuesInPlace { (_, v) => v.reverse }
+    * because both aren't quite flexible enough to be used here.  */
+  protected def unfoldProjectFile(projFile: File): Map[String, LazyList[(SourceOrigin, String)]] = {
+    if (!(projFile.getExtension contains "pp")) {
+      return Map(("background", LazyList.from(Project.pFiles(projFile).map(readAsSource))))
     }
-    else {
-      props.update("background", Project.pFiles(projFile).map(_.toString))
-    }
-    val sourceProps = List("background","schemata","source") // List because we need the order for `entries`
-    val stageInit = for {
-        names <- props.remove("stageInit")
-        name <- names.headOption
-        f = projFile.up.resolve(name)
-      } yield Parser.getFileContent(f)
-    val entries = sourceProps.view
-      .flatMap(props)
-      .flatMap(s => Project.pFiles(projFile.up.resolve(s)))
-      .map(ProjectEntry(_))
-      .toList
-    (entries, stageInit)
+    val r = scala.io.Source.fromFile(projFile.toJava)
+    val props = new mutable.HashMap[String, LazyList[(SourceOrigin, String)]].withDefaultValue(LazyList.empty)
+    r.getLines()
+      .map(_.strip())
+      .filter(!_.startsWith("//"))
+      .foreach { line =>
+        val p +: v = LazyList from line.split(":", 2)
+        if (p.nonEmpty && v.nonEmpty) { // make sure line contains colon and the key is non-empty
+          val key = p.strip()
+          val value = v
+            .flatMap(_.split("\\s"))
+            .filter(_.nonEmpty)
+            .flatMap(s => Project.pFiles(projFile.up.resolve(s)))
+            .map{f => readAsSource(f)}
+          props.updateWith(key) {
+            case None => Option(value)
+            case Some(old) => Option(old #::: value)
+          }
+        }
+      }
+    props.map{ case (k, v) => (k,v) }.toMap
   }
 }
 
@@ -249,41 +271,44 @@ object FrameITProject {
   *
   * (Currently, the only expected "outside" is JS)
   */
-//@JSExportAll
 @JSExportTopLevel("FrameIT")
+@JSExportAll
 object FrameIT_Backend {
   import Gameplay._
   implicit val debug: Boolean = false
-  private var proj = FrameITProject("")
+  private var proj = FrameITProject("","")
 
   def main(args: Array[String]): Unit = {
+    gameplayTest()
+  }
+
+  /** private, so scala.js doesn't need to see [[File]] */
+  private def gameplayTest() = {
     proj = FrameITProject(File("test/FrameIt/Gameplay_Example/gameplay.pp"))
     //proj add s1
     proj applySchema("_SimilarTriangles", assignments, List(("height", "__EA"))) // ("height_P","__EA_P") doesn't work
     println(proj.tryEval("SiTh{}.height"))
+
   }
 
   // ToDO: Make a useful JS Object
   def makeJSReadable(declaration: Declaration) = declaration.toString
 
-  @JSExport("showSiTh")
-  def JS_showSiTh: String = proj.getSiTh.toString
+  def showSiTh: String = proj.getSiTh.toString
 
-  @JSExport("SiThErrors")
-  def JS_getSiThErrors: String = proj.getSiThErrors.mkString("\n")
+  def getSiThErrors: String = proj.getSiThErrors.mkString("\n")
 
   /** Add [[Declaration]]s to the SiTh
     *
     * @param decls_String The declarations to add, as raw code string
     * @return True if no error occurred, false otherwise.
     */
-  @JSExport("tryAdd")
-  def JS_addS(decls_String: String): Boolean = proj.add(decls_String)
+  def add(decls_String: String): Boolean = proj.add(decls_String)
 
   def resetLevel(): Unit = proj.reset()
 
-  @JSExport("newLevel")
-  def JS_newProject(backgroundTheoryContent: String): Unit = { proj = FrameITProject(backgroundTheoryContent) }
+  def newLevel(backgroundTheoryContent: String, schemataContent:String): Unit =
+  { proj = FrameITProject(backgroundTheoryContent, schemataContent) }
 
   @JSExport("eval")
   def JS_eval(exprS: String): String = {

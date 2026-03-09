@@ -12,15 +12,24 @@ class ProjectEntry(val source: SourceOrigin) {
   var result = Theory.empty
   val global = source.fragment == null
   def getVocabulary = if (checkedIsDirty) parsed else checked
+  def update(src: String): TheoryValue = {
+    errors.clear
+    parsed = Parser.text(source, src, errors)
+    DependencyAnalyzer.update(this)
+    checkedIsDirty = true
+    parsed
+  }
 }
 object ProjectEntry{
-  def apply(file: File): ProjectEntry = {
-    val e = new ProjectEntry(file.toSourceOrigin)
-    e.parsed = Parser.text(e.source, Parser.getFileContent(file), e.errors)
-    DependencyAnalyzer.update(e)
-    e.checkedIsDirty = true
+  /** Create and initialize a ProjectEntry */
+  def apply(source:SourceOrigin, content: String) = {
+    val e = new ProjectEntry(source)
+    e.update(content)
     e
   }
+
+  def apply(file: File): ProjectEntry =
+    ProjectEntry(file.toSourceOrigin, Parser.getFileContent(file))
 }
 
 /**

@@ -74,7 +74,7 @@ module Basic {
   factorial = (x:int) -> {
     // return statements return from the current named function (even if the return type has not been infered yet).
     if (x<0) return 1
-    // var/val introduce immutable/mutable variables that are visible for the remainder of the block.
+    // val/var introduce immutable/mutable variables respectively that are visible for the remainder of the block.
     // Types can be inferred, initialization is mandatory.
     var result = 1
     var i = 1

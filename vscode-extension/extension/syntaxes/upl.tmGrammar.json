@@ -19,20 +19,64 @@
       "name": "constant.numeric"
     },
     {
-      "match": "\\+|\\*|\\-|\\.|\\:|=|\\&|\\!|->|==|\\|",
+      "match": "->|==|=>|forall|exists|\\|-|\\+|\\*|\\-|\\.|\\&|\\!|<|>|\\|",
       "name": "keyword.operator.upl"
     },
     {
-      "match": "(module|theory|include|realize|type|val|var|while|if|for|match|catch)\\W",
+      "match": "=|:|#",
+      "name": "keyword.other.separator.upl"
+    },
+    {
+      "match": "(include|realize|while|if|else|for|match|catch|in)\\b",
       "name": "keyword.control.upl"
     },
     {
-      "match": "(true|false|int|rat|bool|string|set|list|bag|option|any|exn)\\W",
+      "match": "\\b(@)(\\w+|\\(\\w+(,\\w+)*\\))",
+      "captures": {
+        "1": {"name": "keyword.other.separator.upl"},
+        "2": {"name": "variable.parameter.type.upl"}
+      }
+    },
+    {
+      "match": "(int|rat|float|bool|string|set|list|bag|option|any|exn|empty)\\b",
+      "name": "entity.name.type.upl"
+    },
+    {
+      "match": "(true|false|univ)\\b",
       "name": "constant.language.upl"
     },
     {
+      "match": "_\\b",
+      "name": "variable.language.upl"
+    },
+    {
+      "match": "(_prefix_|_infix_|_circumfix_|_postfix_|_applyfix_|_bindfix_)(\\S+)",
+      "captures": {
+        "1": {"name": "keyword.other.fixity.upl"},
+        "2": {"name": "entity.name.operator.upl"}
+      }
+    },
+    {
+      "match": "(prefix|infix|circumfix|postfix|applyfix|bindfix)\\s+(\\S)+",
+      "captures": {
+        "1": {"name": "keyword.other.fixity.upl"},
+        "2": {"name": "entity.name.operator.upl"}
+      }
+    },
+    {
+      "match": "(module|theory)\\s+(\\w+)\\s+{",
+      "captures": {
+        "1": {"name": "storage.type.module.upl"},
+        "2": {"name": "entity.name.type.upl"}
+      }
+    },
+    {
+      "match": "(val|var|type)\\b",
+      "name": "storage.type.upl"
+    },
+    {
       "match": "[a-zA-Z][a-zA-Z_0-9]*",
-      "name": "variable.upl"
+      "name": "variable.other.upl"
     }
   ]
 }
