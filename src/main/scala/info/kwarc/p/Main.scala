@@ -15,13 +15,12 @@ object Main {
   }
 
   val doc =
-    """[--repl/--isabelle] PATH1 [PATH2] [EXPR]
+    """[--repl/--isabelle] PATH [EXPR]
     where
-    PATH1: project file or source file/folder
-    PATH2: target folder for isabelle files
+    PATH: project file or source file/folder
     EXPR: toplevel call relative to sources
     --repl: drop into REPL after running ('exit' to quit)
-    --isabelle: translate to Isabelle code (and evaluate main expression with 'value')
+    --isabelle: translate to Isabelle code and write to file(s) in same location
     """
 
 }
