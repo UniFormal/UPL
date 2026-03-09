@@ -2,7 +2,7 @@ This README documents the tests for the UPL to Isabelle/HOL compilers.
 
 The tests are contained in the folders `tests`, `basics` and `negative-test`.
 The folder `targets` contains Isabelle code files that correspond to
-targeted compilation output of some of the UPL test files. <br> <br>
+targeted compilation output of some of the UPL test files. <br>
 
 The folder `tests` contains a test suite of small test that are helpful for development and debugging.
 A single test file can be run with <br>
