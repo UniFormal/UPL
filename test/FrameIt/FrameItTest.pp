@@ -1,2 +1,2 @@
-source: gameplay_example.p
+source: Gameplay_Example/gameplay_example.p
 main: similarTriangles_gameplay_example.test

@@ -177,7 +177,7 @@ abstract class Traverser[A] {
       val (vsT,aT) = apply(vs)
       // if the quantifiers is closing and the context has not been inferred yet, this does not pass down the correct context
       Quantifier(q, vsT, apply(b)(gc.append(vs),aT))
-    case Assert(f) => Assert(apply(f))
+    case Assert(t,tp,e) => Assert(apply(t), apply(tp), apply(e))
     case UndefinedValue(tp) => UndefinedValue(apply(tp))
   }
 }
@@ -486,3 +486,45 @@ object TestLocationFields extends StatelessTraverser {
     applyDefault(thy)
   }
 }
+
+/** Traverser that creates the package imports string for the Isabelle compiler */
+class IsabellePackageTraverser extends StatelessTraverser { // with TraverseOnlyOriginalRegion?
+  var packages: List[String] = List("Main")
+  /** indexes packages by matching the type; checking ensures there are no unknown types */
+  // todo: adding imperative programming features might necessitate additionally matching over expressions
+  override def apply(tp: Type)(implicit gc: GlobalContext, a: Unit) =
+    matchC(tp) {
+      case NumberType(true, true, false, false, false) => {
+        packages = packages.updated(0, "Complex_Main");
+        applyDefault(tp)
+      }
+      case NumberType(true, true, true, false, false) => {
+        packages = packages.updated(0, "Complex_Main");
+        applyDefault(tp)
+      }
+      case NumberType(true, true, false, true, true) => {
+        packages = packages.updated(0, "Complex_Main");
+        applyDefault(tp)
+      }
+      case CollectionType(elem, kind) => kind match {
+        case CollectionKind(false, true, false) => {
+          packages = packages.appended("\"HOL-Library.Multiset\"")
+          applyDefault(tp)
+        }
+          //case CollectionKind(true, false, false) => throw IError("ULists not yet implemented. Implement with distint property or as finite sets")
+          case _ => applyDefault(tp)
+        }
+        case _ => applyDefault(tp)
+      }
+}
+
+object IsabellePackageTraverser {
+  def importsString(gc: GlobalContext, decl: Declaration): String = {
+    val packTrav = new IsabellePackageTraverser
+    packTrav(decl)(gc, ())
+    packTrav.packages.mkString(" ")
+  }
+}
+
+
+

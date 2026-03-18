@@ -1034,7 +1034,7 @@ case class Projection(tuple: Expression, index: Int) extends Expression {
 
 /** collections, introduction form for [[CollectionType]] */
 case class CollectionValue(elems: List[Expression], kind: CollectionKind) extends Expression {
-  override def toString = kind.toString + elems.mkString("[",",","]")
+  override def toString = (if (elems.sizeIs > 1) kind.toString else "") + elems.mkString("[",",","]")
   def label = "collection"
   def children = elems
   /** the elements, normalized according to collection kind */
@@ -1077,10 +1077,11 @@ object Equality {
   def reduce(pos: Boolean): Connective = if (pos) And else Or
 }
 
-case class Assert(formula: Expression) extends Expression {
-  override def toString = "|- " + formula
+case class Assert(test: Expression, tp: Type, expected: Expression) extends Expression {
+  def asBoolean = Equality(true, tp, test, expected).copyFrom(this)
+  override def toString = s"ASSERT($test, $tp, $expected)"
   def label = "assert"
-  def children = List(formula)
+  def children = List(test,tp,expected)
 }
 
 /*
@@ -1424,55 +1425,126 @@ abstract class InferenceCallbacks {
   def unknown(): Type
 }
 
+object Symbols {
+  import Unicode.UChar
+  // We work with Unicode characters (i.e., Int), not Java characters (limited 16 bit UTF-16 style)
+  /** character types that are allowed in operators */
+  val operators = Unicode.symbolCategories ::: Unicode.modifierCategories
+  /** characters that are used by UPL to delimit expressions and are not allowed in operators
+   * ':' is allowed in operators */
+  val notOpChars: List[UChar] = Unicode.characters("\"'`;,.")
+
+  /** tests if c is allowed in an operator */
+  def isOperatorChar(c: UChar) = (operators contains Character.getType(c)) && !notOpChars.contains(c)
+
+  /** differentiates between infix and postfix operator */
+  def isPostfixOp(s: String) = {
+    Unicode.forall(s)(c => Unicode.symbolType(c) == PostfixSymbol)
+  }
+
+  /** ends an infix or bracket operator that is followed by a bracket */
+  def isPrefixChar(c: UChar) = List(PrefixSymbol,GeneralOperatorSymbol) contains Unicode.symbolType(c)
+
+  // right-pointing tacks and similar, not used yet, but could be used for precedences
+  def isTurnstileLike(c: UChar) = {
+    c == 0x22A2 || (c >= 0x22A6 && c <= 0x22AF) || c == 0x2AE2 || c == 0x2AE6 || c == 0x27DD
+  }
+
+  def isOpeningBracketStart(c: UChar) = Unicode.symbolType(c) match {
+    case OpenBracketSymbol(cls) => Some(cls)
+    case _ => None
+  }
+  def isOpeningBracketChar(c: UChar) = isOperatorChar(c) || isOpeningBracketStart(c).isDefined
+  /** differentiates between infix and bracket operator */
+  def isOpeningBracket(s: String) = {
+    isOpeningBracketStart(s.codePointAt(0))
+  }
+  def makeClosingBracket(op: String): String = {
+    var cl = ""
+    op.codePointStepper.iterator.foreach {c =>
+      cl = Unicode.toString(Unicode.closingBracketSymbol(c).getOrElse(c)) + cl
+    }
+    cl
+  }
+
+  def isBindfixStart(c: UChar) = Unicode.symbolType(c) == BindfixSymbol
+  def isBindfixChar(c: UChar) = isOperatorChar(c) || isBindfixStart(c)
+}
+
 /** parent class of all operators
-  *
-  * Operators carry concrete syntax and typing information so that their processing is controlled by the operator,
-  * not by the parser/checker/printer.
-  * For the latter to be able to access this information, all operators must be listed in the companion object [[Operator]]
-  */
+ *
+ * Operators carry concrete syntax and typing information so that their processing is controlled by the operator,
+ * not by the parser/checker/printer.
+ * For the latter to be able to access this information, all operators must be listed in the companion object [[Operator]]
+ */
 sealed abstract class Operator {
   val symbol: String
   val length = symbol.length
-  /** if this is overridden, type-checking first checks the number of arguments */
-  def arity: Option[Int] = None
+  /** for known operators: as defined; for pseudo-operators: as they were parsed */
+  def fixity: Fixity
+  /** closing bracket, only useful for BracketFix */
+  def close: String = Symbols.makeClosingBracket(symbol)
+  /** only useful for Infix */
+  def precedence = Precedence.get(symbol)
   /** if the operator has exactly one type, this should be overridden for easy type inference */
   def uniqueType: Option[FunType] = None
+  def makeExpr(args: List[Expression]) = Application(BaseOperator(this, uniqueType.getOrElse(Type.unknown(null))), args)
+  def unapply(e: Expression) = e match {
+    case Application(BaseOperator(op,_), args) if op == this => Some(args)
+    case _ => None
+  }
+  def isDynamic = false
+}
+
+/** operators in parsed unchecked syntax, must be elaborated during checking */
+case class PseudoOperator(symbol: String, fixity: Fixity) extends Operator {
+  def magicName: String = "_" + fixity.toString.toLowerCase + "_" + symbol
+
+  def interpret(meaning: Expression, args: List[Expression]): Expression = {
+    fixity match {
+      case Bindfix =>
+        args match {
+          case List(l@Lambda(vd -: rest, bd, mr)) if !rest.empty =>
+            // curry multiple bindings into single ones
+            // TODO support non-associative binders like exists-unique
+            val bdI = interpret(meaning, List(Lambda(rest, bd, false)))
+            val lI = Lambda(ExprContext(List(vd)), bdI, mr).withLocationFromTo(vd, bd)
+            Application(meaning, List(lI))
+          case e => Application(meaning, args)
+        }
+      case _ => Application(meaning, args)
+    }
+  }
+}
+
+/** built-in operator, may occur in checked syntax */
+sealed abstract class KnownOperator extends Operator {
+  def is(po: PseudoOperator) = po.symbol == symbol && po.fixity == fixity
   /** if the operator is ad hoc polymorphic, this should be overridden to infer the operator type
    * @param ins the argument types
-   * @param union: a callback to compute the union of some types
+   * @param cbs: a callback to compute the union of some types
    * @return the operator type if unique inference possible
    * This function itself does not type-check or solve any unknowns.
    * It just disambiguates what the operator type should be.
    * The type checker then uses the disambiguated type to type-check the arguments, and that may also solve unknowns.
    */
   def typeFor(ins: List[Type], out: Type, cbs: InferenceCallbacks): Option[FunType] = uniqueType
-  def makeExpr(args: List[Expression]) = Application(BaseOperator(this, uniqueType.getOrElse(Type.unknown(null))), args)
+  /** if this is overridden, type-checking first checks the number of arguments */
+  def arity: Option[Int] = None
   def invertible: Boolean
-  def isolatableArguments: List[Int] = Nil
+  def isolatableArguments(args: List[Expression]): List[Int] = Nil
   def isolate(pos: Int, args: List[Expression], result: Expression): Option[(Expression,Expression)] = None
-  def isCheckable = !isDynamic && !isPseudo
-  def isDynamic = false
-  def isPseudo = false
+  /** overriden for dependent Boolean connectives */
 }
 
-/** operators that must be defined through magic functions */
-sealed trait PseudoOperator extends Operator {
-  override def isPseudo = true
-  def fixity: Fixity
-  def magicName: String
-  def types = Nil
+/** infix operators additionally need to handle associativity */
+sealed class InfixOperator(val symbol: String, val assoc: Associativity = NotAssociative) extends KnownOperator {
+  def apply(l: Expression, r: Expression) = makeExpr(List(l, r))
   def invertible = false
-  def interpret(meaning: Expression, args: List[Expression]) = Application(meaning, args)
-}
 
-sealed trait GeneralInfixOrPostfixOperator extends Operator
-
-sealed trait GeneralInfixOperator extends GeneralInfixOrPostfixOperator {
-  val symbol: String
-  override def arity = Some(2)
-  def precedence: Int
-  def assoc: Associativity
-  def rightAssociative = assoc == RightAssociative
+  override def arity = if (flexary) None else Some(2)
+  def fixity = Infix
+  def flexary = assoc != NotAssociative
   def associative = assoc match {
     case Semigroup | Monoid(_) => true
     case _ => false
@@ -1482,139 +1554,11 @@ sealed trait GeneralInfixOperator extends GeneralInfixOrPostfixOperator {
     case _ => None
   }
 }
-class PseudoInfixOperator(val symbol: String) extends PseudoOperator with GeneralInfixOperator {
-  override def toString = magicName
-  def fixity = Infix
-  def magicName = "_infix_" + symbol
-  def precedence = 0
-  def assoc = NotAssociative
-}
-
-/** symbol expr */
-class PseudoPrefixOperator(val symbol: String) extends PseudoOperator {
-  override def toString = magicName
-  def fixity = Prefix
-  def magicName = "_prefix_" + symbol
-}
-
-/** expr symbol */
-class PseudoPostfixOperator(val symbol: String) extends PseudoOperator with GeneralInfixOrPostfixOperator {
-  override def toString = magicName
-  def fixity = Postfix
-  def magicName = "_postfix_" + symbol
-}
-
-sealed trait BracketOperator extends Operator {
-  def open = symbol
-  def close: String = symbol.map(c => Parsable.circumfixClose(c).getOrElse(c)).reverse
-}
-
-/** expr bracketed-args */
-class PseudoApplyfixOperator(val symbol: String) extends PseudoOperator with BracketOperator with GeneralInfixOrPostfixOperator {
-  override def toString = magicName
-  def fixity = Applyfix
-  def magicName = "_applyfix_" + symbol
-}
-
-/** bracketing: comma-separated expressions enclosed in symbol and its mirror image */
-class PseudoCircumfixOperator(val symbol: String) extends PseudoOperator with BracketOperator {
-  def fixity = Circumfix
-  def magicName = "_circumfix_" + open + "_" + close
-}
-
-/** binding: symbol bindings . body */
-class PseudoBindfixOperator(val symbol: String) extends PseudoOperator {
-  override def toString = magicName
-  def fixity = Bindfix
-  def magicName = "_bindfix_" + symbol
-
-  override def interpret(meaning: Expression, args: List[Expression]) = {
-    args match {
-      case List(l @ Lambda(vd -: rest, bd, mr)) if !rest.empty =>
-        // curry multiple bindings into single ones
-        // TODO support non-associative binders like exists-unique
-        val bdI = interpret(meaning, List(Lambda(rest, bd, false)))
-        val lI = Lambda(ExprContext(List(vd)), bdI, mr).withLocationFromTo(vd,bd)
-        super.interpret(meaning, List(lI))
-      case e => super.interpret(meaning, args)
-    }
-  }
-}
-
-object Parsable {
-  val symbols = List(Character.CURRENCY_SYMBOL, Character.MATH_SYMBOL, Character.DASH_PUNCTUATION, Character.OTHER_PUNCTUATION, Character.OTHER_SYMBOL)
-  val modifiers = List(Character.MODIFIER_LETTER, Character.MODIFIER_SYMBOL)
-  /** character types that are allowed in operators */
-  val operators = symbols ::: modifiers
-  /** characters that are used by UPL and not allowed in operators */
-  val notOpChars = "\"';:,.`"
-  /** tests if c is allowed in an operator */
-  def isOperatorChar(c: Char) = (operators contains c.getType) && !notOpChars.contains(c)
-  def isSubOrSuperscript(c: Char) = (c >= 0x2070 && c <= 0x209F) || modifiers.contains(c)
-  /** differentiates between infix and postfix operator */
-  def isPostfixOp(s: String) = {
-    s.forall(isSubOrSuperscript)
-  }
-  def isPrefixChar(c: Char) = isOperatorChar(c)
-  // right-pointing tacks and similar, not used yet, but could be used for precedences
-  def isTurnstileLike(c: Char) = {
-    c == 0x22A2 || (c >= 0x22A6 && c <= 0x22AF) || c == 0x2AE2 || c == 0x2AE6 || c == 0x27DD
-  }
-
-  /** the matching closing bracket, if any
-   *
-   *  '‚' and '„' are open punctuation without corresponding closing punctuation
-   *  some horizontal brackets have partners that are their vertical mirrors
-   *  '[' and '{' have legacy codepoints
-   *  square brackets with ticks in corners (0x298D-0x2990) have their mirror images in the wrong order
-   *  all other open punctuation has the closing mirror image right afterwards
-   */
-  def circumfixClose(c: Char): Option[Char] = {
-    if (c.getType != Character.START_PUNCTUATION || !c.isMirrored) None
-    else if (c == '[') Some(']')
-    else if (c == '{') Some('}')
-    else if (c == 0x298D) Some(0x2990)
-    else if (c == 0x298F) Some(0x298E)
-    else Some((c+1).toChar)
-  }
-  /** differentiates between infix and bracket operator */
-  def isOpeningBracket(s: String) = {
-    isOpeningBracketChar(s(0))
-  }
-  def isOpeningBracketChar(c: Char) = circumfixClose(c).isDefined
-  def isCircumfixChar(c: Char) = isOperatorChar(c) || isOpeningBracketChar(c)
-
-  /** binder symbols cannot be defined based on Unicode classes
-   *  we take all symbols called "N-Ary" in their Unicode name plus the quantifiers */
-  val bindChars =
-    // n-ary
-    List(0x2140,0x220F,0x2210,0x2211,0x22C0,0x22C1,0x22C2,0x22C3,0x2A00,0x2A01,0x2A02,0x2A03,0x2A04,0x2A05,0x2A06,0x2A09,0x2AFF) :::
-    // quantifiers
-    List(0x2200,0x2203,0x2204)
-  def isBindfixStart(c: Char) = bindChars contains c
-  def isBindfixChar(c: Char) = isOperatorChar(c) || isBindfixStart(c)
-}
-
-/** operators with binary infix notation (flexary flag not supported yet) */
-sealed abstract class InfixOperator(val symbol: String, val precedence: Int, val assoc: Associativity = NotAssociative)
-  extends GeneralInfixOperator {
-  def apply(l: Expression, r: Expression) = makeExpr(List(l, r))
-  def unapply(e: Expression) = e match {
-    case Application(BaseOperator(op,_), List(l,r)) if op == this => Some((l,r))
-    case _ => None
-  }
-  def invertible = false
-}
-
-sealed abstract class Associativity
-case object NotAssociative extends Associativity
-case object Semigroup extends Associativity
-case class Monoid(neut: Expression) extends Associativity
-case object RightAssociative extends Associativity
 
 /** operators with prefix notation */
-sealed abstract class PrefixOperator(val symbol: String) extends Operator {
+sealed abstract class PrefixOperator(val symbol: String) extends KnownOperator {
   def apply(e: Expression) = makeExpr(List(e))
+  def fixity = Prefix
   override def arity = Some(1)
   def invertible = true
 }
@@ -1623,15 +1567,16 @@ sealed abstract class PrefixOperator(val symbol: String) extends Operator {
 import BaseType._
 
 /** generic code for operators that can act on numbers */
-sealed trait NumberOperator extends Operator {
+sealed trait NumberOperator extends KnownOperator {
   /** pairs (A,F) such that if any input has type A, the operator has type F */
-  val specialInputCases: List[(BaseType,FunType)] = Nil
+  val specialInputCases: List[(BaseType,Type)] = Nil
   /** the output type is the union of all number types among the arguments unless that is adjusted here */
   def specialOutputCase(o: NumberType): BaseType = o
   /** finds all known number types among the arguments and assumes all unknown input types and the return type are their union */
   override def typeFor(ins: List[Type], out: Type, cbs: InferenceCallbacks): Option[FunType] = {
     specialInputCases.foreach {case (c, t) =>
-      if (ins.contains(c)) return Some(t)
+      // t <-- c*
+      if (ins.contains(c)) return Some(SimpleFunType(ins.map(_ => c), t))
     }
     val ns = ins.collect {
       case n: NumberType => n
@@ -1654,86 +1599,77 @@ sealed trait NumberOperator extends Operator {
 sealed trait Arithmetic extends NumberOperator
 /** comparison operators for number values and other types */
 sealed trait Comparison extends NumberOperator {
-  override val specialInputCases = List((B, B<--(B,B)), (S, B<--(S,S)))
+  override def arity = Some(2)
+  override val specialInputCases = List((B, B), (S, B))
   override def specialOutputCase(o: NumberType) = B
 }
 
 /** boolean connectives */
-sealed trait Connective extends Operator {
-  def apply(args: List[Expression]): Expression
-  override val uniqueType = Some(B<--(B,B))
+sealed trait Connective extends KnownOperator {
+  override def typeFor(ins: List[Type], out: Type, cbs: InferenceCallbacks) = Some(SimpleFunType(ins.map(_ => B), B))
+  def apply(args: List[Expression]) = makeExpr(args)
 }
 
-case object And extends InfixOperator("&", -20, Monoid(BoolValue(true))) with Connective {
-  def apply(args: List[Expression]): Expression = args match {
-    case Nil      => BoolValue(true)
-    case e :: Nil => e
-    case hd :: tl => apply(hd, apply(tl))
-  }
+case object And extends InfixOperator("&", Monoid(BoolValue(true))) with Connective {
   override def isDynamic = true
 }
-case object Or extends InfixOperator("|", -20, Monoid(BoolValue(false))) with Connective {
-  def apply(args: List[Expression]): Expression = args match {
-    case Nil      => BoolValue(false)
-    case e :: Nil => e
-    case hd :: tl => apply(hd, apply(tl))
-  }
-}
+case object Or extends InfixOperator("|", Monoid(BoolValue(false))) with Connective
 
-case object Not extends PrefixOperator("!") {
+case object Not extends PrefixOperator("!") with SelfInverseUnary {
   override val uniqueType = Some(B <-- B)
 }
 
 /** implication a => b is the same as comparision a <= b; but we need a separate operator to get the right notation */
-case object Implies extends InfixOperator("=>", -20, RightAssociative) with Connective {
-  def apply(args: List[Expression]): Expression = apply(args.tail, args.last)
-  def apply(ass: List[Expression], conc: Expression): Expression = ass match {
-    case Nil => conc
-    case _ => Implies(And(ass), conc)
-  }
+case object Implies extends InfixOperator("=>", RightAssociative) with Connective {
   override def isDynamic = true
 }
 
-case object Plus extends InfixOperator("+", 0, Semigroup) with Arithmetic {
-  override val specialInputCases = List((S, S<--(S,S)))
-  override def associative = true
-  override def isolatableArguments = List(0,1)
+trait InvertibleAssociative {self: KnownOperator =>
+  def inverseOp: KnownOperator
+  override def isolatableArguments(args: List[Expression]) = args.indices.toList
   override def isolate(pos: Int, args: List[Expression], result: Expression) = {
-    if (pos == 0) Some((args(0), Minus(result, args(1))))
-    else if (pos == 1) Some((args(1), Minus(result, args(0))))
-    else None
+    val (before, a::after) = args.splitAt(pos)
+    Some((a, inverseOp.makeExpr(List(result, makeExpr(before:::after)))))
   }
 }
-case object Minus extends InfixOperator("-", 0) with Arithmetic {
-  override def specialOutputCase(o: NumberType) = o.copy(negative = true)
-  override def isolatableArguments = List(0, 1)
+trait InverseOfAssociative {self: KnownOperator =>
+  def inverseOp: KnownOperator
+  override def isolatableArguments(args: List[Expression]) = args.indices.toList
   override def isolate(pos: Int, args: List[Expression], result: Expression) = {
-    if (pos == 0) Some((args(0), Plus(result, args(1))))
-    else if (pos == 1) Some((args(1), UMinus(Minus(result, args(0)))))
-    else None
+    if (pos == 0) Some((args.head, inverseOp.makeExpr(result :: args.tail)))
+    else {
+      // a - as - b - bs == result ---> b == a - as - result - bs
+      val (before, b :: bs) = args.splitAt(pos)
+      Some((b, makeExpr(before ::: result :: bs)))
+    }
   }
 }
-case object Times extends InfixOperator("*", 10, Monoid(NumberValue(1))) with Arithmetic {
-  override def isolatableArguments = List(0, 1)
+trait SelfInverseUnary {self: KnownOperator =>
+  override def isolatableArguments(args: List[Expression]) = if (args.sizeIs == 1) List(0) else Nil
   override def isolate(pos: Int, args: List[Expression], result: Expression) = {
-    if (pos == 0) Some((args(0), Divide(result, args(1))))// TODO args(1) != 0 check??
-    else if (pos == 1) Some((args(1), Divide(result, args(0)))) // TODO args(0) != 0 check??
-    else None
+    Some((args.head, makeExpr(List(result))))
   }
 }
-case object Divide extends InfixOperator("/", 10) with Arithmetic  {
-  override def specialOutputCase(o: NumberType) = o.copy(fractional = true)
-  override def isolatableArguments = List(0, 1)
-  override def isolate(pos: Int, args: List[Expression], result: Expression) = {
-    if (pos == 0) Some((args(0), Times(result, args(1))))
-    else if (pos == 1) Some((args(1), Divide(args(0), result)))
-    else None
-  }
-}
-case object Minimum extends InfixOperator("min", 10, Semigroup) with Arithmetic
-case object Maximum extends InfixOperator("max", 10, Semigroup) with Arithmetic
 
-case object Power extends InfixOperator("^", 20, RightAssociative) {
+case object Plus extends InfixOperator("+", Semigroup) with Arithmetic with InvertibleAssociative {
+  override val specialInputCases = List((S, S))
+  def inverseOp = Minus
+}
+case object Minus extends InfixOperator("-", LeftAssociative) with Arithmetic with InverseOfAssociative {
+  override def specialOutputCase(o: NumberType) = o.copy(negative = true)
+  def inverseOp = Plus
+}
+case object Times extends InfixOperator("*", Monoid(NumberValue(1))) with Arithmetic with InvertibleAssociative {
+  def inverseOp = Divide // TODO 0 check?
+}
+case object Divide extends InfixOperator("/", LeftAssociative) with Arithmetic with InverseOfAssociative {
+  override def specialOutputCase(o: NumberType) = o.copy(fractional = true)
+  def inverseOp = Times  // TODO 0 check?
+}
+case object Minimum extends InfixOperator("min", Semigroup) with Arithmetic
+case object Maximum extends InfixOperator("max", Semigroup) with Arithmetic
+
+case object Power extends InfixOperator("^", RightAssociative) {
   override def typeFor(ins: List[Type], out: Type, cbs: InferenceCallbacks) = {
     val baseType = ins(0) match {
       case n: NumberType if !n.imaginary => n
@@ -1749,7 +1685,7 @@ case object Power extends InfixOperator("^", 20, RightAssociative) {
     if (expType.fractional) ret = ret.copy(approximate = true)
     Some(SimpleFunType(List(baseType, expType), ret))
   }
-  override def isolatableArguments = List(0, 1)
+  override def isolatableArguments(args: List[Expression]) = if (args.sizeIs == 2) List(0, 1) else Nil
   override def isolate(pos: Int, args: List[Expression], result: Expression) = {
     if (pos == 0) Some((args(0), Power(result, Divide(IntValue(1), args(1))))) // TODO args(1) != 0, result >= 0
     // TODO result und args(0) >= 0
@@ -1758,31 +1694,27 @@ case object Power extends InfixOperator("^", 20, RightAssociative) {
   }
 }
 
-case object UMinus extends PrefixOperator("-") with Arithmetic {
+case object UMinus extends PrefixOperator("-") with Arithmetic with SelfInverseUnary {
   override def specialOutputCase(o: NumberType) = o.copy(negative = true)
-  override def isolatableArguments = List(0)
-  override def isolate(pos: Int, args: List[Expression], result: Expression) = {
-    if (pos == 0) Some((args(0), UMinus(result)))
-    else None
-  }
 }
 
-case object Less extends InfixOperator("<", -10) with Comparison
-case object LessEq extends InfixOperator("<=", -10) with Comparison
-case object Greater extends InfixOperator(">", -10) with Comparison
-case object GreaterEq extends InfixOperator(">=", -10) with Comparison
+case object Less extends InfixOperator("<") with Comparison
+case object LessEq extends InfixOperator("<=") with Comparison
+case object Greater extends InfixOperator(">") with Comparison
+case object GreaterEq extends InfixOperator(">=") with Comparison
 
 /** generic code for operators on collections */
-sealed trait CollectionOperator extends Operator {
-  /** the inputs are assumed to be either elements or collections over elements; this gives the positions of the former */
-  val elemIndices: List[Int]
+sealed trait CollectionOperator extends KnownOperator {
+  /** the inputs are assumed to be either elements or collections over elements; this is true for the former */
+  def elemIndex(i: Int, outOf: Int): Boolean
   /** computes the type of the operators by taking the union of all element types */
   override def typeFor(ins: List[Type], out: Type, cbs: InferenceCallbacks) = {
     var elemTypes: List[Type] = Nil
     var kds: List[CollectionKind] = Nil
     val insW = ins.zipWithIndex
+    val numArgs = ins.length
     insW.foreach {
-      case (a, i) if a.known && elemIndices.contains(i) =>
+      case (a, i) if a.known && elemIndex(i,numArgs) =>
         elemTypes ::= a
       case (c: CollectionType, _) =>
         kds ::= c.kind
@@ -1798,7 +1730,7 @@ sealed trait CollectionOperator extends Operator {
     if (kds.isEmpty && elemTypes.isEmpty) {
       val a = cbs.unknown()
       val insS = insW.map {case (_,i) =>
-        if (elemIndices.contains(i)) a else CollectionKind.List(a)
+        if (elemIndex(i,numArgs)) a else CollectionKind.List(a)
       }
       val outS = specialOutputCase(CollectionKind.List(a))
       val ft = SimpleFunType(insS, outS)
@@ -1808,7 +1740,7 @@ sealed trait CollectionOperator extends Operator {
       val elemU = cbs.union(elemTypes)
       val coll = CollectionType(elemU,kdsU)
       val insS = insW.map {
-        case (_,i) if elemIndices.contains(i) => elemU
+        case (_,i) if elemIndex(i,numArgs) => elemU
         case _ => coll
       }
       val ft = SimpleFunType(insS, specialOutputCase(coll))
@@ -1819,67 +1751,47 @@ sealed trait CollectionOperator extends Operator {
   def specialOutputCase(c: CollectionType): Type = c
 }
 
-case object Concat extends InfixOperator(":::", -10, Monoid(CollectionKind.List(Nil))) with CollectionOperator {
-  val elemIndices = Nil
+case object Concat extends InfixOperator(":::", Monoid(CollectionKind.List(Nil))) with CollectionOperator {
+  def elemIndex(i: Int, outOf: Int) = false
 }
 
-case object In extends InfixOperator("in", -10) with CollectionOperator {
-  val elemIndices = List(0)
+case object In extends InfixOperator("∈") with CollectionOperator {
+  def elemIndex(i: Int, outOf: Int) = i == 0
   override def specialOutputCase(c: CollectionType) = BoolType
 }
 
-case object Cons extends InfixOperator("-:", -10, RightAssociative) with CollectionOperator {
-  val elemIndices = List(0)
+case object Cons extends InfixOperator("-:", RightAssociative) with CollectionOperator {
+  def elemIndex(i: Int, outOf: Int) = i != outOf-1
   override def invertible = true
 }
 
-case object Snoc extends InfixOperator(":-", -10) with CollectionOperator {
-  val elemIndices = List(1)
+case object Snoc extends InfixOperator(":-", LeftAssociative) with CollectionOperator {
+  def elemIndex(i: Int, outOf: Int) = i != 0
   override def invertible = true
-}
-
-/** equality is a language primitive, not an operator,
- * but parsing is easiest if it is treated as a PseudoOperator and convert it into [Equality] later
- */
-case object Equal extends PseudoInfixOperator("==") {
-  override def precedence = -10
-}
-case object Inequal extends PseudoInfixOperator("!=") {
-  override def precedence = -10
 }
 
 object Operator {
-    val infixes: List[GeneralInfixOperator] = List(
+    val all: List[KnownOperator] = List(
+      UMinus, Not,
       Plus, Minus, Times, Divide, Power,
       Minimum, Maximum,
       And, Or, Implies,
       Less, LessEq, Greater, GreaterEq,
       Concat, In, Cons, Snoc,
-      Equal, Inequal
-    ).sortBy(-_.length) // longer operators first for parsing
-    val prefixes = List(UMinus, Not)
+    )
 
     def simplify(bo: BaseOperator, as: List[Expression]): Expression = {
       val o = bo.operator
       val numArgs = as.length
       def failNumArgs = throw IError(o.toString + " applied to " + numArgs + " arguments")
       o match {
-        case pf: PrefixOperator =>
-          if (numArgs != 1) failNumArgs
-          ((pf, as.head)) match {
-            case (UMinus, x: NumberValue) => x.negate
-            case (Not, BoolValue(b)) => BoolValue(!b)
-            case _ => throw IError("missing case for " + pf)
-          }
         case inf: InfixOperator =>
           if (numArgs != 2) {
-            if (inf.associative) {
-              if (numArgs == 0) inf.neutral getOrElse failNumArgs
-              else if (numArgs == 1) as(0)
-              else simplify(bo, List(as.head, simplify(bo,as.tail)))
-            } else {
-              failNumArgs
-            }
+            if (inf.assoc == NotAssociative) failNumArgs
+            else if (numArgs == 0) inf.neutral getOrElse failNumArgs
+            else if (numArgs == 1) if (inf.associative) as(0) else failNumArgs
+            else if (inf.assoc == RightAssociative) simplify(bo, List(as.head, simplify(bo,as.tail)))
+            else simplify(bo, List(simplify(bo,as.init), as.last))
           } else (inf, as(0), as(1)) match {
             case (Plus, x:NumberValue, y:NumberValue) => x plus y
             case (Minus, x:NumberValue, y:NumberValue) => x minus y
@@ -1916,6 +1828,13 @@ object Operator {
             case (Cons, e, CollectionValue(es,k)) => CollectionValue(e :: es, k.copy(sizeOne=false))
             case (Snoc, CollectionValue(es,k), e) => CollectionValue(es ::: List(e), k.copy(sizeOne=false))
             case _ => throw IError("no case for operator evaluation: " + o.symbol)
+          }
+        case ko: KnownOperator =>
+          if (numArgs != 1) failNumArgs
+          ((ko, as.head)) match {
+            case (UMinus, x: NumberValue) => x.negate
+            case (Not, BoolValue(b)) => BoolValue(!b)
+            case _ => throw IError("no case for operator evaluation " + ko)
           }
         case _: PseudoOperator => throw IError("unelaborated pseudo-operator")
       }

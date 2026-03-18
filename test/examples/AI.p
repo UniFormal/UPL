@@ -4,17 +4,17 @@ module AI {
   theory EnumeratedType {
      type univ
      enum: [univ]
-     complete: |- forall x:univ. x in enum
+     complete: |- forall x:univ. x ∈ enum
   }
   
   theory TransitionSystem {
     action: EnumeratedType
     transitions: (state,action) -> [state]
-    applicable = (s,a) -> exists x. x in transitions(s,a)
+    applicable = (s,a) -> exists x. x ∈ transitions(s,a)
     reachable:_
     reachable = (f:state, path: [action], t:state) -> path match {
       [] -> f == t
-      a -: as -> exists x. x in transitions(f,a) & reachable(x,as,t)
+      a -: as -> exists x. x ∈ transitions(f,a) & reachable(x,as,t)
     }
   }
   theory Deterministic {
@@ -38,7 +38,7 @@ module AI {
     include Cost
     initials: [state]
     goals:    state -> bool
-    solution: [action] -> bool = as -> exists i,g. i in initials & reachable(i,as,g) & goals(g)
+    solution: [action] -> bool = as -> exists i,g. i ∈ initials & reachable(i,as,g) & goals(g)
   }
 
   theory IntBasedType {
@@ -120,7 +120,7 @@ module AI {
   //   fringe = strat.init(initials)
   //   while (fringe nonEmpty) {
   //      val node = fringe.takeNext()
-  //      if (node.label in goals) return [node]
+  //      if (node.label ∈ goals) return [node]
   //      else
   //        for a in action
   //          for s in transitions(node.label, a)
@@ -152,5 +152,5 @@ module AI {
     transition = (s,a) -> [s+a]
   }
 
-  test = treeSearch(exampleProblem(), DFS()) != []
+  test = ASSERT(treeSearch(exampleProblem(), DFS()) != [])
 }

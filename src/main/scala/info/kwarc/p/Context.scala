@@ -371,6 +371,11 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     foundAbstract
   }
 
+  private def similar(a: Type, b: Type) = (a,b) match {
+    case (MaybeAppliedRef(r,_),MaybeAppliedRef(s,_)) => r == s
+    case (CollectionType(_,k),CollectionType(_,l)) => k == l
+    case _ => a == b
+  }
   /** looks up a symbol in the current region by notation and types */
   def lookupRegionalByNotation(pop: PseudoOperator, tpIn1: Option[Type], tpOut: Option[Type]): Option[ExprDecl] = {
     val tv = getCurrentTheoryValue
@@ -381,7 +386,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
           candidates ::= ed
           ed.tp match {
             case ft:FunType =>
-              val matches = tpIn1.forall(_ == ft.inDecls.last.tp) && tpOut.forall(_ == ft.out)
+              val matches = tpIn1.forall(similar(_,ft.inDecls.last.tp)) && tpOut.forall(similar(_,ft.out))
               if (matches) return Some(ed)
             case _ =>
           }

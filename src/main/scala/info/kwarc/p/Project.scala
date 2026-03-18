@@ -10,14 +10,32 @@ class ProjectEntry(val source: SourceOrigin) {
   var checked = Theory.empty
   var checkedIsDirty = false
   var result = Theory.empty
-  def global = source.fragment == null
+  val global = source.fragment == null
   def getVocabulary = if (checkedIsDirty) parsed else checked
+  def update(src: String): TheoryValue = {
+    errors.clear
+    parsed = Parser.text(source, src, errors)
+    DependencyAnalyzer.update(this)
+    checkedIsDirty = true
+    parsed
+  }
+}
+object ProjectEntry{
+  /** Create and initialize a ProjectEntry */
+  def apply(source:SourceOrigin, content: String) = {
+    val e = new ProjectEntry(source)
+    e.update(content)
+    e
+  }
+
+  def apply(file: File): ProjectEntry =
+    ProjectEntry(file.toSourceOrigin, Parser.getFileContent(file))
 }
 
 /**
- * A project stores interrelated toplevel source snippets.
- * @param main the main call to run this project
- */
+  * A project stores interrelated toplevel source snippets.
+  * @param main the main call to run this project
+  */
 class Project(protected var entries: List[ProjectEntry], var main: Option[Expression] = None) {
   override def toString: String = entries.map(_.source).mkString(", ") + ": " + main.getOrElse("(no main)")
 
@@ -26,7 +44,7 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
 
   def get(so: SourceOrigin) = entries.find(_.source == so).getOrElse {
     val e = new ProjectEntry(so)
-    entries = entries ::: List(e)
+    entries = entries :+ e
     e
   }
   def hasErrors: Boolean = errors.hasErrors || entries.exists(_.errors.hasErrors)
@@ -66,6 +84,7 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     //TestLocationFields(Module.anonymous(le.parsed.decls))(GlobalContext(le.parsed.decls),())
     DependencyAnalyzer.update(le)
     le.checkedIsDirty = true
+    le.parsed
   }
 
   def updateAndCheck(so: SourceOrigin, src: String): TheoryValue = {
@@ -76,15 +95,16 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
   def check(so: SourceOrigin, alsoRun: Boolean): TheoryValue = {
     val le = get(so)
     val (vocC,vocR) = makeGlobalContext(so)
+    val eh = le.errors
     if (le.checkedIsDirty) {
-      if (le.errors.hasErrors) return le.parsed
-      val ch = new Checker(le.errors)
+      if (eh.hasErrors) return le.parsed
+      val ch = new Checker(eh)
       val leC = ch.checkVocabulary(GlobalContext(vocC), le.parsed, true)(le.parsed)
       le.checked = leC
       le.checkedIsDirty = false
     }
     if (alsoRun) {
-      if (le.errors.hasErrors) return le.checked
+      if (eh.hasErrors) return le.checked
       val ip = new Interpreter(vocR)
       val leR = le.checked.decls.map(ip.interpretDeclaration)
       le.result = TheoryValue(leR)
@@ -190,11 +210,14 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     val ipO = run()
     if (dropToRepl) ipO foreach {ip => repl(ip)}
   }
+
+
+
 }
 
 object Project {
   private val fileEndings = List(".p", ".p.tex")
-  private def pFiles(f: File) = {
+  protected[p] def pFiles(f: File) = {
     val candidates = if (f.toJava.isFile) List(f) else f.descendants
     candidates.filter(d => fileEndings.exists(d.getName.endsWith))
   }
@@ -221,11 +244,39 @@ object Project {
     }
     val mainE = mainS.map(s => Parser.expression(projFile.toSourceOrigin, s, ErrorThrower))
     val es = paths.map {p =>
-      new ProjectEntry(p.toSourceOrigin)
+      ProjectEntry(p)
     }
-    val p = new Project(es,mainE)
-    p.entries.foreach {e => p.update(e.source, Parser.getFileContent(File(e.source.toString)))}
-    p
+    new Project(es,mainE)
+  }
+
+  def toIsabelleFiles(proj: Project): Unit = {
+    // run a project-wide check to collect errors
+    val _ = proj.check(false)
+    // abort if there are errors (prints errors)
+    if (proj.checkErrors()) return
+    // ensure each entry's `checked` field is populated (so unknown types are inferred
+    // and duplicate/merged declarations are produced by the Checker)
+    proj.entries.foreach { pe =>
+      // this will set pe.checked and clear checkedIsDirty for the entry
+      proj.check(pe.source, false)
+    }
+    // create Isabelle file names using the UPL module names (Isabelle file and theory name must be the same)
+    val files: List[File] = proj.entries.map { pe =>
+      val voc = pe.getVocabulary
+      /** todo: implement support for multiple sequential (unnested) modules.
+       * written to multiple separate files each containing an Isabelle theory corresponding to the module
+       * problem with module namespaces and dot references, possibly solved with imports
+       */
+      if (voc.decls.length > 1 & voc.decls.forall(_.isInstanceOf[Module])) throw IError("Not yet implemented. No support for multiple top-level modules, i.e., two or more sequential unnested modules.")
+      // Only support for a single module per UPL file.
+      assert(voc.decls.size == 1 & voc.decls.head.isInstanceOf[Module])
+      File(pe.toString).up./(voc.decls.head.nameO.get + ".thy")
+    }
+    // render from checked vocabulary; compile the checked vocabulary (not the raw parsed AST)
+    val gc: GlobalContext = proj.makeGlobalContext()
+    val isabelleStrings = proj.entries.map(pe => IsabelleCompiler.toIsabelleCode(pe.getVocabulary, gc))
+    // write the strings to files
+    (files zip isabelleStrings).foreach { case (f,s) => File.write(f,s) }
   }
 }
 

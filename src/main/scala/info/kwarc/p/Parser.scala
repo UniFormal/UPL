@@ -89,7 +89,7 @@ object PContext {
 
 object Parser {
   val weakPostops = List("=", "->", "match", "catch")
-  val conflictingInfixes = Operator.infixes.map(_.symbol).filter(o => weakPostops.exists(o.startsWith))
+  val digits = "0123456789".toList
 
   def file(f: File,eh: ErrorHandler) = {
     val p = new Parser(f.toSourceOrigin, getFileContent(f), eh)
@@ -245,11 +245,11 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   // all input has been parsed
   def atEnd = {index == inputLength}
 
-  // next character to parse
-  def next = input(index)
+  // next character to parse, possibly consisting of 2 chars in input
+  def next = input.codePointAt(index)
 
   // n character lookahead
-  def nextAfter(n: Int) = if (index+n < inputLength) Some(input(index+n)) else None
+  def nextAfter(n: Int) = if (index+n < inputLength) Some(input.codePointAt(index+n)) else None
 
   // string s occurs at the current index in the input
   // if s is only letters, we additionally check that no name char follows
@@ -276,8 +276,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   /*+ skip all whitespace and comments, return true if newline crossed */
   def trim: Boolean = {
     var newlineSeen = false
-    while (!atEnd && (next.isWhitespace || startsWith("//"))) {
-      if (next.isWhitespace) {
+    while (!atEnd && (Character.isWhitespace(next) || startsWith("//"))) {
+      if (Character.isWhitespace(next)) {
         if (next == '\n') newlineSeen = true
         index += 1
       }
@@ -287,8 +287,6 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     }
     newlineSeen
   }
-
-  def startsWithBuiltinInfixOperator = Operator.infixes.exists(o => startsWith(o.symbol))
 
   /** the whitespace before the current index contains a newline */
   def newlineBefore: Boolean = {
@@ -351,13 +349,20 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     as.reverse
   }
 
-  def parseWhile(p: Char => Boolean) = {
+  // taking Unicode characters (= Int), which correspoind 1 or 2 Java chars in the input
+  def parseWhile(p: Unicode.UChar => Boolean) = {
     val start = index
-    while (!atEnd && p(next)) index += 1
+    var continue = true
+    while (!atEnd && continue) {
+      val c = input.codePointAt(index)
+      continue = p(c)
+      if (continue) index += Character.charCount(c)
+    }
     input.substring(start,index)
   }
 
-  def isNameChar(c: Char) = c.isLetterOrDigit || c == '_'
+  def isNameChar(c: Unicode.UChar) = Character.isLetterOrDigit(c) || isNameConnector(c)
+  @inline def isNameConnector(c: Unicode.UChar) = c == '_'
 
   def parseName = {trim; parseWhile(isNameChar)}
   def parseNameExtended = {
@@ -365,9 +370,9 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     var allowNameChars = true
     var allowSpecialChars = false
     parseWhile {c =>
-      val good = c == '_' ||  (allowNameChars && isNameChar(c)) || (allowSpecialChars && !isNameChar(c) && !c.isWhitespace)
-      allowSpecialChars = c == '_' || !isNameChar(c) // special chars may follow _ or other special chars
-      allowNameChars = c == '_' || isNameChar(c) // name chars may follow _ or other name chars
+      val good = isNameConnector(c) ||  (allowNameChars && isNameChar(c)) || (allowSpecialChars && !isNameChar(c) && !Character.isWhitespace(c))
+      allowSpecialChars = isNameConnector(c) || !isNameChar(c) // special chars may follow _ or other special chars
+      allowNameChars = isNameConnector(c) || isNameChar(c) // name chars may follow _ or other name chars
       good
     }
   }
@@ -434,7 +439,9 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         val d = try {
           parseDeclaration
         } catch {
-          case Abort() => return decls.reverse // unclear how we could recover here
+          case Abort() =>
+            parseWhile(_ != '}') // skip until a point where we can recover
+            return decls.reverse
         }
         decls ::= d
       }
@@ -681,7 +688,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     } else {
       fail("fixity expected")
     }
-    val sym = parseWhile(! _.isWhitespace)
+    val sym = parseWhile(! Character.isWhitespace(_))
     Notation(fix, sym)
   }
 
@@ -716,7 +723,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     val doAllowS = ctxs.setAllowStatement(true)
     val doNotAllowS = ctxs.setAllowStatement(false)
     // seen.reverse = (e1,o1,l1)::... represents having parsed "e1 o1 ..." where l1 is the location of o1
-    var seen: List[(Expression,GeneralInfixOperator,Location)] = Nil
+    var seen: List[(Expression,PseudoOperator,Location)] = Nil
     val allExpBeginAt = index
     while (true) {
       trim
@@ -771,6 +778,19 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       } else if (startsWithS("Forall")) {
         val body = parseExpression(rightOpen)
         Quantifier(true,null,body) // universal closure: Forall e --> forall ???. e
+      } else if (startsWithS("ASSERT")) {
+        trim
+        skip("(")
+        val test = parseExpression
+        trim
+        val expected = if (startsWithS(",")) {
+          parseExpression
+        } else {
+          BoolValue(true)
+        }
+        trim
+        skip(")")
+        Assert(test,Type.unknown(),expected)
       } else if (allowS && startsWithS("while")) {
         val c = parseBracketedExpression
         val b = parseExpression(doAllowS)
@@ -816,10 +836,10 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         BoolValue(false)
       } else if (startsWithS("???")) {
         UndefinedValue(Type.unknown())
-      } else if (!atEnd && next.isDigit) {
+      } else if (!atEnd && Parser.digits.contains(next)) {
         val begin = index
         var seenDot = false
-        while (!atEnd && (next.isDigit || (!seenDot && next == '.'))) {
+        while (!atEnd && (Parser.digits.contains(next) || (!seenDot && next == '.'))) {
           if (next == '.') seenDot = true
           index += 1
         }
@@ -848,18 +868,18 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         val e = parseExpression(ctxs.pop())
         skip("`")
         Eval(e)
-      } else if (!atEnd && Parsable.isOpeningBracketChar(next)) {
+      } else if (!atEnd && Symbols.isOpeningBracketStart(next).isDefined) {
         val begin = index
-        val open = parseWhile(Parsable.isCircumfixChar)
-        val op = new PseudoCircumfixOperator(open)
+        val open = parseWhile(Symbols.isOpeningBracketChar)
+        val op = new PseudoOperator(open,Circumfix)
         val bo = setRef(BaseOperator(op,Type.unknown()), begin)
         val es = parseExpressions("", op.close)
         Application(bo, es)
-      } else if (!atEnd && Parsable.isBindfixStart(next)) {
+      } else if (!atEnd && Symbols.isBindfixStart(next)) {
         // binder operators are parsed as unary operators applied to Lambda
         val begin = index
-        val binder = parseWhile(Parsable.isBindfixChar)
-        val op = new PseudoBindfixOperator(binder)
+        val binder = parseWhile(Symbols.isBindfixChar)
+        val op = new PseudoOperator(binder,Bindfix)
         val bo = setRef(BaseOperator(op,Type.unknown()), begin)
         val vars = parseContext(true)
         trim;
@@ -868,9 +888,9 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         val arg = Lambda(vars,body,false)
         arg.loc = vars.loc extendTo body.loc
         Application(bo, List(arg))
-      } else if (!atEnd && Parsable.isPrefixChar(next)) {
+      } else if (!atEnd && Symbols.isPrefixChar(next)) {
         // prefix is default if no specialized fixity applies like circumfix or bindfix
-        val po = parsePrefix(Operator.prefixes)
+        val po = parsePrefix
         // prefix operators bind stronger than all infix operators
         // TODO support operators like object-level turnstiles, which bind weaker than object-level infixes but stronger than UPL infixes
         val e = parseExpression(ctxs.noWeakPostops)
@@ -880,7 +900,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         val n = parseName
         if (n.isEmpty) fail("name expected")
         trim
-        if (startsWith(":") && !startsWithBuiltinInfixOperator) {
+        if (startsWith(":") && !nextAfter(1).exists(Symbols.isOperatorChar)) {
           // variable declaration
           skip(":")
           val tp = parseType(doNotAllowS)
@@ -970,11 +990,11 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           modifyExp(Application(exp, List(a)))
         } else {
           val opBegin = index
-          tryParse(parseInfixOrPostfixO(Nil)) match {
-            case Some(Some(p: PseudoPostfixOperator)) =>
+          tryParse(parseOperarorAfterExpression) match {
+            case Some(Some(p)) if p.fixity == Postfix =>
               val pop = setRef(BaseOperator(p, Type.unknown()), opBegin)
               modifyExp(Application(pop,List(exp)))
-            case Some(Some(p: PseudoApplyfixOperator)) =>
+            case Some(Some(p)) if p.fixity == Applyfix =>
               val pop = setRef(BaseOperator(p, Type.unknown()), opBegin)
               val es = parseExpressions("", p.close)
               modifyExp(Application(pop,exp::es))
@@ -993,7 +1013,6 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         disambiguateInfixOperators(seen.reverse,exp)
       }
       // TODO parse Lambdas entirely differently
-      //if (startsWithAny(Parser.weakPostops:_*) && !startsWithAny(Parser.conflictingInfixes:_*)) {
       // postops that stop the infix chain: -> , match, etc.
       val cannotTakeWeakPostops = exp match {
         case _: While | _: For | _: Return => true
@@ -1001,7 +1020,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       }
       if (!allowWeakPostops || cannotTakeWeakPostops) {
         return expDone()
-      } else if (startsWith("=") && !startsWithAny(Parser.conflictingInfixes:_*)) {
+      } else if (startsWith("=") && !nextAfter(1).exists(Symbols.isOperatorChar)) {
         if (allowEqual) {
           skip("=")
           val df = parseExpression
@@ -1010,7 +1029,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           // ensures types like |- e end before = so that a definition can follow
           return expDone()
         }
-      } else if (startsWith("->") && !startsWithAny(Parser.conflictingInfixes:_*)) {
+      } else if (startsWith("->") && !nextAfter(2).exists(Symbols.isOperatorChar)) {
         skip("->")
         exp = expDone()
         // decls -> body is a Lambda, pattern -> body is a MatchCase
@@ -1050,10 +1069,10 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       } else {
         // postops that continue the infix chain
         val opBegin = index
-        parseInfixOrPostfixO(Operator.infixes) match {
+        parseOperarorAfterExpression match {
           case None =>
             return expDone()
-          case Some(o: GeneralInfixOperator) =>
+          case Some(o) if o.fixity == Infix =>
             seen ::= (exp,o, makeRef(opBegin))
           case o =>
             // Applyfix and Postfix are handled as post-operators above
@@ -1080,77 +1099,71 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     }
   }
 
-  def parseInfixOrPostfixO(os: List[GeneralInfixOrPostfixOperator]): Option[GeneralInfixOrPostfixOperator] = {
-    val found = os.find {o => startsWith(o.symbol) && nextAfter(o.length).forall(!Parsable.isOperatorChar(_))}
-    found match {
-      case Some(f) =>
-        skip(f.symbol)
-        found
-      case None =>
-        if (!atEnd && Parsable.isOpeningBracketChar(next)) {
-          val op = parseWhile(c => Parsable.isOpeningBracketChar(c))
-          Some(new PseudoApplyfixOperator(op))
-        } else {
-          val op = parseWhile(c => Parsable.isOperatorChar(c))
-          if (op.nonEmpty) {
-            if (Parsable.isPostfixOp(op)) {
-              Some(new PseudoPostfixOperator(op))
-            } else {
-              Some(new PseudoInfixOperator(op))
-            }
-          } else {
-            None
-          }
-        }
+  def parseOperarorAfterExpression: Option[PseudoOperator] = {
+    if (!atEnd && Symbols.isOpeningBracketStart(next).isDefined) {
+      val op = parseWhile(Symbols.isOpeningBracketChar)
+      Some(new PseudoOperator(op,Applyfix))
+    } else {
+      val op = parseWhile(Symbols.isOperatorChar)
+      if (op.nonEmpty) {
+        val fix = if (Symbols.isPostfixOp(op)) Postfix else Infix
+        Some(new PseudoOperator(op,fix))
+      } else {
+        None
+      }
     }
   }
 
-  def parsePrefix(os: List[Operator]): BaseOperator = {
-    val begin = index
-    val sym = parseWhile(Parsable.isPrefixChar)
-    val op = os.find(_.symbol == sym).getOrElse(new PseudoPrefixOperator(sym))
-    setRef(BaseOperator(op, Type.unknown()), begin)
+  def parsePrefix: BaseOperator = addRef {
+    val sym = parseWhile(Symbols.isPrefixChar)
+    val op = new PseudoOperator(sym,Prefix)
+    BaseOperator(op, Type.unknown())
   }
 
 // a shift-reduce parser of e1 o1 ... en on last
-  def disambiguateInfixOperators(eos: List[(Expression,GeneralInfixOperator,Location)], lastExp: Expression): Expression = {
+  def disambiguateInfixOperators(eos: List[(Expression,PseudoOperator,Location)], lastExp: Expression): Expression = {
     // invariant: eos last = shifted rest last
-    var shifted: List[(Expression, GeneralInfixOperator, Location)] = Nil
+    var shifted: List[(Expression, PseudoOperator, Location)] = Nil
     var rest = eos
     var last = lastExp
     // shift: shifted.reverse | hd tl last ---> shifted hd | tl last
-    def shift = {
+    @inline def shift = {
       shifted ::= rest.head
       rest = rest.tail
     }
+    // before (a1 o) ... (an o) | after   ---> before (args e o) | after
+    @inline def reduce(o: PseudoOperator, l: Location, e: Expression) = {
+      val bo = BaseOperator(o,Type.unknown()).withLocation(l)
+      var args = List(e)
+      while (shifted.nonEmpty && shifted.head._2 == o) {
+        args ::= shifted.head._1
+        shifted = shifted.tail
+      }
+      Application(bo,args).withLocation(args.head.loc.extendTo(last.loc))
+    }
+
     while (shifted.nonEmpty || rest.nonEmpty) {
       rest match {
         case Nil =>
-          // reduce on the right: before e o | last ---> before | (e o last)
-          val (e,o,l) = shifted.head
-          val bo = BaseOperator(o,Type.unknown())
-          bo.loc = l
-          val eolast = Application(bo,List(e,last))
-          eolast.loc = e.loc.extendTo(last.loc)
-          shifted = shifted.tail
-          last = eolast
+          // reduce on the right: before (a1 o) ... (an o) (e o) | last  ---> before | (a1 ... an e last o)
+          val (_,o,l) = shifted.head
+          last = reduce(o,l,last)
         case (e2,o2,l2) :: tl =>
           if (shifted.isEmpty) {
             shift
           } else {
             val (e1,o1,l1) = shifted.head
-            // before e1 o1 | e2 o2 tl last
-            // special case of right-associative operators of the same precedence
-            val associateRight = o1.precedence == o2.precedence && o1.rightAssociative && o2.rightAssociative
-            if (o1.precedence >= o2.precedence && !associateRight) {
-              // reduce on the left: ---> before (e1 o1 e2) o2 | tl last
-              val bo1 = BaseOperator(o1,Type.unknown())
-              bo1.loc = l1
-              val e1o1e2 = Application(bo1,List(e1,e2))
-              e1o1e2.loc = e1.loc.extendTo(e2.loc)
-              shifted = (e1o1e2,o2,l2) :: shifted.tail
+            if (o1 == o2) {
+              // chained operators are collected during reduce
+              shift
+            }
+            // ... e1 o1 | e2 o2 tl last
+            else if (o1.precedence >= o2.precedence) {
+              // before (a1 o1) ... (an o1) (e1 o1) | e2 o2 tl last ---> before (a1 ... an e1 e2 o1) o2 | tl last
+              val o1Applied = reduce(o1,l1,e2)
+              shifted ::= (o1Applied,o2,l2)
               rest = tl
-            } else if (o1.precedence < o2.precedence || associateRight) {
+            } else if (o1.precedence < o2.precedence) {
               // shift: ---> before e1 o1 e2 o2 | tl last
               shift
             }
@@ -1236,6 +1249,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           case r: AppliedRef => r
           // The above falsely parses e.tp and e{tp} into OwnedExpr. We can turn only some of those into OwnedType:
           case OwnedExpr(o, d, r: Ref) => OwnedType(o, d, r)
+          case OwnedExpr(o, d, r: AppliedRef) => OwnedType(o, d, r)
           // Similarly, it parses M{ds} into Instance, which we can turn into ClassType.
           case Instance(thy) => ClassType(thy)
           // Any other expression, we coerce into a type.

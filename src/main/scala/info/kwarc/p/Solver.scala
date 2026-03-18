@@ -205,8 +205,8 @@ object Solver {
     case ClosedRef(n) => List((Path(n), Occurrence(traversed.reverse)))
     // case OwnedExpr(ClosedRef(n), _, e) // findIsolatable auf e
     case o: OwnedExpr => List((PathHelper.extractPathFromOwnedExpr(o, Path()), Occurrence(traversed.reverse)))
-    case Application(BaseOperator(op,_), as) =>
-      op.isolatableArguments.flatMap(i => findIsolatable(as(i), i::traversed))
+    case Application(BaseOperator(op: KnownOperator,_), as) =>
+      op.isolatableArguments(as).flatMap(i => findIsolatable(as(i), i::traversed))
     case Application(OpenRef(p), as) =>
       InverseMethods.findIsolatable(p, as, traversed)
     case Tuple(es) =>
@@ -224,7 +224,7 @@ object Solver {
       case Nil => prop
       case i :: rest =>
         val lrO = left match {
-          case Application(BaseOperator(op, _), as) => op.isolate(i, as, right)
+          case Application(BaseOperator(op: KnownOperator, _), as) => op.isolate(i, as, right)
           case Application(OpenRef(p), as) => InverseMethods.isolate(i, p, left, right)
           case _ => None
         }
