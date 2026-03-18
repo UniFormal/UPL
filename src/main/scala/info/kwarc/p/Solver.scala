@@ -5,6 +5,12 @@ object Solver {
    case class Error(msg: String, thy: Theory) extends SError(thy.loc, msg + " while solving " + thy)
    def fail(msg: String)(implicit thy: Theory) = throw Error(msg, thy)
 
+  var unknowns: List[Unknown] = Nil  // expression symbol we can still solve
+  var knowns: List[Known] = Nil      // expression symbol we have solved
+  var props: List[Property] = Nil    // axioms/theorems we can still use
+  var redundant: List[String] = Nil  // axioms/theorems that we have used and that should be removed from the theory
+  var redundantP: List[Property] = Nil
+
    /**
     * conservatively extends a theory, trying to reduce the abstract interface
     * e.g., by adding definitions for symbols that are determined by axioms
@@ -14,39 +20,25 @@ object Solver {
      val thyE = Checker.evaluateTheory(gc, thy)
      val thyN = checker.Normalize(gc,thyE)
      // the state during solving
-     var unknowns: List[Unknown] = Nil  // expression symbol we can still solve
-     var knowns: List[Known] = Nil      // expression symbol we have solved
-     var props: List[Property] = Nil    // axioms/theorems we can still use
-     var redundant: List[String] = Nil  // axioms/theorems that we have used and that should be removed from the theory
-     var redundantP: List[Property] = Nil
+     unknowns = Nil  // expression symbol we can still solve
+     knowns = Nil      // expression symbol we have solved
+     props = Nil    // axioms/theorems we can still use
+     redundant = Nil  // axioms/theorems that we have used and that should be removed from the theory
+     redundantP = Nil
+
      // prepare the solving by collecting the relevant information from the theory
-     thyN.decls foreach {
-       case _: Include =>
-          // include in normalized theory can be ignored
-       case td: TypeDecl =>
-         if (!td.defined) fail("abstract type fields not supported: " + td.name)
-       case thd: Module =>
-         fail("nested theories not supported: " + thd.name)
-       case ed: ExprDecl =>
-         ed.tp match {
-           case ProofType(Equality(true,_,l,r)) =>
-             props ::= Property(l,r)
-           case _ =>
-             if (!ed.defined)
-               unknowns ::= Unknown(ed.name, ed.tp)
-             else
-               knowns ::= Known(ed.name, ed.dfO.get, false)
-         }
-
-     }
-
+     thyN.decls.foreach(d => findFields(d, Path(), thyN, Map()));
 
 
      // the actual solving
      // TODO
-
-     println(thyN.decls.filter(d => !d.defined))
-     println(thyN.decls.filter(d => d.defined))
+     println("Start: ")
+     printAsTheory("Unknowns", unknowns)
+     printAsTheory("Knowns", knowns)
+     printAsTheory("Properties", props)
+     //printAsTheory("Redundant", redundantP)
+     //println(thyN.decls.filter(d => !d.defined))
+     //println(thyN.decls.filter(d => d.defined))
 
 
      var noChanges : Boolean = false
@@ -87,14 +79,24 @@ object Solver {
                // other forms
                // TODO umformungen
                case Some(_) | None => {
-                 val iso = findIsolatable(p.left, Occurrence.root.path).filter(n => n._1 == u.name)
+                 val iso = findIsolatable(p.left, Occurrence.root.path)//.filter(n => n._1 == u.name)
                  Console.println(iso)
                  //Console.println(InverseMethods.all.foreach(m => m.apply(p.left, p.right)))
                  iso match {
                    case Nil =>
                    case iso_head :: rest =>
                      // TODO andere Optionen aus rest???
-                     val newProp = isolate(p, iso_head._2)
+                     val newProp = isolate(p, iso_head._2, false)
+                     props ::= newProp
+                     knowns ::= Known(u.name, newProp.right, true)
+                     unknowns = unknowns.filter(x => x.name != u.name)
+                     noChanges = false
+                 }
+                 val iso2 = findIsolatable(p.right, Occurrence.root.path).filter(n => n._1 == u.name)
+                 iso2 match {
+                   case Nil =>
+                   case iso_head :: rest =>
+                     val newProp = isolate(p, iso_head._2, true)
                      props ::= newProp
                      knowns ::= Known(u.name, newProp.right, true)
                      unknowns = unknowns.filter(x => x.name != u.name)
@@ -109,6 +111,7 @@ object Solver {
 
      // TODO #unknowns in axiom/thy > 1
 
+     cleanUpUnknownInstances()
 
      println("---------")
      printAsTheory("Unknowns", unknowns)
@@ -144,18 +147,68 @@ object Solver {
      else thy
    }
 
+  def findFields(d: Declaration, pre: Path, thy: Theory, lpt: Map[String,Theory]): Unit = d match {
+    case _: Include =>
+      // include in normalized theory can be ignored
+    case td: TypeDecl =>
+      if (!td.defined) fail("abstract type fields not supported: " + td.name)(thy)
+    case thd: Module =>
+      fail("nested theories not supported: " + thd.name)(thy)
+    case ed: ExprDecl =>
+      ed.tp match {
+        case ProofType(Equality(true,_,l,r)) =>
+          props ::= Property(pathifyExpression(l, pre, lpt, thy),pathifyExpression(r, pre, lpt, thy),pre)//Property(l,r,pre)//
+        case ClassType(theo) =>
+          // println(theo.decls.forall(d => d.defined))
+          theo.decls.foreach(dec => findFields(dec, pre/ed.name, thy, lpt+(ed.name -> theo))) // TODO besser mit map
+          if (unknowns.exists(u => startsWith(u.name, pre/ed.name))) unknowns ::= Unknown(pre/ed.name, ed.tp, true)
+          else knowns ::= Known(pre/ed.name, ed.dfO.get, false)
+          // axiome --> beide Seiten OwnedExpr (owner = ClosedRef(ed.name), domain = theo, ownedExpr = left/right)
+        case NumberType(_, _, _, _, _) => // BaseType
+          if (!ed.defined || ed.dfO.get.isInstanceOf[UndefinedValue])
+            unknowns ::= Unknown(pre/ed.name, ed.tp, false)
+          else
+            knowns ::= Known(pre/ed.name, ed.dfO.get, false)
+        case _ =>
+          // nicht lösbar -> als Known hinzufügen
+          // bool als return für flag für instanz, soll dann bei unknowns bleiben
+      }
+  }
+
+  def pathifyExpression(e: Expression, p:Path, lpt:Map[String, Theory], thy : Theory) : Expression = {
+    if(p.isRoot)
+      return e
+    e match {
+      case ClosedRef(n) => createOwnedExpression(n, p, lpt)
+      case OwnedExpr(ClosedRef(n), t, e) => pathifyExpression(e, p / n, lpt + (n -> t), thy)
+      case Application(BaseOperator(op, t), as) => Application(BaseOperator(op, t), as.map(a => pathifyExpression(a, p, lpt, thy)))
+      case Application(OpenRef(r), as) => Application(OpenRef(r), as.map(a => pathifyExpression(a, p, lpt, thy)))
+      case Tuple(es) => Tuple(es.map(s => pathifyExpression(s, p, lpt, thy)))
+      case _ => e //fail("Not supported")(thy)
+    }
+  }
+
+  def createOwnedExpression(n: String, p: Path, lpt: Map[String,Theory]) : Expression = {
+    if(p.isRoot)
+      return ClosedRef(n)
+    return OwnedExpr(ClosedRef(p.head), lpt.get(p.head).get, createOwnedExpression(n, p.tail, lpt))
+  }
+
+
+
   /**
    * finds all possibilities which unknowns can be isolated where
    * @param e current expression to traverse
    * @param traversed: accumulator of path traversed so far
    */
-  def findIsolatable(e: Expression, traversed: List[Int]): List[(String,Occurrence)] = e match {
-    case ClosedRef(n) => List((n, Occurrence(traversed.reverse)))
+  def findIsolatable(e: Expression, traversed: List[Int]): List[(Path,Occurrence)] = e match {
+    case ClosedRef(n) => List((Path(n), Occurrence(traversed.reverse)))
+    // case OwnedExpr(ClosedRef(n), _, e) // findIsolatable auf e
+    case o: OwnedExpr => List((PathHelper.extractPathFromOwnedExpr(o, Path()), Occurrence(traversed.reverse)))
     case Application(BaseOperator(op,_), as) =>
       op.isolatableArguments.flatMap(i => findIsolatable(as(i), i::traversed))
     case Application(OpenRef(p), as) =>
       InverseMethods.findIsolatable(p, as, traversed)
-      // TODO InverseMethods.all.filter(im => im.fun.eq(p)).flatMap(im => ())
     case Tuple(es) =>
       Range(0,es.length).toList.flatMap(i => findIsolatable(es(i), i::traversed))
     case _ => Nil
@@ -164,24 +217,56 @@ object Solver {
   /**
    * rearranges a property so that it isolates at an occurrence in the left expression
    */
-  def isolate(prop: Property, at: Occurrence): Property = {
+  def isolate(prop: Property, at: Occurrence, isolateRight: Boolean): Property = {
+    val left = if (isolateRight) prop.right else prop.left
+    val right = if (isolateRight) prop.left else prop.right
     at.path match {
       case Nil => prop
       case i :: rest =>
-        val lrO = prop.left match {
-          case Application(BaseOperator(op, _), as) => op.isolate(i, as, prop.right)
-          case Application(OpenRef(p), as) => InverseMethods.isolate(i, p, prop)
+        val lrO = left match {
+          case Application(BaseOperator(op, _), as) => op.isolate(i, as, right)
+          case Application(OpenRef(p), as) => InverseMethods.isolate(i, p, left, right)
           case _ => None
         }
         val (l,r) = lrO.get
-        isolate(Property(l,r),Occurrence(rest))
+        isolate(Property(l,r,prop.p),Occurrence(rest), isolateRight)
     }
   }
 
   def printAsTheory(name: String, theorylike: List[Any]): Unit = {
     println(name + ":{\n" + theorylike.mkString("\n").indent(2) + "}")
   }
+
+  def startsWith(path: Path, start: Path): Boolean = {
+    if (start.isRoot) return true
+    else return (path.head == start.head) && (startsWith(path.tail, start.tail))
+  }
+
+  def cleanUpUnknownInstances(): Unit = {
+    val knownInstances = unknowns.filter(u => u.isInstance && unknowns.count(u2 => startsWith(u2.name, u.name)) == 1)
+    unknowns = unknowns.filter(u => !knownInstances.exists(k => k.name == u.name))
+    // TODO knownInstances.foreach(k => knowns ::= Known(u.name, TypeDecl()))
+    //Instance(Include(theo)::List[ExprDecl](known field und lösung)) prefix bei feldern entfernen
+    //unknowns.exists(u => startsWith(u.name, pre/ed.name))) unknowns ::= Unknown(pre/ed.name, ed.tp)
+  }
 }
+
+object PathHelper {
+  def extractPathFromOwnedExpr(e: Expression, p: Path): Path = e match {
+    case ClosedRef(n) => p/n
+    case OwnedExpr(ClosedRef(o), _, e) => extractPathFromOwnedExpr(e, p/o)
+    case _ => p
+  }
+
+  def extractRegionals(e: Expression): List[Path] = e match {
+    case ClosedRef(n) => List(Path(n))
+    case o: OwnedExpr => List(extractPathFromOwnedExpr(o, Path()))
+    case Application(_, as) => as.flatMap(a => extractRegionals(a))
+    case Tuple(es) => es.flatMap(e => extractRegionals(e))
+    case _ => Nil
+  }
+}
+
 
 case class Occurrence(path: List[Int]) {
   def and(i: Int) = copy(i::path)
@@ -190,23 +275,25 @@ object Occurrence {
   val root = Occurrence(Nil)
 }
 
-case class Unknown(name: String, tp: Type){
+case class Unknown(name: Path, tp: Type, isInstance: Boolean){
   override def toString = s"$name : $tp"}
 
-case class Known(name: String, df: Expression, isNew: Boolean) {
+case class Known(name: Path, df: Expression, isNew: Boolean) {
   val uses = Regionals(df)._1
   override def toString = s"$name = $df"
 }
 
-case class Property(left: Expression, right: Expression) {
-  val occursLeft = Regionals(left)._1
-  val occursRight = Regionals(right)._1
+case class Property(left: Expression, right: Expression, p: Path) {
+  val occursLeft: List[Path] = PathHelper.extractRegionals(left) // Regionals(left)._1.map(n => p/n)
+  val occursRight: List[Path] = PathHelper.extractRegionals(right) //Regionals(right)._1.map(n => p/n) : List[Path]
   def definiendum = left match {
-    case ClosedRef(n) => Some(n)
+    case ClosedRef(n) => Some(Path(n))
+    case OwnedExpr(ClosedRef(o), t, e) => Some(PathHelper.extractPathFromOwnedExpr(OwnedExpr(ClosedRef(o), t, e), Path()))
     case _ => None
   }
-  def reverseDefinendum = right match {
-    case ClosedRef(n) => Some(n)
+  def reverseDefinendum= right match {
+    case ClosedRef(n) => Some(Path(n))
+    case OwnedExpr(ClosedRef(o), t, e) => Some(PathHelper.extractPathFromOwnedExpr(OwnedExpr(ClosedRef(o), t, e), Path()))
     case _ => None
   }
 
@@ -215,7 +302,7 @@ case class Property(left: Expression, right: Expression) {
 
 abstract class InverseMethodData(fun: Path, argPos: Int) {
   def apply(l: Expression, r: Expression): Option[(Expression,Expression)]
-  def findIsolatable(p: Path, args: List[Expression], traversed: List[Int]): List[(String, Occurrence)]
+  def findIsolatable(p: Path, args: List[Expression], traversed: List[Int]): List[(Path, Occurrence)]
 }
 
 case class InverseUnary(fun: Path, inv: Path) extends InverseMethodData (fun, 0) {
@@ -226,9 +313,9 @@ case class InverseUnary(fun: Path, inv: Path) extends InverseMethodData (fun, 0)
     }
   }
 
-  def findIsolatable(p: Path, args: List[Expression], traversed: List[Int]): List[(String, Occurrence)] = {
+  def findIsolatable(p: Path, args: List[Expression], traversed: List[Int]): List[(Path, Occurrence)] = {
     if (fun.toString().equals(p.toString())) {
-      Solver.findIsolatable(args(0), 0 :: traversed)
+      Solver.findIsolatable(args.head, 0 :: traversed)
     }
     else {
       Nil
@@ -260,13 +347,13 @@ object InverseMethods {
     InverseUnary(Path("Math.toDegrees"), Path("Math.toRadians"))
   )
 
-  def findIsolatable(fun: Path, args: List[Expression], traversed: List[Int]): List[(String,Occurrence)] = {
+  def findIsolatable(fun: Path, args: List[Expression], traversed: List[Int]): List[(Path,Occurrence)] = {
     Console.println("fI: ", fun, args)
     all.flatMap(f => f.findIsolatable(fun, args, traversed))
   }
 
-  def isolate(i: Int, p: Path, prop: Property): Option[(Expression, Expression)] = {
-    all.filter(f => f.fun.toString.equals(p.toString())).head.apply(prop.left, prop.right)
+  def isolate(i: Int, p: Path, left: Expression, right: Expression): Option[(Expression, Expression)] = {
+    all.filter(f => f.fun.toString.equals(p.toString())).head.apply(left, right)
     //val iu = all.filter(f => f.fun.eq(p))
     //iu match {
     //  case Nil =>
@@ -282,7 +369,7 @@ object SolverTest {
     val proj = Project.fromFile(path, None)
     val voc = proj.check(true)
     val gc = GlobalContext(voc)
-    val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "Test2")))
+    val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "Test8")))
     println(tS)
   }
 }

@@ -1,65 +1,92 @@
 
-//module types {
-    //type float = int
-//}
-
 module Math {
-
-    //include types
 
     // Constants
     PI : float
     E : float
 
     // abs, sign
-    abs = (x:float) -> {}
-    sign = (x:float) -> {}
+    abs = (x:float) -> {if (x>=0) x else -x}
+    sign = (x:float) -> {if (x==0) 0 else if (x>0) 1 else -1}
 
     // round
-    round = (x:float) -> {}
-    floor = (x:float) -> {}
-    ceil = (x:float) -> {}
+    round : float -> int
+    //round = (x:float) -> {}
+    floor : float -> float
+    //floor = (x:float) -> {}
+    ceil : float -> float
+    //ceil = (x:float) -> {}
 
     // trigonometry
-    sin = (x:float) -> {x}
-    //sin : float -> float
-    asin = (x:float) -> {}
+    sin : float -> float
+    //sin = (x:float) -> {???}
+    asin : float -> float
+    //asin = (x:float) -> {}
 
-    cos = (x:float) -> {x}
-    //cos : float -> float
-    acos = (x:float) -> {}
+    //cos = (x:float) -> {???}
+    cos : float -> float
+    acos : float -> float
+    //acos = (x:float) -> {}
 
-    tan = (x:float) -> {x}
-    //tan : float -> float
-    atan = (x:float) -> {}
+    //tan = (x:float) -> {???}
+    tan : float -> float
+    atan : float -> float
+    //atan = (x:float) -> {}
     // JS Math atan2 --> atan of y/x ----> [-PI, PI]
-    atan2 = (y:float, x:float) -> {}
+    //atan2 = (y:float, x:float) -> {}
 
-    sinh = (x:float) -> {}
-    cosh = (x:float) -> {}
-    tanh = (x:float) -> {}
+    sinh : float -> float
+    cosh : float -> float
+    tanh : float -> float
+    //sinh = (x:float) -> {}
+    //cosh = (x:float) -> {}
+    //tanh = (x:float) -> {}
 
     // exp, log
-    exp = (x:float) -> {}
-    ln = (x:float) -> {}
-    log10 = (x:float) -> {}
-    log2 = (x:float) -> {}
-    // TODO log als binäre funktion
-    //pow = (b:float, e:float) -> {}
+    exp = (x:float) -> {E^x}
+    pow = (b:float, x:float) -> {b^x}
     pow2 = (b:float) -> {return b*b}
 
+    ln : float -> float
+    log10 : float -> float
+    log2 : float -> float
+    log : (float, float) -> float
+    //ln = (x:float) -> {}
+    //log10 = (x:float) -> {}
+    //log2 = (x:float) -> {}
+    //log = (x: float, b: float) -> {}
+
     // sqrt
-    sqrt = (x:float) -> {}
-    cbrt = (x:float) -> {}
+    sqrt : float -> float
+    cbrt : float -> float
+    //sqrt = (x:float) -> {}
+    //cbrt = (x:float) -> {}
 
     // min, max
-    // ASK how more arguments?
-    //min = (a:float, b:float) -> {}
-    //max = (a:float, b:float) -> {}
+    __helper_minmax : (x:float,ns:[float],min:bool)->float
+    __helper_minmax = (x:float,ns:[float],min:bool) -> {
+        ns match {
+            [] -> x
+            hd -: r -> if ((hd<x)==min) __helper_minmax(hd,r,min) else __helper_minmax(x,r,min)
+        }
+    }
+    min = (ns:[float]) -> {
+        ns match {
+            [] -> ???
+            hd -: r -> __helper_minmax(hd, r,true)
+        }
+    }
+    max = (ns:[float]) -> {
+        ns match {
+            [] -> ???
+            hd -: r -> __helper_minmax(hd, r,false)
+        }
+    }
+
 
     // misc
-    toDegrees = (r:float) -> {}
-    toRadians = (d:float) -> {}
+    toDegrees = (r:float) -> { r*180/PI }
+    toRadians = (d:float) -> { d*PI/180 }
 }
 
 // module math_exact {
