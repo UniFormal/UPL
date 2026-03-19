@@ -20,10 +20,10 @@ module concepts {
         include Proofs
 
         inconsistent = forall F. ⊦F 
-        inconsistentE : inconsistent => forall F. ⊦F
+        inconsistentE:--- inconsistent => ⊦F
 
         realize Disproofs
-        disproof = forall F. ⊦(F => inconsistent)
+        disproof = F -> (⊦F => inconsistent)
     }
 
     theory Terms {
@@ -51,46 +51,8 @@ module concepts {
         type kd
     }
 
-    theory KindedTypes {
-        include Kinds
-        tf : kd -> bool
-        tpk : kd
-        realize Types
-        tp = tf(tpk)
-    }
-
     theory Booleans {
         include TypedTerms
         boolean : tp
-    }
-
-    theory InternalPropositions {
-        include Booleans
-        realize Propositions
-        prop = tm(boolean)
-    }
-
-    theory TypesAsPredicates {
-        include Terms
-        include Logic
-
-        theory typesAsPredicates{
-            include SoftTypedTerms
-            include Terms
-            include Propositions
-
-            tp = term -> prop
-            of = forall X, A. A(X)
-        }
-    }
-
-    theory InternalTypes {
-        include Terms
-        include Propositions
-
-        iin : term -> term -> prop
-        realize SoftTypedTerms
-        tp = term
-        of = iin
     }
 }
