@@ -1,11 +1,11 @@
 module concepts {
     theory Propositions {
-        prop : bool
+        type prop
     }
 
     theory Proofs {
         include Propositions
-        ded : prop -> bool  //# prefix ⊦
+        ded : prop -> bool  # prefix ⊦
         
         lemma:--- ⊦F => (⊦F => ⊦G) => ⊦G
     }
@@ -19,19 +19,19 @@ module concepts {
         include Propositions
         include Proofs
 
-        inconsistent : bool = forall F. ⊦F 
-        inconsistentE : inconsistent -> forall F. ⊦F
+        inconsistent = forall F. ⊦F 
+        inconsistentE : inconsistent => forall F. ⊦F
 
         realize Disproofs
-        disproof = forall F. ⊦(F -> inconsistent)
+        disproof = forall F. ⊦(F => inconsistent)
     }
 
     theory Terms {
-        term : bool
+        type term
     }
 
     theory Types {
-        tp : bool
+        type tp
     }
 
     theory TypedTerms {
@@ -48,7 +48,7 @@ module concepts {
     }
 
     theory Kinds {
-        kd : bool
+        type kd
     }
 
     theory KindedTypes {
@@ -56,7 +56,7 @@ module concepts {
         tf : kd -> bool
         tpk : kd
         realize Types
-        tp = tf tpk
+        tp = tf(tpk)
     }
 
     theory Booleans {
@@ -67,19 +67,20 @@ module concepts {
     theory InternalPropositions {
         include Booleans
         realize Propositions
-        prop = tm boolean
+        prop = tm(boolean)
     }
 
     theory TypesAsPredicates {
         include Terms
         include Logic
 
-        theory typesAsPredicates : SoftTypedTerms {
+        theory typesAsPredicates{
+            include SoftTypedTerms
             include Terms
             include Propositions
 
             tp = term -> prop
-            of = forall X, A. A X
+            of = forall X, A. A(X)
         }
     }
 
