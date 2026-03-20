@@ -1,26 +1,32 @@
 theory _SimilarTriangles{
-  //             A
+  //             D
   //           ,´|
-  //          B  |
+  //          E  |
   //        ,´|  |
-  //       C--D--E
+  //       C--B--X
+  
+  //             D
+  //           ,´|
+  //          E  |
+  //        ,´|  |
+  //       A--B--C
 
   _A: point
   _B: point
   _C: point
   _D: point
   _E: point
-  _CD: float
-  _CD_P:  |- dist(_C)(_D) == _CD
-  _CE: float
-  _CE_P:  |- dist(_C)(_E) == _CE
-  _DB: float
-  _DB_P: |- dist(_D)(_B) == _DB
-  _are_similar: |- similar((_A,_C,_E))((_B,_C,_D)) 
+  _AB: float
+  _AB_P:  |- dist(_A)(_B) == _AB
+  _AC: float
+  _AC_P:  |- dist(_A)(_C) == _AC
+  _BE: float
+  _BE_P: |- dist(_B)(_E) == _BE
+  _are_similar: |- similar((_D,_A,_C))((_E,_A,_B)) 
 
   // The solution of the scroll. Recognizable by 
   // - having a definiens
   // - starting with a double underscore
-  __EA = _CE * _DB / _CD
-  __EA_P: |- dist(_E)(_A) == __EA = ???
+  __CD = _AC * _BE / _AB
+  __CD_P: |- dist(_C)(_D) == __CD = ???
 }
