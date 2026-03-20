@@ -24,7 +24,7 @@
     },
     {
       "match": "=|:|#",
-      "name": "keyword.other.separator.upl"
+      "name": "meta.separator.upl"
     },
     {
       "match": "(include|realize|while|if|else|for|match|catch|in)\\b",
@@ -53,7 +53,7 @@
       "match": "(_prefix_|_infix_|_circumfix_|_postfix_|_applyfix_|_bindfix_)(\\S+)",
       "captures": {
         "1": {"name": "keyword.other.fixity.upl"},
-        "2": {"name": "entity.name.operator.upl"}
+        "2": {"name": "entity.name.function.operator.upl"}
       }
     },
     {
@@ -66,13 +66,13 @@
     {
       "match": "(module|theory)\\s+(\\w+)\\s+{",
       "captures": {
-        "1": {"name": "storage.type.module.upl"},
-        "2": {"name": "entity.name.type.upl"}
+        "1": {"name": "keyword.declaration.module.upl"},
+        "2": {"name": "entity.name.class.declaration.upl"}
       }
     },
     {
       "match": "(val|var|type)\\b",
-      "name": "storage.type.upl"
+      "name": "keyword.declaration.upl"
     },
     {
       "match": "[a-zA-Z][a-zA-Z_0-9]*",
