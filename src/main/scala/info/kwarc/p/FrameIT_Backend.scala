@@ -286,7 +286,7 @@ object FrameIT_Backend {
   private def gameplayTest() = {
     proj = FrameITProject(File("test/FrameIt/Gameplay_Example/gameplay.pp"))
     //proj add s1
-    proj applySchema("_SimilarTriangles", assignments, List(("height", "__EA"))) // ("height_P","__EA_P") doesn't work
+    proj applySchema("_SimilarTriangles", assignments, List(("height", "__CD"))) // ("height_P","__CD_P") doesn't work right now
     println(proj.tryEval("SiTh{}.height"))
 
   }
