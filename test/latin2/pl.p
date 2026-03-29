@@ -27,6 +27,11 @@ module pl {
         include EquivalenceNDE
     }
 
+    theory Lindenbaum {
+        include EquivalenceND
+        // missing
+    }
+
     theory Truth {
         include .concepts.Propositions
 
@@ -195,6 +200,7 @@ module pl {
 
     theory ProofIrrelevance {
         include .concepts.Logic
+        // missing
     }
 
     theory PL {
