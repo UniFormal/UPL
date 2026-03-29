@@ -96,4 +96,17 @@ module concepts {
     //     prop = tm(boolean)
     // }
 
+    theory TypesAsPredicates {
+        include Terms
+        include Propositions
+        include Logic // Is this needed?
+
+        // This doesn't work
+        // realize SoftTypedTerms
+        // tp = term -> prop
+        // of = X -> A -> A(X)
+
+        tp : term -> prop
+        of : term -> (term -> prop) -> prop = X -> A -> A(X)
+    }
 }
