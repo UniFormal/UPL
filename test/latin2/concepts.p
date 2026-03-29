@@ -5,14 +5,14 @@ module concepts {
 
     theory Proofs {
         include Propositions
-        ded : prop -> bool  # prefix ⊦
+        ded: prop -> bool   # prefix ⊦
         
         lemma:--- ⊦F => (⊦F => ⊦G) => ⊦G
     }
 
     theory Disproofs {
         include Propositions
-        disproof : prop -> bool
+        disproof: prop -> bool
     }
 
     theory Logic {
@@ -36,7 +36,7 @@ module concepts {
 
     theory TypedTerms {
         include Types
-        tm : tp -> bool
+        tm: tp -> bool
     }
 
     theory SoftTypedTerms {
@@ -44,7 +44,7 @@ module concepts {
         include Types
         include Propositions
 
-        of : term -> tp -> prop
+        of: term -> tp -> prop
     }
 
     theory Kinds {
@@ -55,39 +55,39 @@ module concepts {
         include Kinds
         include Types
 
-        tpk : kd
+        tpk: kd
 
-        hasKind : tp -> kd -> bool
+        hasKind: tp -> kd -> bool
         isType = A -> hasKind(A)(tpk)
 
-        arrow : kd -> kd -> kd
+        arrow: kd -> kd -> kd
 
-        app : tp -> tp -> tp
+        app: tp -> tp -> tp
         app_kind:--- hasKind(F)(arrow(A)(B)) => hasKind(X)(A) => hasKind(app(F)(X))(B)
     }
 
     theory KindedTypesTest {
         include KindedTypes
 
-        Nat : tp
-        Nat_type : |- isType(Nat)
-        Nat_kind : |- hasKind(Nat)(tpk)
+        Nat: tp
+        Nat_type: |- isType(Nat)
+        Nat_kind: |- hasKind(Nat)(tpk)
 
-        List : tp
-        list_type : |- isType(List) // this should fail
-        list_kind : |- hasKind(List)(arrow(tpk)(tpk))
+        List: tp
+        list_type: |- isType(List) // this should fail
+        list_kind: |- hasKind(List)(arrow(tpk)(tpk))
 
         // l : app(List)(Nat) // doesn't work, why?
         l = app(List)(Nat)
-        l_type : |- isType(l)
+        l_type: |- isType(l)
 
-        Pair : tp
-        pair_kind : |- hasKind(Pair)(arrow(tpk)(arrow(tpk)(tpk)))
+        Pair: tp
+        pair_kind: |- hasKind(Pair)(arrow(tpk)(arrow(tpk)(tpk)))
     }
 
     theory Booleans {
         include TypedTerms
-        boolean : tp
+        boolean: tp
     }
 
     // theory InternalPropositions {
@@ -106,7 +106,7 @@ module concepts {
         // tp = term -> prop
         // of = X -> A -> A(X)
 
-        tp : term -> prop
-        of : term -> (term -> prop) -> prop = X -> A -> A(X)
+        tp: term -> prop
+        of: term -> (term -> prop) -> prop = X -> A -> A(X)
     }
 }
