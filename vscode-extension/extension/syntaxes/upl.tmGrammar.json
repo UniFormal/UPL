@@ -89,6 +89,46 @@
       }
     },
     {
+      "match": "(?<=:)\\s*(\\w+)",
+      "captures": {
+        "1": {"name": "entity.name.type.upl"}
+      }
+    },
+    {
+      "match": "^\\s*(\\w+)\\s*(?=[:=]\\s*\\|-)",
+      "captures": {
+        "1": {"name": "entity.name.proof.upl"}
+      }
+    },
+    {
+      "match": "^\\s*(\\w+)\\s*(?=[:=].*->)",
+      "captures": {
+        "1": {"name": "entity.name.function.upl"}
+      }
+    },
+    {
+      "match": "(?<==|->)\\s*(\\w+)\\s*(?=->)",
+      "captures": {
+        "1": {"name": "variable.parameter.upl"}
+      }
+    },
+    {
+      "match": "(?<==|:|->|^)\\s*\\((.*?)\\)\\s*(?=->)",
+      "name": "meta.parameter.upl",
+      "captures": {
+        "1": {
+        "scopeName": "variable.parameter.upl",
+        "patterns":[
+          {
+            "match": ",",
+            "name": "punctuation.separator.list.upl"
+          },
+          {"include": "$self"}
+        ]
+      }
+      }
+    },
+    {
       "match": "[a-zA-Z][a-zA-Z_0-9]*",
       "name": "variable.other.upl"
     }
