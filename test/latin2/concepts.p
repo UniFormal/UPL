@@ -44,12 +44,14 @@ module concepts {
         include Types
         include Propositions
 
-        of: term -> tp -> prop
+        of: (term, tp) -> prop
     }
 
     theory Kinds {
         type kd
     }
+
+    // Kinded types without dependent types
 
     theory KindedTypes {
         include Kinds
@@ -90,6 +92,8 @@ module concepts {
         boolean: tp
     }
 
+    // don't know how to do without dependent types
+
     // theory InternalPropositions {
     //     include Booleans
     //     realize Propositions
@@ -102,11 +106,25 @@ module concepts {
         include Logic // Is this needed?
 
         // This doesn't work
+
         // realize SoftTypedTerms
         // tp = term -> prop
-        // of = X -> A -> A(X)
+        // of = (X, A) -> A(X)
 
+        // don't know if right
         tp: term -> prop
-        of: term -> (term -> prop) -> prop = X -> A -> A(X)
+        of: (term, (term -> prop)) -> prop = (X, A) -> A(X)
     }
+
+    // don't know how to do without dependent types
+
+    // theory InternalTypes {
+    //     include .concepts.Terms
+    //     include .concepts.Propositions
+
+    //     iin: term -> term -> prop
+    //     realize SoftTypedTerms
+    //     tp = term
+    //     of = iin
+    // }
 }
