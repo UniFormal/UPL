@@ -112,12 +112,11 @@ module synth_geometry_v1 {
         Angle{side1=v, side2=w, vertex = p}
     }
 
-    opLen: (a: Point_xy) -> Position{z=0} -> Position//{include Point_xy = a}
-    = a -> b -> {
+    opLen = (a: Point_xy) -> (b:Position{z=0}) -> {
         ax: _ = a.x
         ay: _ = a{y}
         c: Position = pendulum(a)
-        gamma = protractor(c)(vectorFromTo(b)(c))
+        val gamma = protractor(c)(vectorFromTo(b)(c))
         _
     }
     
@@ -129,7 +128,9 @@ module synth_geometry_v1 {
         p_3.z
     }
 
-    isRightangle: (a: Angle) -> |- a.angle == 90 -> Rightangle{theAngle = a}
+    theory Rightangle{theAngle:Angle}
+
+    isRightangle: (a: Angle) -> (|- a.angle == 90) -> Rightangle{theAngle = a}
 }
 
 module synth_geometry_Venema{
@@ -139,9 +140,9 @@ module synth_geometry_Venema{
     theory Neutral_Geometry{
         // Preliminary assumptions: There are classical reals and sets
         type num = rat
-        in: point -> set[point] -> bool
 
         type point
+        in: point -> set[point] -> bool
         type line = [point]
         
         theory On{
