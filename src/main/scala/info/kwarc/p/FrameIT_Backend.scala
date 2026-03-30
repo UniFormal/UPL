@@ -2,7 +2,7 @@ package info.kwarc.p
 
 import info.kwarc.p.File.{read, readAsSource}
 
-import scala.collection.mutable
+import scala.collection.{SeqMap, mutable}
 import scala.scalajs.js
 import js.annotation._
 import scala.util.Try
@@ -117,7 +117,9 @@ class FrameITProject private()
     checkErrors()
   }
 
-  def applySchema(schema: String, requiredFacts: List[(String,String)], acquiredFacts: List[(String,String)]) = {
+  /** We need a [[SeqMap]] because the order of assignments matters for checking.
+    * A [[mutable.Map]] would correspond directly to [[js.Dictionary]], not sure if that can be made to work.
+    * @param schema the name of the schema to apply
     val (apOrigin,apName) = SchemaApplication.next
     val reqDecls = requiredFacts map {case (n, d) => s"$n = $d"} mkString " "
     val apCode = s"theory t$apName{include ${Stage.current} realize $schema $reqDecls} $apName = t$apName{}"
@@ -286,7 +288,7 @@ object FrameIT_Backend {
   private def gameplayTest() = {
     proj = FrameITProject(File("test/FrameIt/Gameplay_Example/gameplay.pp"))
     //proj add s1
-    proj applySchema("_SimilarTriangles", assignments, List(("height", "__CD"))) // ("height_P","__CD_P") doesn't work right now
+    proj applySchema("_SimilarTriangles", assignments, SeqMap(("height", "__CD"))) // ("height_P","__CD_P") doesn't work right now
     println(proj.tryEval("SiTh{}.height"))
 
   }
@@ -294,7 +296,7 @@ object FrameIT_Backend {
   // ToDO: Make a useful JS Object
   def makeJSReadable(declaration: Declaration) = declaration.toString
 
-  def showSiTh: String = proj.getSiTh.toString
+  def showSiTh: String = proj.SiTh.get.toString
 
   def getSiThErrors: String = proj.getSiThErrors.mkString("\n")
 
@@ -316,11 +318,22 @@ object FrameIT_Backend {
     //ts.fold(err => err.toString, expression => expression.toString)
     ts.toString
   }
+
+  /**
+    *
+    * @param schema
+    * @param assign
+    * @param aquire
+    * @return
+    */
+  def applySchema (schema:String, assign:js.Map[String,String], aquire:js.Map[String,String])= {
+    proj.applySchema(schema, assign.to(SeqMap), assign.to(SeqMap))
+  }
 }
 
 object Gameplay{
   /** The Background */
-  val bg =
+  val bg = //INCORRECT
     """type point
       |type triangle = (point,point,point)
       |dist: point -> point -> float
@@ -342,14 +355,14 @@ object Gameplay{
       |apparent_height = 42 apparent_height_P: |- dist(q)(p) == apparent_height = ???
       |are_similar: |- similar((tip,ground,foot))((p, ground, q)) = ???""".stripMargin
 
-  val assignments = List(
-    ("_A", "tip"), ("_B", "p"), ("_C", "ground"), ("_D", "q"), ("_E", "foot"),
-    ("_CD", "ground_dist_small"), ("_CD_P", "ground_dist_small_P"),
-    ("_CE", "ground_dist_large"), ("_CE_P", "ground_dist_large_P"),
-    ("_DB", "apparent_height"), ("_DB_P", "apparent_height_P"),
+  val assignments = SeqMap(
+    ("_A", "ground"), ("_B", "q"), ("_C", "foot"), ("_D", "tip"), ("_E", "p"),
+    ("_AB", "ground_dist_small"), ("_AB_P", "ground_dist_small_P"),
+    ("_AC", "ground_dist_large"), ("_AC_P", "ground_dist_large_P"),
+    ("_BE", "apparent_height"), ("_BE_P", "apparent_height_P"),
     ("_are_similar", "are_similar"))
 
-  val s2 =
+  val s2 = //INCORRECT
     """realize _SimilarTriangles
       |_A = tip _B = p _C = ground _D = q _E = foot
       |_CD = ground_dist_small _CD_P = ground_dist_small_P
