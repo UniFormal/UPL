@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>UPL JS Test</title>
+  <title>NuFrameIT JS Test</title>
   <style>
     .row{
       display: flex;
@@ -59,13 +59,13 @@
     function addToProject() {
       const decls = document.getElementById("projIn").value
       const projOut = document.getElementById("projOut")
-      if(FrameIT.tryAdd(decls)){
+      if(FrameIT.add(decls)){
         projOut.removeAttribute("error")
         projOut.value = FrameIT.showSiTh
       }
       else {
         projOut.setAttribute("error","true")
-        projOut.value = FrameIT.SiThErrors
+        projOut.value = FrameIT.getErrors
       }
       projOut.dispatchEvent(new Event('input', { bubbles: true }));
     }

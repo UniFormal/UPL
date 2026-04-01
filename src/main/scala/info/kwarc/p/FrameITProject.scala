@@ -2,8 +2,7 @@ package info.kwarc.p
 
 import info.kwarc.p.File.readAsSource
 
-import scala.collection.{SeqMap, mutable}
-import scala.scalajs.js
+import scala.collection.mutable
 import scala.util.Try
 
 /**
@@ -28,7 +27,7 @@ import scala.util.Try
 /**
   * A FrameIT Project has a "SituationTheory" (SiTh), a UPL theory (i.e. a closed [[Module]]) which can grow over time.
   * This is implemented via a special [[ProjectEntry]]
-  * Its current value is accessible via [[getSiTh]], and new declarations can be added via [[add]]
+  * Its current value is accessible as [[SiTh]], and new declarations can be added via [[Stage.add]]
   */
 class FrameITProject private extends Project(Nil,None){
   import info.kwarc.p.FrameITProject._
@@ -40,14 +39,21 @@ class FrameITProject private extends Project(Nil,None){
     private val proj = FrameITProject.this
 
     /** Set the SiTh to the combination of all [[Declaration]]s of all SiThFragments */
-    def update() = proj.update(SiThOrigin, s"theory SiTh{include ${Stage.current}}")
+    def update(): TheoryValue = update(s"theory SiTh{include ${Stage.current}}")
 
-    def get: Module = getVocabulary
-      .decls
-      .collectFirst{
-        case m: Module if m.name == "SiTh" => m
+    /** @throws NoSuchElementException if no SiTh can be found or created.
+      * @throws ClassCastException if SiTh is not a theory
+      *
+      * Neither should be possible
+      */
+    def get: Module = {
+      update()
+      proj.check(SiThOrigin,false)
+      getVocabulary.lookup("SiTh") match {
+        case m:Module => m
+        case _ => throw new ClassCastException("SiTh is not a Theory")
       }
-      .getOrElse { update(); get }
+    }
 
     def decls: List[Declaration] = get.decls
     override def toString: String =
@@ -72,6 +78,22 @@ class FrameITProject private extends Project(Nil,None){
         case _ => None
       }
     }
+
+    def add(decls_String: String): Boolean = {
+      counter += 1
+      val stageString = s"theory $current{include $previous $decls_String}"
+      updateAndCheck(Origin(counter), stageString)
+      SiTh.update()
+      if (debug) println(check(SiThOrigin, false))
+      val err = hasErrors
+      if (err) undo()
+      !err
+    }
+
+    def undo(): Unit = {
+      entries = entries.init
+      counter -= 1
+    }
   }
 
   /** Unlike the content of `BackgroundTheory`, Schemata (formerly Scrolls) operate on the Frame itself,
@@ -81,7 +103,7 @@ class FrameITProject private extends Project(Nil,None){
     *       Also add a dedicated SourceOrigin/Extractor then.
     */
   case class Schema(name: String, dataNeededToGenerateSchemaApplication: Nothing) extends ProjectEntry(SourceOrigin(name)) {
-    def apply(stage: Stage, data: Nothing): Stage = ???
+    //def apply(stage: Stage, data: Nothing): Stage = ???
   }
 
   /** Helper Entry for the application of a Schema. For now, it's easiest to just keep them around. */
@@ -104,30 +126,28 @@ class FrameITProject private extends Project(Nil,None){
     }
   }
 
-  def add(decls_String: String): Boolean = {
-    Stage.counter += 1
-    val stageString = s"theory ${Stage.current}{include ${Stage.previous} $decls_String}"
-    updateAndCheck(Stage.Origin(Stage.counter), stageString)
-    SiTh.update()
-    if (debug) println(check(SiThOrigin, false))
-    checkErrors()
-  }
-
-  /** We need a [[SeqMap]] because the order of assignments matters for checking.
-    * A [[mutable.Map]] would correspond directly to [[js.Dictionary]], not sure if that can be made to work.
+  /** Apply [[schema]] to deduce the [[resultingFacts]] from the [[requiredFacts]].
+    *
     * @param schema the name of the schema to apply
-    * @param requiredFacts
-    * @param acquiredFacts
-    * @return
+    * @param requiredFactsAssignment
+    * @param resultingFactsAssignment
+    * @return `true` if the Schema application was successful
+    * @note We use [[collection.Map]] because
+    *       - the order of [[requiredFactsAssignment]] doesn't matter if we `realize $schema` only afterwards, and
+    *       - [[scalajs.js.Dictionary]] is implicitly convertible to [[mutable.Map]], but
+    *       - mutability is not actually needed
     */
-  def applySchema(schema: String, requiredFacts: SeqMap[String, String], acquiredFacts: SeqMap[String, String]) = {
+  def applySchema(schema: String,
+                  requiredFactsAssignment: collection.Map[String, String],
+                  resultingFactsAssignment: collection.Map[String, String])
+  : Boolean = {
     val (apOrigin,apName) = SchemaApplication.next
-    val reqDecls = requiredFacts map {case (n, d) => s"$n = $d"} mkString " "
-    val apCode = s"theory t$apName{include ${Stage.current} realize $schema $reqDecls} $apName = t$apName{}"
+    val reqDecls = requiredFactsAssignment map {case (n, d) => s"$n = $d"} mkString " "
+    val apCode = s"theory t$apName{include ${Stage.current} $reqDecls realize $schema} $apName = t$apName{}"
     updateAndCheck(apOrigin,apCode)
     //Solver.solve(makeGlobalContext(),OpenRef(Path(s"t$apName")))
-    val accDecls = acquiredFacts map {case (n, d) => s"$n = $apName.$d"} mkString " "
-    add(accDecls)
+    val resDecls = resultingFactsAssignment map {case (n, d) => s"$n = $apName.$d"} mkString " "
+    Stage.add(resDecls)
   }
 
   def reset(): Unit = {
@@ -176,6 +196,7 @@ class FrameITProject private extends Project(Nil,None){
     }
     TheoryValue(voc.toList)
   }
+
   def debugPrintVerbose(): Unit = println (entries.map(_.getVocabulary).mkString("\n"))
 }
 
@@ -241,7 +262,7 @@ object FrameITProject {
 
   /** Kinda chimera of [[File.readPropertiesFromString]] and [[Project.fromFile]],
     * because both aren't quite flexible enough to be used here.  */
-  protected def unfoldProjectFile(projFile: File): Map[String, LazyList[(SourceOrigin, String)]] = {
+  private def unfoldProjectFile(projFile: File): Map[String, LazyList[(SourceOrigin, String)]] = {
     if (!(projFile.getExtension contains "pp")) {
       return Map(("background", LazyList.from(Project.pFiles(projFile).map(readAsSource))))
     }
