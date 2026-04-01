@@ -33,7 +33,7 @@ import scala.util.Try
 class FrameITProject private extends Project(Nil,None){
   import info.kwarc.p.FrameITProject._
   final val debug: Boolean = false
-  entries = List(SiTh)
+  entries = Vector(SiTh)
   main = Option(Parser.expression(SiThOrigin, "SiTh{}", ErrorIgnorer))
   /** The current Situation is always the latest Stage, but with a constant Name ("SiTh") */
   case object SiTh extends ProjectEntry(SiThOrigin) {
@@ -149,7 +149,7 @@ class FrameITProject private extends Project(Nil,None){
     }
     entries = entries match {
       case es :+ sith => es :+ e :+ sith
-      case _ => e :: Nil
+      case _ => Vector(e)
     }
     e
   }
