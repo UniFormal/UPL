@@ -34,12 +34,7 @@ module concepts {
         type tp
     }
 
-    theory TypedTerms {
-        include Types
-        tm: tp -> bool
-    }
-
-    theory SoftTypedTerms {
+   theory SoftTypedTerms {
         include Terms
         include Types
         include Propositions
@@ -47,48 +42,8 @@ module concepts {
         of: (term, tp) -> prop
     }
 
-    theory Kinds {
-        type kd
-    }
-
-    // Kinded types without dependent types
-
-    theory KindedTypes {
-        include Kinds
-        include Types
-
-        tpk: kd
-
-        hasKind: tp -> kd -> bool
-        isType = A -> hasKind(A)(tpk)
-
-        arrow: kd -> kd -> kd
-
-        app: tp -> tp -> tp
-        app_kind:--- hasKind(F)(arrow(A)(B)) => hasKind(X)(A) => hasKind(app(F)(X))(B)
-    }
-
-    theory KindedTypesTest {
-        include KindedTypes
-
-        Nat: tp
-        Nat_type: |- isType(Nat)
-        Nat_kind: |- hasKind(Nat)(tpk)
-
-        List: tp
-        list_type: |- isType(List) // this should fail
-        list_kind: |- hasKind(List)(arrow(tpk)(tpk))
-
-        // l : app(List)(Nat) // doesn't work, why?
-        l = app(List)(Nat)
-        l_type: |- isType(l)
-
-        Pair: tp
-        pair_kind: |- hasKind(Pair)(arrow(tpk)(arrow(tpk)(tpk)))
-    }
-
     theory Booleans {
-        include TypedTerms
+        include Types
         boolean: tp
     }
 
@@ -100,21 +55,22 @@ module concepts {
     //     prop = tm(boolean)
     // }
 
-    theory TypesAsPredicates {
-        include Terms
-        include Propositions
-        include Logic // Is this needed?
+    // don't know how to do without dependent types
+    // theory TypesAsPredicates {
+    //     include Terms
+    //     include Propositions
+    //     include Logic // Is this needed?
 
-        // This doesn't work
+    //     // This doesn't work
 
-        // realize SoftTypedTerms
-        // tp = term -> prop
-        // of = (X, A) -> A(X)
+    //     // realize SoftTypedTerms
+    //     // tp = term -> prop
+    //     // of = (X, A) -> A(X)
 
-        // don't know if right
-        tp: term -> prop
-        of: (term, (term -> prop)) -> prop = (X, A) -> A(X)
-    }
+    //     // don't know if right
+    //     tp: term -> prop
+    //     of: (term, (term -> prop)) -> prop = (X, A) -> A(X)
+    // }
 
     // don't know how to do without dependent types
 
