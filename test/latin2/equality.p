@@ -9,9 +9,7 @@ module equality {
         include UntypedEquality
 
         urefl:--- ⊦ X ≐ X
-        ucongP:--- ⊦ X ≐ Y => forall P. ⊦P(X) => ⊦P(Y)
-        // ucongP:--- ⊦ X ≐ Y => ⊦P(X) => ⊦P(Y) // does this also work?
-        ucongPr:--- ⊦ X ≐ Y => forall P. ⊦P(Y) => ⊦P(X)
+        ucongP:--- ⊦ X ≐ Y => ⊦P(X) => ⊦P(Y)
     }
 
     theory SoftTypedEquality {
