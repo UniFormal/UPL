@@ -4,3 +4,6 @@ What does total structure do in MMT?
 How to translate it into UPL?
 Example: line 39 in pl.mmt
 
+How to do Lindenbaum (line 55 in pl.mmt)?
+
+How to do ProofIrrelevance (line 221 in pl.mmt)?

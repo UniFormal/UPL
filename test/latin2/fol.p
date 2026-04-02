@@ -15,7 +15,6 @@ module fol {
         include UniversalQuantification
 
         uforallE:--- ⊦ (∀x. P(x)) => (forall X. ⊦P(X))
-        // uforallE:--- ⊦ ∀x. P(x) => ⊦ P(Y) // does this also work?
     }
 
     theory UniversalQuantificationND {
@@ -90,5 +89,20 @@ module fol {
         include FOLEQ
         include FOLND
         include .equality.UntypedEqualityND
+    }
+
+    theory RelativizedUniversalQuantification {
+        include .concepts.SoftTypedTerms
+        include FOLEQ
+
+        rforall : tp -> (term -> prop) -> prop = (A, P) -> ∀X. of(X, A) ⇒ P(X)
+    }
+
+    theory RelativizedUniversalQuantificationND {
+        include RelativizedUniversalQuantification
+        include FOLEQND
+
+        rforallI:--- (forall X. ⊦of(X,A) => ⊦F(X)) => rforall(A)(F)
+        rforallE:--- rforall(A)(F) => forall X. ⊦of(X,A) => ⊦F(X)
     }
 }
