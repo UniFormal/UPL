@@ -1,0 +1,6 @@
+Questions:
+
+What does total structure do in MMT?
+How to translate it into UPL?
+Example: line 39 in pl.mmt
+
