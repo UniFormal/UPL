@@ -54,20 +54,20 @@ module fol {
 
     theory IFOLND {
         include IFOL
-        include IPLND
+        include .pl.IPLND
         include UniversalQuantificationND
         include ExistentialQuantificationND
     }
 
     theory IFOLEQ {
         include IFOL
-        include UntypedEquality
+        include .equality.UntypedEquality
     }
 
     theory IFOLEQND {
         include IFOLEQ
         include IFOLND
-        include UntypedEqualityND
+        include .equality.UntypedEqualityND
     }
 
     theory FOL {
@@ -77,18 +77,18 @@ module fol {
 
     theory FOLND {
         include FOL
-        include PLND
+        include .pl.PLND
         include IFOLND
     }
 
     theory FOLEQ {
         include FOL
-        include UntypedEquality
+        include .equality.UntypedEquality
     }
 
     theory FOLEQND {
         include FOLEQ
         include FOLND
-        include UntypedEqualityND
+        include .equality.UntypedEqualityND
     }
 }

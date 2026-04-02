@@ -219,9 +219,11 @@ module pl {
         tnd:--- ⊦(F ∨ ¬F)
     }
 
-    nnf : PLND.prop -> PLND.prop
-    nnf = F -> F match {
-        PLND.and(a,b) -> PLND.and(nnf(a), nnf(b))
-        PLND.neg(a) -> nnf(a)
-    }
+    // doesn't work
+
+    // nnf : PLND.prop -> PLND.prop
+    // nnf = F -> F match {
+    //     PLND.and(a,b) -> PLND.and(nnf(a), nnf(b))
+    //     PLND.neg(a) -> nnf(a)
+    // }
 }

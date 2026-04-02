@@ -47,7 +47,7 @@ module concepts {
         boolean: tp
     }
 
-    // don't know how to do without dependent types
+    // needs dependent types
 
     // theory InternalPropositions {
     //     include Booleans
@@ -55,28 +55,20 @@ module concepts {
     //     prop = tm(boolean)
     // }
 
-    // don't know how to do without dependent types
     // theory TypesAsPredicates {
     //     include Terms
     //     include Propositions
-    //     include Logic // Is this needed?
+    //     include Logic
 
-    //     // This doesn't work
+    //     realize SoftTypedTerms
+    //     tp = term -> prop
+    //     of = (X, A) -> A(X)
 
-    //     // realize SoftTypedTerms
-    //     // tp = term -> prop
-    //     // of = (X, A) -> A(X)
-
-    //     // don't know if right
-    //     tp: term -> prop
-    //     of: (term, (term -> prop)) -> prop = (X, A) -> A(X)
     // }
 
-    // don't know how to do without dependent types
-
     // theory InternalTypes {
-    //     include .concepts.Terms
-    //     include .concepts.Propositions
+    //     include Terms
+    //     include Propositions
 
     //     iin: term -> term -> prop
     //     realize SoftTypedTerms
