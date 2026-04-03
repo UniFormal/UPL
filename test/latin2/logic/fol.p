@@ -25,7 +25,7 @@ module fol {
     theory ExistentialQuantification {
         include .base_languages.UntypedLogic
 
-        uexists : (term -> prop) -> prop    # bindfix ∃
+        uexists: (term -> prop) -> prop    # bindfix ∃
     }
 
     theory ExistentialQuantificationNDI {
@@ -95,7 +95,7 @@ module fol {
         include .concepts.SoftTypedTerms
         include FOLEQ
 
-        rforall : tp -> (term -> prop) -> prop = (A, P) -> ∀X. of(X, A) ⇒ P(X)
+        rforall: tp -> (term -> prop) -> prop = (A, P) -> ∀X. of(X, A) ⇒ P(X)
     }
 
     theory RelativizedUniversalQuantificationND {
@@ -104,5 +104,34 @@ module fol {
 
         rforallI:--- (forall X. ⊦of(X,A) => ⊦F(X)) => rforall(A)(F)
         rforallE:--- rforall(A)(F) => forall X. ⊦of(X,A) => ⊦F(X)
+    }
+
+    theory RelativizedExistentialQuantification {
+        include .concepts.SoftTypedTerms
+        include .FOLEQ
+
+        rexists: tp -> (term -> prop) -> prop = (A, P) -> ∃X. of(X, A) ∧ P(X)
+    }
+
+    theory RelativizedExistentialQuantificationND {
+        include RelativizedExistentialQuantification
+        include FOLEQND
+
+        rexistsI:--- forall X. ⊦of(X,A) => ⊦F(X) => rexists(A)(F)
+        rexistsE:--- rexists(A)(F) => (forall X. ⊦of(X,A) => ⊦F(X) => ⊦C) => ⊦C
+    }
+
+    theory UniqueExistentialQuantification {
+        include ExistentialQuantification
+        include UntypedEquality
+
+        uexistsUnique: (term -> prop) -> prop
+    }
+
+    theory UniqueExistentialQuantificationND {
+        include UniqueExistentialQuantification
+
+        uexistsUniqueI:--- ⊦P(X) => (forall Y. ⊦P(Y) => ⊦(X ≐ Y)) => uexistsUnique(P)
+        uexistsUniqueE:--- uexistsUnique(P) => (forall X. ⊦P(X) => (forall Y. ⊦P(Y) => ⊦(X ≐ Y)) => ⊦C) => ⊦C
     }
 }

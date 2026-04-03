@@ -7,3 +7,5 @@ Example: line 39 in pl.mmt
 How to do Lindenbaum (line 55 in pl.mmt)?
 
 How to do ProofIrrelevance (line 221 in pl.mmt)?
+
+line 131 in fol.mmt : {P} {x} is the same as {P, x} right?
