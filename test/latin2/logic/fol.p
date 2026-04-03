@@ -95,35 +95,35 @@ module fol {
         include .concepts.SoftTypedTerms
         include FOLEQ
 
-        rforall: tp -> (term -> prop) -> prop = (A, P) -> ∀X. of(X, A) ⇒ P(X)
+        rforall: (tp, (term -> prop)) -> prop = (A, P) -> ∀X. of(X, A) ⇒ P(X)
     }
 
     theory RelativizedUniversalQuantificationND {
         include RelativizedUniversalQuantification
         include FOLEQND
 
-        rforallI:--- (forall X. ⊦of(X,A) => ⊦F(X)) => rforall(A)(F)
-        rforallE:--- rforall(A)(F) => forall X. ⊦of(X,A) => ⊦F(X)
+        rforallI:--- (forall X. ⊦of(X,A) => ⊦F(X)) => ⊦rforall(A, F)
+        rforallE:--- ⊦rforall(A, F) => forall X. ⊦of(X,A) => ⊦F(X)
     }
 
     theory RelativizedExistentialQuantification {
         include .concepts.SoftTypedTerms
         include .FOLEQ
 
-        rexists: tp -> (term -> prop) -> prop = (A, P) -> ∃X. of(X, A) ∧ P(X)
+        rexists: (tp, (term -> prop)) -> prop = (A, P) -> ∃X. of(X, A) ∧ P(X)
     }
 
     theory RelativizedExistentialQuantificationND {
         include RelativizedExistentialQuantification
         include FOLEQND
 
-        rexistsI:--- forall X. ⊦of(X,A) => ⊦F(X) => rexists(A)(F)
-        rexistsE:--- rexists(A)(F) => (forall X. ⊦of(X,A) => ⊦F(X) => ⊦C) => ⊦C
+        rexistsI:--- forall X. ⊦of(X,A) => ⊦F(X) => ⊦rexists(A, F)
+        rexistsE:--- ⊦rexists(A, F) => (forall X. ⊦of(X,A) => ⊦F(X) => ⊦C) => ⊦C
     }
 
     theory UniqueExistentialQuantification {
         include ExistentialQuantification
-        include UntypedEquality
+        include .equality.UntypedEquality
 
         uexistsUnique: (term -> prop) -> prop
     }
@@ -131,7 +131,7 @@ module fol {
     theory UniqueExistentialQuantificationND {
         include UniqueExistentialQuantification
 
-        uexistsUniqueI:--- ⊦P(X) => (forall Y. ⊦P(Y) => ⊦(X ≐ Y)) => uexistsUnique(P)
-        uexistsUniqueE:--- uexistsUnique(P) => (forall X. ⊦P(X) => (forall Y. ⊦P(Y) => ⊦(X ≐ Y)) => ⊦C) => ⊦C
+        uexistsUniqueI:--- ⊦P(X) => (forall Y. ⊦P(Y) => ⊦(X ≐ Y)) => ⊦uexistsUnique(P)
+        uexistsUniqueE:--- ⊦uexistsUnique(P) => (forall X. ⊦P(X) => (forall Y. ⊦P(Y) => ⊦(X ≐ Y)) => ⊦C) => ⊦C
     }
 }
