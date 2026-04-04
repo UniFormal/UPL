@@ -10,6 +10,7 @@ module subtyping {
         include .concepts.SoftTypedTerms
         include Subtyping
 
-        // subtypeI:--- 
+        subtypeI:--- (forall X. ⊦of(X,A) => ⊦of(X,B)) => ⊦(A ⪽ B)
+        subtypeE:--- ⊦(A ⪽ B) => forall X. ⊦of(X,A) => ⊦of(X,B)
     }
 }

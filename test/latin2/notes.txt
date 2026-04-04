@@ -9,3 +9,7 @@ How to do Lindenbaum (line 55 in pl.mmt)?
 How to do ProofIrrelevance (line 221 in pl.mmt)?
 
 line 131 in fol.mmt : {P} {x} is the same as {P, x} right?
+
+line 13 in subtyping.mmt : how to do structure in UPL?
+
+line 26 in subtyping.mmt : how to do constant in UPL?
