@@ -183,7 +183,7 @@ module SolverTest {
   }
 
   theory TestInterceptTheorem {
-    // TODO Triagle ist OpenRef?? 
+    // TODO Triangle ist OpenRef?? 
     include InterceptTheorem
 
     t1 = Triangle{a=4.0, b=2.0, gamma=Math.PI/2.0, beta=???, alpha=???, c=???, sineLawBC=???, sineLawAC=???, sineLawAB=???, cosineLawGamma=???, cosineLawBeta=???, cosineLawAlpha=???, allAngles180=???}

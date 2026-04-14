@@ -22,7 +22,7 @@ abstract class Traverser[A] {
   /** must satisfy apply(thy.toValue) == apply(thy).toValue */
   def apply(thy: Theory)(implicit gc: GlobalContext, a: A): Theory = matchC(thy)(applyDefault _)
 
-  protected final def applyDefault(thy: Theory)(implicit gc: GlobalContext, a: A) = thy match {
+  protected final def applyDefault(thy: Theory)(implicit gc: GlobalContext, a: A) = matchC(thy) {
     case null => null
     case r: Ref => apply(r)
     case OwnedTheory(o,d,t) =>
@@ -74,7 +74,7 @@ abstract class Traverser[A] {
 
   def apply(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = matchC(d)(applyDefault _)
 
-  protected final def applyDefault(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = d match {
+  protected final def applyDefault(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = matchC(d) {
     case m@Module(n,op,df) =>
       val gcI = gc.enter(m)
       val dsT = df.decls.map(d => apply(d)(gcI, a))
@@ -91,7 +91,7 @@ abstract class Traverser[A] {
 
   def apply(tp: Type)(implicit gc: GlobalContext, a: A): Type = matchC(tp)(applyDefault _)
 
-  protected final def applyDefault(tp: Type)(implicit gc: GlobalContext, a: A): Type = tp match {
+  protected final def applyDefault(tp: Type)(implicit gc: GlobalContext, a: A): Type = matchC(tp) {
     case UnknownType(g,cont,sub) =>
       if (cont.known)
         apply(tp.skipUnknown)  // eliminate unknown-wrappers
@@ -124,7 +124,7 @@ abstract class Traverser[A] {
   }
 
   def apply(exp: Expression)(implicit gc: GlobalContext, a: A): Expression = matchC(exp)(applyDefault _)
-  protected final def applyDefault(exp: Expression)(implicit gc: GlobalContext, a: A): Expression = exp match {
+  protected final def applyDefault(exp: Expression)(implicit gc: GlobalContext, a: A): Expression = matchC(exp) {
     case null => null
     case _: BaseValue => exp
     case r: Ref => apply(r)

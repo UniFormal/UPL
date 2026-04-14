@@ -190,7 +190,7 @@ sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
   def tc: LocalContext
 }
 
-/** unifies ExprDecl and EVarDecl */
+/** unifies [[ExprDecl]] and [[EVarDecl]] */
 trait TypedDeclaration extends Named {
   def tc: LocalContext
   def tp: Type

@@ -230,6 +230,7 @@ case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
 }
 object Substitution {
   def empty = Substitution(Nil)
+  def apply(decls: Iterable[VarDecl]): Substitution = Substitution(decls.toList)
 }
 
 /** a pair of alpha-renamable contexts, with the substitutions between them
