@@ -4,7 +4,7 @@ module bands {
         include .magmas.Idempotent
     }
 
-// This follows the lattice structure graphic from:
+// This follows the lattice of varieties of regular bands graphic from:
 // https://en.wikipedia.org/wiki/Band_(algebra)
 //
 // Each dashed line is a new row
