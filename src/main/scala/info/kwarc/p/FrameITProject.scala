@@ -90,6 +90,8 @@ class FrameITProject private extends Project(Nil,None){
       !err
     }
 
+    def add(decls: Iterable[Declaration]): Boolean = add(decls.mkString(" "))
+
     def undo(): Unit = {
       entries = entries.init
       counter -= 1
@@ -143,11 +145,27 @@ class FrameITProject private extends Project(Nil,None){
   : Boolean = {
     val (apOrigin,apName) = SchemaApplication.next
     val reqDecls = requiredFactsAssignment map {case (n, d) => s"$n = $d"} mkString " "
-    val apCode = s"theory t$apName{include ${Stage.current} $reqDecls realize $schema} $apName = t$apName{}"
-    updateAndCheck(apOrigin,apCode)
-    //Solver.solve(makeGlobalContext(),OpenRef(Path(s"t$apName")))
-    val resDecls = resultingFactsAssignment map {case (n, d) => s"$n = $apName.$d"} mkString " "
+    val apCode = s"theory $apName{include ${Stage.current} $reqDecls realize $schema}"
+    val apRaw = updateAndCheck(apOrigin, apCode).lookupT[Module](apName)
+    //val apRaw = Solver.solve(makeGlobalContext(),OpenRef(Path(s"$apName")))
+    implicit val gc = GlobalContext(apRaw)
+    implicit val sub: Substitution = Substitution(
+      (requiredFactsAssignment.view ++ resultingFactsAssignment)
+        map {case (n, d) => EVarDecl.sub(n,ClosedRef(d))}
+    )
+
+    val subber = new Substituter(gc)
+    val tmp = apRaw.decls.map { subber(_) }
+    // take only the actual results
+    val resDecls = resultingFactsAssignment map { case (n, d) =>
+      tmp.find(_.nameO.contains(n)).get.asInstanceOf[ExprDecl].copy(name= d)
+    }
     Stage.add(resDecls)
+  }
+
+  @inline
+  private def findSchema(name: String): Option[Module] = {
+    entries.collectFirst({e:ProjectEntry => e.checked.lookupOT[Module](name)}.unlift)
   }
 
   def reset(): Unit = {

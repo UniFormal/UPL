@@ -322,7 +322,7 @@ object OwnersSubstitutor {
 class Substituter(val initGC: GlobalContext) extends Traverser[Substitution] with TraverseOnlyOriginalRegion {
   override def apply(exp: Expression)(implicit gc: GlobalContext, sub: Substitution) = matchC(exp) {
     case e if e.closing => e // no free variables in e even if they have not been inferred yet
-    case VarRef(n) if n != "" && inOriginalRegion => sub.lookupO(n) match {
+    case r@(VarRef(_)|ClosedRef(_)) if r.toString != "" && inOriginalRegion => sub.lookupO(r.toString) match {
       case Some(vd: EVarDecl) => vd.dfO.get
       case Some(_) => throw IError("unexpected substitute")
       case None => exp
@@ -330,7 +330,7 @@ class Substituter(val initGC: GlobalContext) extends Traverser[Substitution] wit
     case _ => applyDefault(exp)
   }
   override def apply(tp: Type)(implicit gc: GlobalContext, sub: Substitution) = matchC(tp) {
-    case VarRef(n) if n != "" && inOriginalRegion => sub.lookupO(n) match {
+    case r@(VarRef(_)|ClosedRef(_)) if r.toString != "" && inOriginalRegion => sub.lookupO(r.toString) match {
       case Some(vd: TVarDecl) => vd.dfO.get
       case Some(_) => throw IError("unexpected substitute")
       case None => tp

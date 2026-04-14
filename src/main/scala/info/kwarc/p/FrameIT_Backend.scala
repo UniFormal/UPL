@@ -26,10 +26,9 @@ object FrameIT_Backend {
     //proj = FrameITProject(File("test/FrameIt/Gameplay_Example/gameplay.pp"))
     newLevel(bg,schema)
     add(s1)
-    proj applySchema("_SimilarTriangles", assignments, SeqMap(("height", "__CD"))) // ("height_P","__CD_P") doesn't work right now
+    proj applySchema("_SimilarTriangles", assignments, SeqMap(("__CD","height"),("__CD_P","height_P"))) // ("height_P","__CD_P") doesn't work right now
     println(proj.tryEval("SiTh{}.height"))
-    debugPrintVerbose()
-
+    //debugPrintVerbose()
   }
 
   // ToDO: Make a useful JS Object
