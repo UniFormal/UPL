@@ -8,6 +8,7 @@ module bands {
 // https://en.wikipedia.org/wiki/Band_(algebra)
 //
 // Each dashed line is a new row
+// The order is left to right
 
 // -----------------------------------------------
 
