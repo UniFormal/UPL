@@ -13,3 +13,5 @@ line 131 in fol.mmt : {P} {x} is the same as {P, x} right?
 line 13 in subtyping.mmt : how to do structure in UPL?
 
 line 26 in subtyping.mmt : how to do constant in UPL?
+
+line 73 in algebra.p : Semigroup is missing right?
