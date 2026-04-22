@@ -1,5 +1,7 @@
 package info.kwarc.p
 
+import info.kwarc.p.compiler.LLVMCompiler
+
 
 /** A part in a project with mutable fields maintained by the projects */
 class ProjectEntry(val source: SourceOrigin) {
@@ -164,6 +166,22 @@ class Project(protected var entries: Seq[ProjectEntry], var main: Option[Express
       case e: PError =>
         println(e)
         None
+    }
+  }
+
+  def compile(): Unit = {
+    if (checkErrors()) return None
+    val voc = check(false)
+    if (checkErrors()) return None
+    val e = main.getOrElse(UnitValue)
+    val ch = new Checker(ErrorThrower)
+    try {
+      val (eC, _) = ch.checkAndInferExpression(GlobalContext(voc), e)
+      val prog = Program(voc, eC)
+      LLVMCompiler.run(prog)
+    } catch {
+      case e: PError =>
+        println(e)
     }
   }
 
