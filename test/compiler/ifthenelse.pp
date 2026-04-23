@@ -1,0 +1,1 @@
+main: if (3 == 5) 5 else 3
