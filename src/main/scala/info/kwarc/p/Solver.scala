@@ -118,7 +118,7 @@ object Solver {
      printAsTheory("Knowns", knowns)
      printAsTheory("Properties", props)
      printAsTheory("Redundant", redundantP)
-
+     printAsTheory("New", knowns.filter(k => k.isNew))
 
      // just for temporary testing: add one definition
      //knowns ::= Known("a", IntValue(1), true)
@@ -132,7 +132,7 @@ object Solver {
 
 
          else {
-           knowns.find(k => k.name == ed.name && k.isNew) match {
+           knowns.find(k => k.name.name == ed.name && k.isNew) match {
              case Some(k) =>
                changed = true
                List(ed.copy(dfO = Some(k.df)))

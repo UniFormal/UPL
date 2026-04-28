@@ -226,8 +226,8 @@ object IsabelleCompiler {
       case BoolValue(b) => IsaBool(b)
       // todo: convert Real to BigInt & compile to IsaInt, IsaReal; delete IsaNumber
       case NumberValue(tp, re, im) => tp match {
-        case int => IsaNumber(re)
-        case float => IsaNumber(re)
+        case NumberType.Int => IsaNumber(re)
+        case NumberType.Float => IsaNumber(re)
       }
       // todo: test IntValue, possibly redundant to NumberValue
       case IntValue(i) => IsaInt(i)
