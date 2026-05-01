@@ -12,14 +12,18 @@ object LLVMCompiler {
 
 class LLVMCompiler {
   def compile(p: Program): String = {
-    val ir = IRGenerator.generate(p)
+    val ir = IRGenerator.run(p)
 
-    val gen = new LLVMGenerator
-    val llvmBody = gen.visitBlock(ir.main)
+    val fnctDecls = ir.declaredFunctions.map(f => f.toLLVMDecl()).mkString("\n")
+    val llvmStrcts = ir.structs.map(s => s.toLLVMStrct()).mkString("\n")
+    val fncts = ir.functions.map(f => f.toLLVM()).mkString("\n")
 
     s"""
-define i32 @main() {
-$llvmBody
-}"""
+       |$fnctDecls
+       |
+       |$llvmStrcts
+       |
+       |$fncts
+       |""".stripMargin
   }
 }
