@@ -60,7 +60,7 @@ module Operators {
   // Notations are ascribed to constants using #.
   // They are used when the expected type or the argument types can be used to find a theory T in which a matching notation is found.
 
-  theory Notation {
+  theory Notations {
     type univ
     // a binary infix operation
     op: (univ,univ) -> univ # infix ∘
@@ -69,7 +69,7 @@ module Operators {
   }
 
   // Notations are also available from the outside if the type i.a is encountered where i:T is an instance of T and a is declared in T.
-  testNotation1 = (c: Notation, x: c.univ) -> x∘x
-  testNotation2: (c: Notation) -> (_,_) -> c.univ = c -> (x,y) -> x∘x
+  testNotation1 = (c: Notations, x: c.univ) -> x∘x
+  testNotation2: (c: Notations) -> (_,_) -> c.univ = c -> (x,y) -> x∘x
   // Here ".univ" is redundant because it is inserted by the magic conversion of instances to types.  
 }

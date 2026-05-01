@@ -1455,7 +1455,7 @@ class Checker(errorHandler: ErrorHandler) {
               val sub = td.tc.substitute(argsC)
               val tpI = td.tp.substituteInType(sub)
               (MaybeAppliedRef(r,argsC), tpI)
-            case Some(_) => fail("not an expression")
+            case Some(d) => fail("not an expression")
             case _ => fail("undeclared identifier")
           }
         case This(l) =>
@@ -1956,8 +1956,9 @@ class Checker(errorHandler: ErrorHandler) {
   // the type bound allows taking a Type or an Expression and returning the same
   private def disambiguateOwnedObject[A >: Type with Expression](gc: GlobalContext, o: A): Option[A] = o match {
     case o: OwnedObject =>
+      val ownerD = disambiguateOwnedObject(gc, o.owner).getOrElse(o.owner)
       // if owner is module m: the path to m, and m.closed
-      val ownerIsModule = o.owner match {
+      val ownerIsModule = ownerD match {
         case OpenRef(p) => gc.resolvePath(p) flatMap {
           case (pR, m: Module) => Some((pR, m.closed))
           case _ => None

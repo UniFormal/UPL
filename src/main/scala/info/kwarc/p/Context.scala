@@ -230,7 +230,6 @@ case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
 }
 object Substitution {
   def empty = Substitution(Nil)
-  def apply(decls: Iterable[VarDecl]): Substitution = Substitution(decls.toList)
 }
 
 /** a pair of alpha-renamable contexts, with the substitutions between them
@@ -586,7 +585,6 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
 
 object GlobalContext {
   def apply(n: String): GlobalContext = GlobalContext(Module(n, false, Nil))
-  def apply(decls: Iterable[Declaration]): GlobalContext = GlobalContext(Module.anonymous(decls.toList))
   def apply(v: TheoryValue): GlobalContext = GlobalContext(Module.anonymous(v.decls))
   def apply(m: Module): GlobalContext = GlobalContext(m, List(RegionalContextFrame(RegionalContext(Path.empty), true, Some(m.closed))))
 }

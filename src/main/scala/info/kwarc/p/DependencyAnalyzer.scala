@@ -12,7 +12,7 @@ class DependencyInterface {
 object DependencyAnalyzer {
   def update(entry: ProjectEntry) = {
     entry.depInter.clear()
-    entry.parsed.decls.foreach {d => DependencyTraverser(d)(GlobalContext(Nil), entry.depInter)}
+    entry.parsed.decls.foreach {d => DependencyTraverser(d)(GlobalContext(Theory.empty), entry.depInter)}
   }
 }
 

@@ -5,7 +5,7 @@ module TypeClasses {
   theory Magma {
     type univ
     op: (univ,univ) -> univ # infix ∘
-    double: univ -> univ # prefix $ = x -> x∘x
+    double: univ -> univ    # prefix $ = x -> x∘x
   }
   // That allows using instances of the type class as if they were types.
   // Notations are disambiguated by using the argument or expected types if those are C.a for some type a declared in C.

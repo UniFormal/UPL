@@ -111,8 +111,6 @@ trait HasChildren[+A <: MaybeNamed] extends SyntaxFragment {
   def lookupO(name: String) = decls.find(_.nameO.contains(name))
   def lookup(name: String) = lookupO(name).get
   def declares(name: String) = lookupO(name).isDefined
-  def lookupOT[T <: MaybeNamed](name: String): Option[T] = lookupO(name).collect { case t: T => t }
-  def lookupT[T <: MaybeNamed](name: String): T = lookupOT[T](name).get
 }
 
 /** identifiers */

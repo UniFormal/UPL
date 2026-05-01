@@ -4,11 +4,11 @@ module Algebra {
   }
   theory Relation {
     include Carrier
-    rel: (univ,univ) -> bool # infix %
+    rel: (univ,univ) -> bool # infix %  // # declares notation
   }
   theory Reflexive {
     include Relation
-    refl:--- x % x
+    refl:--- x % x  // :--- abbreviates axiom for universal closure
   }
   theory Transitive {
     include Relation
@@ -32,7 +32,7 @@ module Algebra {
   }
   theory SubCarrier {
     include Carrier
-    per: PER {type univ = ..univ}
+    per: PER {type univ = ..univ}  // .. accesses surrounding theory
     perapply # infix % = per.rel
   }
   theory Magma {
@@ -94,12 +94,16 @@ module Algebra {
     include Abelian
   }
 
+  // for theory H:
+  // H {d1, ...} abbreviates {include H, d1, ...}
   theory BiMagma {
     include Carrier
-    add  : Magma {type univ = ..univ}
+    // add must be a model of {type univ == ..univ, op: (univ,univ) -> univ}
+    add  : Magma {type univ = ..univ} // .. accesses surrounding theory
     mult : Magma {type univ = ..univ}
   }
-  intAdd = Magma {type univ = int, op = (x,y) -> x+y}
+  // intAdd is a model of Magma, by extending it with definitions for all abstract fields
+  intAdd  = Magma {type univ = int, op = (x,y) -> x+y}
   intMult = Magma {type univ = int, op = (x,y) -> x*y}
   intAddMult = BiMagma {type univ = int, add = intAdd, mult = intMult}
 

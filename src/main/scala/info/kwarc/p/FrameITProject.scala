@@ -32,7 +32,7 @@ import scala.util.Try
 class FrameITProject private extends Project(Nil,None){
   import info.kwarc.p.FrameITProject._
   final val debug: Boolean = false
-  entries = Vector(SiTh)
+  entries = List(SiTh)
   main = Option(Parser.expression(SiThOrigin, "SiTh{}", ErrorIgnorer))
   /** The current Situation is always the latest Stage, but with a constant Name ("SiTh") */
   case object SiTh extends ProjectEntry(SiThOrigin) {
@@ -146,11 +146,11 @@ class FrameITProject private extends Project(Nil,None){
     val (apOrigin,apName) = SchemaApplication.next
     val reqDecls = requiredFactsAssignment map {case (n, d) => s"$n = $d"} mkString " "
     val apCode = s"theory $apName{include ${Stage.current} $reqDecls realize $schema}"
-    val apRaw = updateAndCheck(apOrigin, apCode).lookupT[Module](apName)
+    val apRaw = updateAndCheck(apOrigin, apCode).lookup(apName).asInstanceOf[Module]
     //val apRaw = Solver.solve(makeGlobalContext(),OpenRef(Path(s"$apName")))
     implicit val gc = GlobalContext(apRaw)
     implicit val sub: Substitution = Substitution(
-      (requiredFactsAssignment.view ++ resultingFactsAssignment)
+      (requiredFactsAssignment.toList ::: resultingFactsAssignment.toList)
         map {case (n, d) => EVarDecl.sub(n,ClosedRef(d))}
     )
 
@@ -165,7 +165,7 @@ class FrameITProject private extends Project(Nil,None){
 
   @inline
   private def findSchema(name: String): Option[Module] = {
-    entries.collectFirst({e:ProjectEntry => e.checked.lookupOT[Module](name)}.unlift)
+    entries.collectFirst({e:ProjectEntry => e.checked.lookupO(name).asInstanceOf[Module]})
   }
 
   def reset(): Unit = {
@@ -186,8 +186,8 @@ class FrameITProject private extends Project(Nil,None){
       case _ => new ProjectEntry(so)
     }
     entries = entries match {
-      case es :+ sith => es :+ e :+ sith
-      case _ => Vector(e)
+      case es :: sith => es :: e :: sith
+      case _ => List(e)
     }
     e
   }
@@ -207,7 +207,7 @@ class FrameITProject private extends Project(Nil,None){
     dirty.foreach{ le =>
       if(!le.errors.hasErrors) {
         val ch = new Checker(le.errors)
-        le.checked = ch.checkVocabulary(GlobalContext(voc), le.parsed, true)(le.parsed)
+        le.checked = ch.checkVocabulary(GlobalContext(TheoryValue(voc.toList)), le.parsed, true)(le.parsed)
         le.checkedIsDirty = false
       }
       voc ++= le.getVocabulary.decls

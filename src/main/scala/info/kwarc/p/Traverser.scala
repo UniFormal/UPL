@@ -22,7 +22,7 @@ abstract class Traverser[A] {
   /** must satisfy apply(thy.toValue) == apply(thy).toValue */
   def apply(thy: Theory)(implicit gc: GlobalContext, a: A): Theory = matchC(thy)(applyDefault _)
 
-  protected final def applyDefault(thy: Theory)(implicit gc: GlobalContext, a: A) = matchC(thy) {
+  protected final def applyDefault(thy: Theory)(implicit gc: GlobalContext, a: A) = thy match {
     case null => null
     case r: Ref => apply(r)
     case OwnedTheory(o,d,t) =>
@@ -74,7 +74,7 @@ abstract class Traverser[A] {
 
   def apply(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = matchC(d)(applyDefault _)
 
-  protected final def applyDefault(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = matchC(d) {
+  protected final def applyDefault(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = d match {
     case m@Module(n,op,df) =>
       val gcI = gc.enter(m)
       val dsT = df.decls.map(d => apply(d)(gcI, a))
@@ -91,7 +91,7 @@ abstract class Traverser[A] {
 
   def apply(tp: Type)(implicit gc: GlobalContext, a: A): Type = matchC(tp)(applyDefault _)
 
-  protected final def applyDefault(tp: Type)(implicit gc: GlobalContext, a: A): Type = matchC(tp) {
+  protected final def applyDefault(tp: Type)(implicit gc: GlobalContext, a: A): Type = tp match {
     case UnknownType(g,cont,sub) =>
       if (cont.known)
         apply(tp.skipUnknown)  // eliminate unknown-wrappers
@@ -124,7 +124,7 @@ abstract class Traverser[A] {
   }
 
   def apply(exp: Expression)(implicit gc: GlobalContext, a: A): Expression = matchC(exp)(applyDefault _)
-  protected final def applyDefault(exp: Expression)(implicit gc: GlobalContext, a: A): Expression = matchC(exp) {
+  protected final def applyDefault(exp: Expression)(implicit gc: GlobalContext, a: A): Expression = exp match {
     case null => null
     case _: BaseValue => exp
     case r: Ref => apply(r)
@@ -322,7 +322,7 @@ object OwnersSubstitutor {
 class Substituter(val initGC: GlobalContext) extends Traverser[Substitution] with TraverseOnlyOriginalRegion {
   override def apply(exp: Expression)(implicit gc: GlobalContext, sub: Substitution) = matchC(exp) {
     case e if e.closing => e // no free variables in e even if they have not been inferred yet
-    case r@(VarRef(_)|ClosedRef(_)) if r.toString != "" && inOriginalRegion => sub.lookupO(r.toString) match {
+    case VarRef(n) if n != "" && inOriginalRegion => sub.lookupO(n) match {
       case Some(vd: EVarDecl) => vd.dfO.get
       case Some(_) => throw IError("unexpected substitute")
       case None => exp
@@ -330,7 +330,7 @@ class Substituter(val initGC: GlobalContext) extends Traverser[Substitution] wit
     case _ => applyDefault(exp)
   }
   override def apply(tp: Type)(implicit gc: GlobalContext, sub: Substitution) = matchC(tp) {
-    case r@(VarRef(_)|ClosedRef(_)) if r.toString != "" && inOriginalRegion => sub.lookupO(r.toString) match {
+    case VarRef(n) if n != "" && inOriginalRegion => sub.lookupO(n) match {
       case Some(vd: TVarDecl) => vd.dfO.get
       case Some(_) => throw IError("unexpected substitute")
       case None => tp

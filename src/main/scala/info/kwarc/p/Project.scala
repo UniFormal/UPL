@@ -36,7 +36,7 @@ object ProjectEntry{
   * A project stores interrelated toplevel source snippets.
   * @param main the main call to run this project
   */
-class Project(protected var entries: Seq[ProjectEntry], var main: Option[Expression] = None) {
+class Project(protected var entries: List[ProjectEntry], var main: Option[Expression] = None) {
 
   override def toString: String = entries.map(_.source).mkString(", ") + ": " + main.getOrElse("(no main)")
 
@@ -64,17 +64,17 @@ class Project(protected var entries: Seq[ProjectEntry], var main: Option[Express
 
   /** all entries concatenated except for the given document; checked resp. executed */
   def makeGlobalContext(so: SourceOrigin) = {
-    val gs = entries.view.filter(e => e.global && e.source.container != so.container).flatMap(_.checked.decls)
-    val les = entries.view.filter(e => !e.global && e.source.container == so.container && e.source.fragment != so.fragment)
+    val gs = entries.filter(e => e.global && e.source.container != so.container).flatMap(_.checked.decls)
+    val les = entries.filter(e => !e.global && e.source.container == so.container && e.source.fragment != so.fragment)
     val lesC = les.flatMap(_.checked.decls)
     val lesR = les.flatMap(_.result.decls)
-    (TheoryValue(gs ++ lesC),TheoryValue(gs ++ lesR))
+    (TheoryValue(gs ::: lesC),TheoryValue(gs ::: lesR))
   }
 
   /** all global entries concatenated */
   def makeGlobalContext() = {
-    val ds = entries.withFilter(_.global).flatMap(_.getVocabulary.decls)
-    GlobalContext(ds)
+    val ds = entries.filter(_.global).flatMap(_.getVocabulary.decls)
+    GlobalContext(TheoryValue(ds))
   }
 
   def update(so: SourceOrigin, src: String) = {
@@ -134,11 +134,7 @@ class Project(protected var entries: Seq[ProjectEntry], var main: Option[Express
     vocC
   }
 
-  /** Checks all [[entries]] for errors, and prints them.
-    *
-    * @return whether errors are found
-    * @example {{{if (checkErrors()) return None}}}
-    */
+  /** checks all [[entries]] and prints errors */
   def checkErrors() = {
     if (hasErrors) {
       println(getErrors.mkString("\n"))
@@ -159,7 +155,7 @@ class Project(protected var entries: Seq[ProjectEntry], var main: Option[Express
       val prog = Program(voc, eC)
       val (ip, r) = Interpreter.run(prog)
       println(r)
-      Option(ip)
+      Some(ip)
     } catch {
       case e: PError =>
         println(e)
@@ -188,7 +184,7 @@ class Project(protected var entries: Seq[ProjectEntry], var main: Option[Express
           val (eC, eI) = ch.checkAndInferExpression(gc, e)
           val vd: EVarDecl = eC match {
             case v: EVarDecl => v
-            case _ => EVarDecl("res" + i.toString, eI, Option(eC), true, false)
+            case e => EVarDecl("res" + i.toString, eI, Some(eC), true, false)
           }
           gc = gc.append(LocalContext.collectContext(vd))
           result = vd.toString
@@ -240,7 +236,7 @@ object Project {
       val props = File.readPropertiesFromString(File.read(projFile))
       val src = props("source").getOrElse("").split("\\s")
       val mn = props("main")
-      val ps = src.toVector.flatMap {s => //ToDo: Handle IOExceptions from incorrect paths
+      val ps = src.toList.flatMap {s => //ToDo: Handle IOExceptions from incorrect paths
         val f = projFile.up.resolve(s)
         pFiles(f)
       }
@@ -267,7 +263,7 @@ object Project {
       proj.check(pe.source, false)
     }
     // create Isabelle file names using the UPL module names (Isabelle file and theory name must be the same)
-    val files = proj.entries.map { pe =>
+    val files = proj.entries.map {pe =>
       val voc = pe.getVocabulary
       /** todo: implement support for multiple sequential (unnested) modules.
        * written to multiple separate files each containing an Isabelle theory corresponding to the module
