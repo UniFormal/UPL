@@ -1,0 +1,2 @@
+source: .
+main: Data.a

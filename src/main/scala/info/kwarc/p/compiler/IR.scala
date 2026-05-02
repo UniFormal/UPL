@@ -30,7 +30,7 @@ case class IRStruct(
     fields: List[(String, String)]
 ) extends IR {
   def toLLVMStrct(): String =
-    s"%$name = type { ${fields.map(f => f._2).mkString(", ")} }"
+    s"%$name = type { ${fields.map(f => f._2).mkString(", ")} } ; ${fields.map(f => f._1).mkString(", ")}"
 }
 
 sealed trait IRStmt extends IR {
@@ -41,6 +41,10 @@ sealed trait IRStmt extends IR {
   def toLLVM(): String =
     if (indentation()) s"\t$toLLVMStmt"
     else toLLVMStmt
+}
+
+case class IRComment(comment: String) extends IRStmt {
+  override def toLLVMStmt = s"; $comment"
 }
 
 case class IRReturn(value: IROperand) extends IRStmt {

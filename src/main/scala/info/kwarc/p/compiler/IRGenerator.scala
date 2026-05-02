@@ -31,51 +31,76 @@ class IRGenerator(val voc: TheoryValue) {
   private var structs: List[IRStruct] = List()
   private var nameCount: Map[String, Int] = Map().withDefaultValue(0)
 
-  // Maps from named expression to vTable index for the method of that expression for each closed module
-  private val methodLayout: mutable.Map[Path, mutable.Map[IRFun, Int]] = mutable.Map()
+  private val closedModules: mutable.Map[Path, ClosedModule] = mutable.Map()
+
+  private case class ClosedModule(
+                                   struct: IRStruct,
+                                   parentLayout: Map[Path, Int],
+                                   fieldLayout: Map[String, Int],
+                                   fieldLookup: Map[String, Path],
+                                   field2Expression: Map[String, Expression]
+                                 )
 
   def fresh(name: String): String = {
     val c = nameCount(name)
     nameCount = nameCount.updated(name, c + 1)
-    s"$name$c"
+    s"${name}_$c"
   }
 
-  private def visitDeclaration(d: Declaration, p: Path): Unit = d match {
-    case Module(modName, closed, df) =>
-      val modP = p / modName
+  private def visitDeclaration(d: Declaration, path: Path): Unit = d match {
+    case Module(name, closed, df) =>
+      val modulePath = path / name
       if (closed) {
-        // class
-        var fields: List[(String, String)] = List()
-        val vtableName = s"${modP}_vtable"
-        fields :+= ("__vtable__", s"%$vtableName*")
-        var vTableFields: List[(String, String)] = List()
-        var virtualMethodIndex = 0
-        val virtualMethodIndice: mutable.Map[IRFun, Int] = mutable.Map()
+        val fields = ArrayBuffer.empty[(String, String)]
+
+        var fieldIndex = 0
+
+        val parentLayout: mutable.Map[Path, Int] = mutable.Map()
+        val fieldLayout: mutable.Map[String, Int] = mutable.Map()
+        val fieldLookup: mutable.Map[String, Path] = mutable.Map()
+        val field2Expression: mutable.Map[String, Expression] = mutable.Map()
+
+        val includedFields: mutable.Set[String] = mutable.Set()
+        val declaredFields: mutable.Set[String] = mutable.Set()
         df.decls.foreach {
-          case Include(OpenRef(p), dfO, realize) =>
-            val vtableName = s"${p}_vtable"
-            fields :+= ("__vtable__", s"%$vtableName*")
-          case ExprDecl(name, tc, tp, dfO, ntO, modifiers) =>
-            val stmts = dfO match {
-              case Some(expression) =>
-                val (stmts, value) = visitExpression(expression)
-                stmts :+ IRReturn(value)
-              case None => List(IRReturn(IRConstInt(0)))
+          case Include(OpenRef(includePath), dfO, realize) =>
+            closedModules(includePath).fieldLayout.foreach { case (field, idx) =>
+              if (!includedFields.contains(field)) {
+                fieldLookup(field) = includePath
+              }
+              includedFields += field
             }
-            // TODO ensure names are unique
-            val fun = IRFun(s"$modP.$name", toLLVMType(tp), List(), stmts)
-            virtualMethodIndice(fun) = virtualMethodIndex
-            functions :+= fun
-            vTableFields :+= ("__virtual_method__", "ptr")
-            virtualMethodIndex += 1
-          //            fields :+= (name, toLLVMType(tp))
+            closedModules(includePath).field2Expression.foreach { case (field, function) =>
+              declaredFields += field
+            }
+            val field = (includePath.toString, "ptr")
+
+            fields += field
+            parentLayout(includePath) = fieldIndex
+            fieldIndex += 1
+
+          case ExprDecl(name, tc, tp, dfO, ntO, modifiers) =>
+            if (!includedFields.contains(name)) {
+              val field = (name, "i32")
+              fields += field
+              fieldLayout(name) = fieldIndex
+              fieldLookup(name) = modulePath
+              fieldIndex += 1
+            }
+            if (!declaredFields.contains(name)) {
+              dfO match {
+                case Some(expression) =>
+                  field2Expression(name) = expression
+                case _ =>
+              }
+            }
         }
-        val vTableStruct = IRStruct(vtableName, vTableFields)
-        methodLayout(modP) = virtualMethodIndice
-        structs :+= vTableStruct
-        structs :+= IRStruct(modP.toString, fields)
+
+        val struct = IRStruct(modulePath.toString, fields.toList)
+        closedModules(modulePath) = ClosedModule(struct, parentLayout.toMap, fieldLayout.toMap, fieldLookup.toMap, field2Expression.toMap)
+        structs :+= struct
       } else {
-        df.decls.foreach(d => visitDeclaration(d, p/modName))
+        df.decls.foreach(d => visitDeclaration(d, path/name))
       }
     case ExprDecl(name, tc, tp, dfO, ntO, modifiers) =>
       val (stmts, retTp) = dfO match {
@@ -86,9 +111,9 @@ class IRGenerator(val voc: TheoryValue) {
         case None => (List(IRReturn(IRConstInt(0))), "i32")
       }
 
-      val fun = IRFun(s"__global__${p / name}", retTp, List(), stmts)
+      val fun = IRFun(s"__global__${path / name}", retTp, List(), stmts)
       functions :+= fun
-      globalFunctions = globalFunctions.updated(p / name, fun)
+      globalFunctions = globalFunctions.updated(path / name, fun)
     case _ =>
       sys.error(s"Unsupported declaration ${d.getClass} $d")
   }
@@ -180,64 +205,114 @@ class IRGenerator(val voc: TheoryValue) {
       val result = toIRVar(fresh("v"), fun.ret)
       val call = IrCall(result, fun, List())
       (List(call), result)
-    case OwnedExpr(owner @ OpenRef(p), ownerDom, ClosedRef(name)) =>
-      // TODO
-      val pType = determineType(voc.lookupPath(p).get)
-      val (stmts, vTablePtr) = visitExpression(owner)
-      val baseFun = functions.find(f => f.name == (pType/name).toString).get
-      val vtableName = s"${pType}_vtable"
-      val struct = structs.find(s => s.name == vtableName).get
-      val idx = methodLayout(pType)(baseFun)
-      val fieldPtr = IRVarPtr(fresh(s"ptr_${pType}_vtable_index${idx}_"))
-      val getElement = IRGetElement(fieldPtr, struct, vTablePtr.asInstanceOf[IRVarPtr], idx)
-      val funPtr = IRVarPtr(fresh(s"ptr_${pType}_fun"))
+    case OwnedExpr(owner @ OpenRef(path), ownerDom, ClosedRef(name)) =>
+      // TODO improve type detection
+      val tp = determineType(voc.lookupPath(path).get)
 
-      val load = IRLoad(funPtr, fieldPtr)
+      val closedModule = closedModules(tp)
 
-      val result = toIRVar(fresh("v"), baseFun.ret)
-      // The actual function invoked may be a different one, but we only care about parameter types and return type
-      // which should be the same
-      // TODO parameters
-      val call = IrPtrCall(result, baseFun.ret, funPtr, List())
+      val combinedStmts = ArrayBuffer.empty[IRStmt]
+      val (stmts, op) = visitExpression(owner)
+      combinedStmts ++= stmts
 
-      (stmts ++ List(getElement, load, call), result)
-    case Instance(theory) =>
-      val size = I64(fresh("size"))
+      val modulePtr = op.asInstanceOf[IRVarPtr]
 
-      // TODO better way to figure out instance type
-      val p = theory.decls.head.asInstanceOf[Include].dom.asInstanceOf[OpenRef].path
-      val vtableName = s"${p}_vtable"
-      val struct = structs.find(s => s.name == vtableName).get
-      val computeSize = IRComputeSize(size, struct)
+      // TODO better name
+      val fieldPtr = IRVarPtr(fresh("ptr_field_index"))
 
-      val vTablePtr = IRVarPtr(fresh(s"ptr_${p}_vtable_"))
-      val malloc = IrCall(vTablePtr, mallocFun, List(size))
+      if (!closedModule.fieldLayout.contains(name)) {
+        // Module which includes our field
+        val parent = closedModule.fieldLookup(name)
 
-      // initialize vtable fields
-      val initStmts = ArrayBuffer.empty[IRStmt]
+        val parentIndex = closedModule.parentLayout(parent)
+        val parentPtrPtr = IRVarPtr(fresh(s"ptr_ptr_$parent"))
+        val getParentElement = IRGetElement(parentPtrPtr, closedModule.struct, modulePtr, parentIndex)
+        combinedStmts += getParentElement
 
-      methodLayout(p).foreach { case (fun, idx) =>
-        val fieldPtr = IRVarPtr(fresh(s"ptr_${p}_vtable_index${idx}_"))
-        val getElement = IRGetElement(fieldPtr, struct, vTablePtr, idx)
-        val store = IRStore(IRFunPtr(fun), fieldPtr)
-        initStmts += getElement
-        initStmts += store
+        val parentPtr = IRVarPtr(fresh(s"ptr_$parent"))
+
+        val load = IRLoad(parentPtr, parentPtrPtr)
+        combinedStmts += load
+
+        val parentModule = closedModules(parent)
+        val getFieldPtr = IRGetElement(fieldPtr, parentModule.struct, parentPtr, parentModule.fieldLayout(name))
+        combinedStmts += getFieldPtr
+      } else {
+        val getFieldPtr = IRGetElement(fieldPtr, closedModule.struct, modulePtr, closedModule.fieldLayout(name))
+        combinedStmts += getFieldPtr
+
       }
 
-      (List(computeSize, malloc) ++ initStmts, vTablePtr)
+      val result = I32(fresh("v"))
+      val load = IRLoad(result, fieldPtr)
+      combinedStmts += load
+
+      (combinedStmts.toList, result)
+    case Instance(theory) =>
+      // TODO better way to figure out instance type
+      val path = theory.decls.head.asInstanceOf[Include].dom.asInstanceOf[OpenRef].path
+
+      val closedModule = closedModules(path)
+      val parentModules = closedModule.parentLayout.map { case (parent, _) =>
+        (parent, allocClosedModuleStruct(closedModules(parent)))
+      }
+      val (stmts, ptr) = allocClosedModuleStruct(closedModule)
+
+      var moduleStructs: Map[Path, IRVarPtr] = parentModules.map{ case (path, (_, ptr)) => (path, ptr) }
+      moduleStructs = moduleStructs.updated(path, ptr)
+
+      val combinedStmts = ArrayBuffer.empty[IRStmt]
+      combinedStmts ++=  parentModules.flatMap(m => m._2._1)
+      combinedStmts ++= stmts
+
+      var assignments: Map[String, (List[IRStmt], IROperand)] = Map()
+      // Default theory declarations
+      moduleStructs.foreach { case (path, _) =>
+        closedModules(path).field2Expression.foreach { case (field, expression) =>
+          assignments = assignments.updated(field, visitExpression(expression))
+        }
+      }
+      // Instance assignments
+      theory.decls.foreach {
+        case ExprDecl(name, _, _, Some(expression), _, _) =>
+          assignments = assignments.updated(name, visitExpression(expression))
+        case _ =>
+      }
+      combinedStmts += IRComment("Assign fields")
+      assignments.foreach { case (name, (stmts, operand)) =>
+        val module = closedModule.fieldLookup(name)
+        val structPtr = moduleStructs(module)
+        combinedStmts ++= stmts
+        combinedStmts ++= assignField(module, structPtr, closedModules(module).fieldLayout(name), operand)
+      }
+
+      // Assign parent pointers
+      combinedStmts += IRComment("Assign parent pointers")
+      moduleStructs.foreach { case (path, structPtr) =>
+        closedModules(path).parentLayout.foreach { case (parent, index) =>
+          combinedStmts ++= assignField(path, structPtr, index, moduleStructs(parent))
+        }
+      }
+
+      (combinedStmts.toList, ptr)
     case _ =>
       sys.error(s"Unsupported expression ${e.getClass} $e")
   }
 
-  private def toLLVMType(tp: Type): String = tp match {
-    case nt: NumberType =>
-      nt match {
-        case NumberType.Nat => "i32"
-        case NumberType.Int => "i32"
-        case _ => sys.error(s"Unsupported number type ${nt.getClass} $nt")
-      }
-    case _ =>
-      sys.error(s"Unsupported type ${tp.getClass} $tp")
+  private def allocClosedModuleStruct(module: ClosedModule): (List[IRStmt], IRVarPtr) = {
+    val size = I64(fresh("size"))
+    val computeSize = IRComputeSize(size, module.struct)
+    val structPtr = IRVarPtr(fresh(s"ptr_${module.struct.name}"))
+    val malloc = IrCall(structPtr, mallocFun, List(size))
+
+    (List(computeSize, malloc), structPtr)
+  }
+
+  private def assignField(path: Path, ptr: IRVarPtr, index: Int, value: IROperand): List[IRStmt] = {
+    val fieldPtr = IRVarPtr(fresh(s"ptr_${path}_field_index${index}"))
+    val getElement = IRGetElement(fieldPtr, closedModules(path).struct, ptr, index)
+    val store = IRStore(value, fieldPtr)
+    List(getElement, store)
   }
 
   private def toIRVar(name: String, tp: String): IRVar = {

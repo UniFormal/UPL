@@ -1,93 +1,49 @@
 declare ptr @malloc(i64)
 
-%Data.T1_vtable = type { ptr, ptr }
-%Data.T1 = type { %Data.T1_vtable* }
-%Data.T2_vtable = type { ptr }
-%Data.T2 = type { %Data.T2_vtable* }
-%Data.T3_vtable = type { ptr, ptr, ptr, ptr }
-%Data.T3 = type { %Data.T3_vtable*, %Data.T1_vtable*, %Data.T2_vtable* }
-%Data.T4_vtable = type { ptr, ptr, ptr, ptr, ptr, ptr }
-%Data.T4 = type { %Data.T4_vtable*, %Data.T1_vtable*, %Data.T3_vtable*, %Data.T2_vtable* }
+%Data.A = type { i32 } ; a
+%Data.B = type { ptr, i32, i32, i32 } ; Data.A, b, c, d
+%Data.C = type { ptr, i32 } ; Data.A, c
+%Data.D = type { ptr, ptr, ptr } ; Data.B, Data.A, Data.C
 
-
-define i32 @Data.T1.y() {
-	ret i32 0
-}
-
-define i32 @Data.T1.x() {
-	%v0 = add i32 3, 66
-	ret i32 %v0
-}
-
-define i32 @Data.T2.x() {
-	ret i32 0
-}
-
-define i32 @Data.T3.x() {
-	%v1 = add i32 3, 66
-	ret i32 %v1
-}
-
-define i32 @Data.T3.y() {
-	ret i32 65
-}
-
-define i32 @Data.T3.z() {
-	ret i32 5
-}
-
-define i32 @Data.T3.s() {
-	ret i32 0
-}
-
-define i32 @Data.T4.x() {
-	%v2 = add i32 3, 66
-	ret i32 %v2
-}
-
-define i32 @Data.T4.y() {
-	ret i32 65
-}
-
-define i32 @Data.T4.z() {
-	ret i32 5
-}
-
-define i32 @Data.T4.s() {
-	ret i32 0
-}
-
-define i32 @Data.T4.a() {
-	ret i32 0
-}
-
-define i32 @Data.T4.b() {
-	ret i32 0
-}
 
 define ptr @__global__Data.test3() {
-	%size0 = ptrtoint %Data.T3_vtable* getelementptr (%Data.T3_vtable, %Data.T3_vtable* null, i32 1) to i64
-	%ptr_Data.T3_vtable_0 = call ptr @malloc(i64 %size0)
-	%ptr_Data.T3_vtable_index3_0 = getelementptr %Data.T3_vtable, ptr %ptr_Data.T3_vtable_0, i32 0, i32 3
-	store ptr @Data.T3.s, ptr %ptr_Data.T3_vtable_index3_0
-	%ptr_Data.T3_vtable_index2_0 = getelementptr %Data.T3_vtable, ptr %ptr_Data.T3_vtable_0, i32 0, i32 2
-	store ptr @Data.T3.z, ptr %ptr_Data.T3_vtable_index2_0
-	%ptr_Data.T3_vtable_index0_0 = getelementptr %Data.T3_vtable, ptr %ptr_Data.T3_vtable_0, i32 0, i32 0
-	store ptr @Data.T3.x, ptr %ptr_Data.T3_vtable_index0_0
-	%ptr_Data.T3_vtable_index1_0 = getelementptr %Data.T3_vtable, ptr %ptr_Data.T3_vtable_0, i32 0, i32 1
-	store ptr @Data.T3.y, ptr %ptr_Data.T3_vtable_index1_0
-	ret ptr %ptr_Data.T3_vtable_0
-}
-
-define i32 @__global__Data.a() {
-	%v3 = call ptr @__global__Data.test3()
-	%ptr_Data.T3_vtable_index0_1 = getelementptr %Data.T3_vtable, ptr %v3, i32 0, i32 0
-	%ptr_Data.T3_fun0 = load ptr, ptr %ptr_Data.T3_vtable_index0_1
-	%v4 = call i32 %ptr_Data.T3_fun0()
-	ret i32 %v4
+	%size_0 = ptrtoint %Data.B* getelementptr (%Data.B, %Data.B* null, i32 1) to i64
+	%ptr_Data.B_0 = call ptr @malloc(i64 %size_0)
+	%size_1 = ptrtoint %Data.C* getelementptr (%Data.C, %Data.C* null, i32 1) to i64
+	%ptr_Data.C_0 = call ptr @malloc(i64 %size_1)
+	%size_2 = ptrtoint %Data.A* getelementptr (%Data.A, %Data.A* null, i32 1) to i64
+	%ptr_Data.A_0 = call ptr @malloc(i64 %size_2)
+	%size_3 = ptrtoint %Data.D* getelementptr (%Data.D, %Data.D* null, i32 1) to i64
+	%ptr_Data.D_0 = call ptr @malloc(i64 %size_3)
+	; Assign fields
+	%v_0 = add i32 3, 5
+	%ptr_Data.A_field_index0_0 = getelementptr %Data.A, ptr %ptr_Data.A_0, i32 0, i32 0
+	store i32 %v_0, ptr %ptr_Data.A_field_index0_0
+	%ptr_Data.B_field_index3_0 = getelementptr %Data.B, ptr %ptr_Data.B_0, i32 0, i32 3
+	store i32 5, ptr %ptr_Data.B_field_index3_0
+	%ptr_Data.B_field_index1_0 = getelementptr %Data.B, ptr %ptr_Data.B_0, i32 0, i32 1
+	store i32 2, ptr %ptr_Data.B_field_index1_0
+	%ptr_Data.B_field_index2_0 = getelementptr %Data.B, ptr %ptr_Data.B_0, i32 0, i32 2
+	store i32 3, ptr %ptr_Data.B_field_index2_0
+	; Assign parent pointers
+	%ptr_Data.B_field_index0_0 = getelementptr %Data.B, ptr %ptr_Data.B_0, i32 0, i32 0
+	store ptr %ptr_Data.A_0, ptr %ptr_Data.B_field_index0_0
+	%ptr_Data.C_field_index0_0 = getelementptr %Data.C, ptr %ptr_Data.C_0, i32 0, i32 0
+	store ptr %ptr_Data.A_0, ptr %ptr_Data.C_field_index0_0
+	%ptr_Data.D_field_index0_0 = getelementptr %Data.D, ptr %ptr_Data.D_0, i32 0, i32 0
+	store ptr %ptr_Data.B_0, ptr %ptr_Data.D_field_index0_0
+	%ptr_Data.D_field_index2_0 = getelementptr %Data.D, ptr %ptr_Data.D_0, i32 0, i32 2
+	store ptr %ptr_Data.C_0, ptr %ptr_Data.D_field_index2_0
+	%ptr_Data.D_field_index1_0 = getelementptr %Data.D, ptr %ptr_Data.D_0, i32 0, i32 1
+	store ptr %ptr_Data.A_0, ptr %ptr_Data.D_field_index1_0
+	ret ptr %ptr_Data.D_0
 }
 
 define i32 @main() {
-	%v5 = call i32 @__global__Data.a()
-	ret i32 %v5
+	%v_1 = call ptr @__global__Data.test3()
+	%ptr_ptr_Data.B_0 = getelementptr %Data.D, ptr %v_1, i32 0, i32 0
+	%ptr_Data.B_1 = load ptr, ptr %ptr_ptr_Data.B_0
+	%ptr_field_index_0 = getelementptr %Data.B, ptr %ptr_Data.B_1, i32 0, i32 2
+	%v_2 = load i32, ptr %ptr_field_index_0
+	ret i32 %v_2
 }
