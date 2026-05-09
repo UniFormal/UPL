@@ -26,23 +26,25 @@ module additive {
 //-------------------------------------------------------
 
     theory AdditiveMagma {
-        include Magma
-        add # infix + = op
+        include Carrier
+        add: (univ,univ) -> univ # infix +
+        magma = Magma {type univ = ..univ, op = add}
     }
+    fromMagma(m: Magma) = AdditiveMagma {type univ = m.univ, add = m.op}
 
     theory AdditiveCommutative {
-        include Commutative
         include AdditiveMagma
+        add_comm:--- x+y == y+x
     }
 
     theory AdditiveIdempotent {
-        include Idempotent
         include AdditiveMagma
+        idem:--- x+x == x
     }
 
     theory AdditiveSemigroup {
-        include Semigroup
         include AdditiveMagma
+        assoc:--- x+(y+z) == (x+y)+z
     }
 
 }
