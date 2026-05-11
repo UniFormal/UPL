@@ -36,7 +36,7 @@ object ProjectEntry{
   * A project stores interrelated toplevel source snippets.
   * @param main the main call to run this project
   */
-class Project(protected var entries: Seq[ProjectEntry], var main: Option[Expression] = None) {
+class Project(var entries: Seq[ProjectEntry], var main: Option[Expression] = None) {
 
   override def toString: String = entries.map(_.source).mkString(", ") + ": " + main.getOrElse("(no main)")
 

@@ -11,7 +11,8 @@ object Main {
     val mn = if (left.nonEmpty) Some(next) else None
     val proj = Project.fromFile(path, mn)
     //println(proj)
-    if (isabelle) Project.toIsabelleFiles(proj) else proj.runMaybeRepl(interactive)
+    CompilerLLVM.generateBinary(proj)
+   // if (isabelle) Project.toIsabelleFiles(proj) else proj.runMaybeRepl(interactive)
   }
 
   val doc =
