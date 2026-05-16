@@ -1,6 +1,7 @@
 module Numbers {
   theory Nat {
-    type num
+    type univ
+    type num = univ
     z: num
     s: num -> num
     o = s(z)

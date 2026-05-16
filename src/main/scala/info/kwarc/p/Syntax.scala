@@ -111,6 +111,10 @@ case class Module(name: String, closed: Boolean, df: TheoryValue) extends NamedD
     }
   }
 
+  private[p] def updatedDecls(f: List[Declaration] => List[Declaration]): Module = {
+    copy(df = df.copy(decls = f(decls)).copyFrom(df)).copyFrom(this)
+  }
+
   /** dereferences a path inside this module, returns the result followed by its ancestors */
   def lookupPathAndParents(path: Path, parents: List[NamedDeclaration]): Option[List[NamedDeclaration]] = path.names match {
     case Nil => Some(this :: parents)

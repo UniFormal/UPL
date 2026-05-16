@@ -66,6 +66,8 @@ module Operators {
     op: (univ,univ) -> univ # infix ∘
     // T is the current theory if an atomic type is encountered that is declared in T.
     comm: |- forall x,y. x∘y == y∘x
+    uminus: univ -> univ # prefix $
+    inv: |- forall x,y. (x∘ $x)∘y == y
   }
 
   // Notations are also available from the outside if the type i.a is encountered where i:T is an instance of T and a is declared in T.

@@ -215,7 +215,9 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
         case sd: SymbolDeclaration => sd.toString
         case _: Module => "module"
         case vd: VarDecl => vd.toString
+        case _ => r.toString
       }
+      case sd: SymbolDeclaration => sd.toString
       case vd: VarDecl => vd.toString
       case bo: BaseOperator => bo.operator.symbol + ": " + bo.tp.toString
       case e: Expression if selection =>

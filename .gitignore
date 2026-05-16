@@ -15,5 +15,5 @@ sbt.xml
 !/.idea/runConfigurations
 /.bloop
 /.metals
-/.vscode
+*/.vscode
 /test/examples/AAA_dummy.p
