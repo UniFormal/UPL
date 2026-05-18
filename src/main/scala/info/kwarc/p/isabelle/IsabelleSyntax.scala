@@ -1,4 +1,5 @@
-package info.kwarc.p
+package info.kwarc.p.isabelle
+import info.kwarc.p._
 
 /** Covers some subset of the UPL AST.
  * The covered AST nodes are translated into a surface-level syntax representation for Isabelle.

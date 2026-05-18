@@ -1,7 +1,7 @@
-package info.kwarc.p
+package info.kwarc.p.isabelle
 
+import info.kwarc.p._
 import scala.annotation.tailrec
-
 
 /**
  * IsabelleCompiler translates the UPL internal representation into a surface-level syntax representation for Isabelle
