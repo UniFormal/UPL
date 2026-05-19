@@ -1,6 +1,6 @@
 package info.kwarc.p
 
-import info.kwarc.p.compiler.LLVMCompiler
+import info.kwarc.p.compiler.{CoreFragmentTraverser, LLVMCompiler}
 
 
 /** A part in a project with mutable fields maintained by the projects */
@@ -177,6 +177,15 @@ class Project(protected var entries: Seq[ProjectEntry], var main: Option[Express
     val ch = new Checker(ErrorThrower)
     try {
       val (eC, _) = ch.checkAndInferExpression(GlobalContext(voc), e)
+
+      val gc = GlobalContext(voc)
+
+      voc.decls.foreach { d =>
+        CoreFragmentTraverser(gc, d)
+      }
+
+      CoreFragmentTraverser(gc, eC)
+
       val prog = Program(voc, eC)
       LLVMCompiler.run(prog)
     } catch {
