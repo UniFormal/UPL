@@ -1,5 +1,8 @@
 package info.kwarc.p
 
+import info.kwarc.p.compiler.LLVMCompiler
+import info.kwarc.p.isabelle.IsabelleCompiler
+
 
 /** A part in a project with mutable fields maintained by the projects */
 class ProjectEntry(val source: SourceOrigin) {
@@ -160,6 +163,23 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
       case e: PError =>
         println(e)
         None
+    }
+  }
+
+  /** compile this project to binary at path */
+  def compile(path: File): Unit = {
+    if (checkErrors()) return
+    val voc = check(false)
+    if (checkErrors()) return
+    val e = main.getOrElse(UnitValue)
+    val ch = new Checker(ErrorThrower)
+    try {
+      val (eC, _) = ch.checkAndInferExpression(GlobalContext(voc), e)
+      val prog = Program(voc, eC)
+      LLVMCompiler.run(prog, path)
+    } catch {
+      case e: PError =>
+        println(e)
     }
   }
 

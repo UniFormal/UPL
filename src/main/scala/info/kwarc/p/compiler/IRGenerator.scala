@@ -1,0 +1,136 @@
+package info.kwarc.p.compiler
+
+import info.kwarc.p.{ApproxReal, BoolValue, Declaration, Expression, GlobalContext, IfThenElse, NumberValue, Program, Rat}
+
+import scala.collection.mutable
+
+object IRGenerator {
+  def run(p: Program): IRProgram = {
+    val voc = p.voc
+    val ig = new IRGenerator()
+
+    val gc = GlobalContext(voc)
+    voc.decls.foreach(d => ig.apply(d)(gc))
+
+    ig.compileMain(p.main)(gc)
+
+    IRProgram(
+      ig.structs.toList,
+      ig.declaredFunctions,
+      ig.functions.toList
+    )
+  }
+}
+
+private class IRGenerator {
+  private val mallocFun =
+    IRDeclFun("malloc", IrPtrType(IrIntType.I64), List(IrIntType.I64))
+  private val declaredFunctions: List[IRDeclFun] = List(mallocFun)
+
+  private val structs: mutable.ArrayBuffer[IRStruct] = mutable.ArrayBuffer()
+  private val functions: mutable.ArrayBuffer[IRFun] = mutable.ArrayBuffer()
+
+  private var ctx: FunctionContext = _
+
+  def compileMain(exp: Expression)(implicit gc: GlobalContext): Unit = {
+    ctx = new FunctionContext
+
+    val entry = ctx.newBlock("entry")
+    ctx.insertBlock(entry)
+    val value = apply(exp)(gc)
+    ctx.emit(IrReturn(value))
+
+    // We currently assume that the main expression evaluates to a 64-bit integer.
+    val mainFun = IRFun(
+      "main",
+      IrIntType.I64,
+      Nil,
+      ctx.buildBlocks()
+    )
+    functions += mainFun
+  }
+
+  def apply(
+      exp: Expression
+  )(implicit gc: GlobalContext): IrOperand = exp match {
+    // TODO Currently all numbers are treated as 64-bit integers.
+    case NumberValue(_, re, _) =>
+      re match {
+        case ApproxReal(value) => IrConst(value.toInt)
+        case Rat(enu, deno)    => IrConst(enu.toInt / deno.toInt)
+      }
+    case BoolValue(value) => IrConst(value)
+    case IfThenElse(cond, thn, Some(els)) =>
+      // Based on ideas from
+      // https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl05.html#if-then-else
+      var thenB = ctx.newBlock("then")
+      var elseB = ctx.newBlock("else")
+      val endB = ctx.newBlock("end")
+
+      // This needs to evaluate to a 1-bit integer.
+      val condO = apply(cond)
+      assert(condO.tp == IrIntType.I1)
+      ctx.emit(IrCondBranch(condO, thenB.label, elseB.label))
+
+      ctx.insertBlock(thenB)
+      val thnO = apply(thn)
+      ctx.emit(IRBranch(endB.label))
+      thenB = ctx.currentBlock
+
+      ctx.insertBlock(elseB)
+      val elsO = apply(els)
+      ctx.emit(IRBranch(endB.label))
+      elseB = ctx.currentBlock
+
+      ctx.insertBlock(endB)
+
+      val result = IrVar(thnO.tp, ctx.fresh("result"))
+      ctx.emit(IrPhi(result, List((thnO, thenB.label), (elsO, elseB.label))))
+
+      result
+  }
+
+  def apply(
+      d: Declaration
+  )(implicit gc: GlobalContext): Unit = {}
+
+  private case class BlockBuilder(
+      label: String,
+      instructions: mutable.ArrayBuffer[IrInstr] = mutable.ArrayBuffer(),
+  ) {
+    def add(i: IrInstr): Unit = instructions += i
+
+    def build() = IrBlock(label, instructions.toList)
+  }
+
+  private class FunctionContext {
+    private val blocks = mutable.ArrayBuffer[BlockBuilder]()
+    var currentBlock: BlockBuilder = _
+
+    private val nameCount: mutable.Map[String, Int] =
+      mutable.Map().withDefaultValue(0)
+
+    def newBlock(name: String): BlockBuilder = {
+      BlockBuilder(fresh(name))
+    }
+
+    def insertBlock(b: BlockBuilder): Unit = {
+      blocks += b
+      currentBlock = b
+    }
+
+    def emit(instr: IrInstr): Unit = {
+      currentBlock.add(instr)
+    }
+
+    def fresh(name: String): String = {
+      val c = nameCount(name)
+      nameCount.update(name, c + 1)
+      s"${name}_$c"
+    }
+
+    def buildBlocks(): List[IrBlock] =
+      blocks.map(_.build()).toList
+
+  }
+}
