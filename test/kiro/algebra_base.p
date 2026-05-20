@@ -131,12 +131,13 @@ module algebra_base {
     theory SemiField {
         include Ring
         // Redefine mult as a Monoid with inverse, but with conditional axioms
-        mult: Monoid {
-            type univ = ..univ,
-            inv: univ -> univ # postfix ⁻,
-            invL:--- (x != add.e) => op(x, inv(x)) == e,
-            invR:--- (x != add.e) => op(inv(x), x) == e
-        }
+        // mult: Monoid {
+        //     type univ = ..univ
+        //     inv: univ -> univ
+        //     invL:--- (x != add.e) => op(x, inv(x)) == e
+        //     invR:--- (x != add.e) => op(inv(x), x) == e
+        // }
+        mult: Group
     }
 
     theory Field {
@@ -151,21 +152,18 @@ module algebra_base {
         // 3. Scalar multiplication operation
         // 4. Compatibility axioms
         
-        field: Field  // The scalar field
+        field: Field // The scalar field
         
         // Vector addition forms an abelian group
-        vectors: AbelianGroup {
-            // Vectors have a different type than scalars
-            type univ  // vector type (distinct from field.univ)
-        }
+        vectors: AbelianGroup
         
         // Scalar multiplication: F × V → V
-        scalarMult: (field.univ, vectors.univ) -> vectors.univ
+        scalarMult: (field, vectors) -> vectors
         
         // Compatibility axioms for scalar multiplication
         
         // 1. Compatibility with field multiplication
-        compat:--- scalarMut(scalarMult(a, b, v), field.mult.op(a, b)) == scalarMult(a, scalarMult(b, v))
+        compat:--- scalarMult(a, scalarMult(b, v)) == scalarMult(field.mult.op(a, b), v)
         
         // 2. Identity element of scalar field acts as identity
         identity:--- scalarMult(field.mult.e, v) == v
