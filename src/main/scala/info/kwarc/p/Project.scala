@@ -1,5 +1,7 @@
 package info.kwarc.p
 
+import info.kwarc.p.isabelle.IsabelleCompiler
+
 
 /** A part in a project with mutable fields maintained by the projects */
 class ProjectEntry(val source: SourceOrigin) {
@@ -144,14 +146,20 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
   }
 
   /** initialize and run 'main' */
-  def run(): Option[Interpreter] = {
+  def run(programArgs: List[String]): Option[Interpreter] = {
     if (checkErrors()) return None
     val voc = check(false)
     if (checkErrors()) return None
     val e = main.getOrElse(UnitValue)
+    // Add program arguments into the scope of main
+    val argDecl = EVarDecl("args",
+      CollectionType(StringType, CollectionKind.List),
+      Some(CollectionValue(programArgs.map {a => StringValue(a)}, CollectionKind.List))
+    )
+
     val ch = new Checker(ErrorThrower)
     try {
-      val (eC, _) = ch.checkAndInferExpression(GlobalContext(voc), e)
+      val (eC, _) = ch.checkAndInferExpression(GlobalContext(voc), Block(List(argDecl, e)))
       val prog = Program(voc, eC)
       val (ip, r) = Interpreter.run(prog)
       println(r)
@@ -208,8 +216,8 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
 
   /** evaluates [[main]] and starts a REPL afterwards, returns true if so
     */
-  def runMaybeRepl(dropToRepl: Boolean): Unit = {
-    val ipO = run()
+  def runMaybeRepl(dropToRepl: Boolean, programArgs: List[String] = Nil): Unit = {
+    val ipO = run(programArgs)
     if (dropToRepl) ipO foreach {ip => repl(ip)}
   }
 
