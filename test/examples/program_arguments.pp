@@ -1,0 +1,1 @@
+main: "The first program argument is: " + args[0]
