@@ -1,1 +1,1 @@
-main: if (true) if (false) 111 else 42 else 69
+main: if (100 == 100) if (false) 111 else 42 else 69

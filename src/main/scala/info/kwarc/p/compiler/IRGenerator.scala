@@ -1,6 +1,7 @@
 package info.kwarc.p.compiler
 
-import info.kwarc.p.{ApproxReal, BoolValue, Declaration, Expression, GlobalContext, IfThenElse, NumberValue, Program, Rat}
+import info.kwarc.p.compiler.Condition.{EQUAL, NOT_EQUAL}
+import info.kwarc.p.{ApproxReal, BaseValue, BoolValue, Declaration, Equality, Expression, GlobalContext, IfThenElse, NumberValue, Program, Rat, StringValue, UnitValue}
 
 import scala.collection.mutable
 
@@ -53,13 +54,16 @@ private class IRGenerator {
   def apply(
       exp: Expression
   )(implicit gc: GlobalContext): IrOperand = exp match {
-    // TODO Currently all numbers are treated as 64-bit integers.
+    // TODO Currently all numbers are treated as i64 integers.
     case NumberValue(_, re, _) =>
       re match {
         case ApproxReal(value) => IrConst(value.toInt)
         case Rat(enu, deno)    => IrConst(enu.toInt / deno.toInt)
       }
+    // Booleans are represented using i1 integers.
     case BoolValue(value) => IrConst(value)
+    // Unit value is represented as a special constant to make it easy to spot when debugging
+    case UnitValue                        => IrConst(0xdeadbeef)
     case IfThenElse(cond, thn, Some(els)) =>
       // Based on ideas from
       // https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl05.html#if-then-else
@@ -88,6 +92,18 @@ private class IRGenerator {
       ctx.emit(IrPhi(result, List((thnO, thenB.label), (elsO, elseB.label))))
 
       result
+    case Equality(positive, tp, left, right) =>
+      val lO = apply(left)
+      val rO = apply(right)
+      val cmpResult = IrVar(IrIntType.I1, ctx.fresh("cmp_result"))
+      // We only support comparisons of boolean, numbers (approximated as i64) and UnitValue
+      assert(left.isInstanceOf[BaseValue])
+      assert(right.isInstanceOf[BaseValue])
+      assert(!left.isInstanceOf[StringValue])
+      assert(!right.isInstanceOf[StringValue])
+
+      ctx.emit(IrICmp(cmpResult, if (positive) EQUAL else NOT_EQUAL, lO, rO))
+      cmpResult
   }
 
   def apply(
@@ -96,7 +112,7 @@ private class IRGenerator {
 
   private case class BlockBuilder(
       label: String,
-      instructions: mutable.ArrayBuffer[IrInstr] = mutable.ArrayBuffer(),
+      instructions: mutable.ArrayBuffer[IrInstr] = mutable.ArrayBuffer()
   ) {
     def add(i: IrInstr): Unit = instructions += i
 
@@ -105,13 +121,18 @@ private class IRGenerator {
 
   private class FunctionContext {
     private val blocks = mutable.ArrayBuffer[BlockBuilder]()
-    var currentBlock: BlockBuilder = _
-
     private val nameCount: mutable.Map[String, Int] =
       mutable.Map().withDefaultValue(0)
+    var currentBlock: BlockBuilder = _
 
     def newBlock(name: String): BlockBuilder = {
       BlockBuilder(fresh(name))
+    }
+
+    def fresh(name: String): String = {
+      val c = nameCount(name)
+      nameCount.update(name, c + 1)
+      s"${name}_$c"
     }
 
     def insertBlock(b: BlockBuilder): Unit = {
@@ -121,12 +142,6 @@ private class IRGenerator {
 
     def emit(instr: IrInstr): Unit = {
       currentBlock.add(instr)
-    }
-
-    def fresh(name: String): String = {
-      val c = nameCount(name)
-      nameCount.update(name, c + 1)
-      s"${name}_$c"
     }
 
     def buildBlocks(): List[IrBlock] =

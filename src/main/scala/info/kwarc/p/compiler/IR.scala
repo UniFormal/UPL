@@ -57,6 +57,21 @@ case class IrReturn(value: IrOperand) extends IrInstr {
     s"ret ${value.tp.render()} ${value.render()}"
 }
 
+case class IrICmp(result: IrVar, cond: Condition, left: IrOperand, right: IrOperand) extends IrInstr {
+  override def render(): String =
+    s"${result.render()} = icmp ${cond.label} ${left.tp.render()} ${left.render()}, ${right.render()}"
+}
+
+sealed abstract class Condition(val label: String)
+object Condition {
+  case object EQUAL extends Condition("eq")
+  case object NOT_EQUAL extends Condition("ne")
+  case object SIGNED_GREATER_THAN extends Condition("sgt")
+  case object SIGNED_GREATER_EQUAL extends Condition("sge")
+  case object SIGNED_LESS_THAN extends Condition("slt")
+  case object SIGNED_LESS_EQUAL extends Condition("sle")
+}
+
 case class IrCondBranch(cond: IrOperand, ifTrue: String, ifFalse: String)
   extends IrInstr {
   override def render() =
