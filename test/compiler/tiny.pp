@@ -1,1 +1,1 @@
-main: if (100 == 100) if (false) 111 else 42 else 69
+main: if (10*10*10+10 == 1010) if (false) 111 else 42 else 69

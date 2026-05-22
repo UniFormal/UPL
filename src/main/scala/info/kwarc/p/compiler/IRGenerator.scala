@@ -1,7 +1,28 @@
 package info.kwarc.p.compiler
 
 import info.kwarc.p.compiler.Condition.{EQUAL, NOT_EQUAL}
-import info.kwarc.p.{ApproxReal, BaseValue, BoolValue, Declaration, Equality, Expression, GlobalContext, IfThenElse, NumberValue, Program, Rat, StringValue, UnitValue}
+import info.kwarc.p.compiler.Operation.{IADD, IDIV, IMUL, ISUB}
+import info.kwarc.p.{
+  Application,
+  ApproxReal,
+  BaseOperator,
+  BoolValue,
+  Declaration,
+  Divide,
+  Equality,
+  Expression,
+  GlobalContext,
+  IfThenElse,
+  InfixOperator,
+  Minus,
+  NumberValue,
+  Plus,
+  Program,
+  Rat,
+  RightAssociative,
+  Times,
+  UnitValue
+}
 
 import scala.collection.mutable
 
@@ -51,6 +72,11 @@ private class IRGenerator {
     functions += mainFun
   }
 
+  /** Compiles an expression
+    * All instructions will be inserted into the current block / function context.
+    * @param exp Expression to compile
+    * @return IrOperand representing the result of the expression.
+    */
   def apply(
       exp: Expression
   )(implicit gc: GlobalContext): IrOperand = exp match {
@@ -97,13 +123,45 @@ private class IRGenerator {
       val rO = apply(right)
       val cmpResult = IrVar(IrIntType.I1, ctx.fresh("cmp_result"))
       // We only support comparisons of boolean, numbers (approximated as i64) and UnitValue
-      assert(left.isInstanceOf[BaseValue])
-      assert(right.isInstanceOf[BaseValue])
-      assert(!left.isInstanceOf[StringValue])
-      assert(!right.isInstanceOf[StringValue])
+      assert(lO.tp.isInstanceOf[IrIntType])
+      assert(rO.tp.isInstanceOf[IrIntType])
 
       ctx.emit(IrICmp(cmpResult, if (positive) EQUAL else NOT_EQUAL, lO, rO))
       cmpResult
+    case Application(bo @ BaseOperator(operator, tp), args) =>
+      operator match {
+        case inf: InfixOperator =>
+          val numArgs = args.length
+          if (numArgs == 0) {
+            apply(inf.neutral.get.asInstanceOf[Expression])
+          } else if (numArgs == 1) {
+            apply(args(0))
+          } else {
+            val irOp = inf match {
+              case Plus   => IADD
+              case Minus  => ISUB
+              case Times  => IMUL
+              case Divide => IDIV
+              case _      => ???
+            }
+
+            val (left, right) =
+              if (numArgs > 2) {
+                if (inf.assoc == RightAssociative) {
+                  (apply(args(0)), apply(Application(bo, args.tail)))
+                } else {
+                  (apply(Application(bo, args.init)), apply(args.last))
+                }
+              } else {
+                (apply(args(0)), apply(args(1)))
+              }
+
+            val op_result = IrVar(IrIntType.I64, ctx.fresh("op_result"))
+            ctx.emit(IrBinOp(op_result, irOp, left, right))
+            op_result
+          }
+      }
+
   }
 
   def apply(

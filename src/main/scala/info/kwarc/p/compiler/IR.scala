@@ -72,6 +72,23 @@ object Condition {
   case object SIGNED_LESS_EQUAL extends Condition("sle")
 }
 
+case class IrBinOp(result: IrVar, op: Operation, left: IrOperand, right: IrOperand) extends IrInstr {
+  override def render(): String =
+    s"${result.render()} = ${op.label} ${left.tp.render()} ${left.render()}, ${right.render()}"
+}
+
+sealed abstract class Operation(val label: String)
+object Operation {
+  case object IADD extends Operation("add")
+  case object ISUB extends Operation("sub")
+  case object IMUL extends Operation("mul")
+  case object IDIV extends Operation("sdiv")
+  case object FADD extends Operation("fadd")
+  case object FSUB extends Operation("fsub")
+  case object FMUL extends Operation("fmul")
+  case object FDIV extends Operation("fdiv")
+}
+
 case class IrCondBranch(cond: IrOperand, ifTrue: String, ifFalse: String)
   extends IrInstr {
   override def render() =
