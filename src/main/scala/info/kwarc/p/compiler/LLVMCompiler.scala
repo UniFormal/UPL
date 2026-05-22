@@ -4,15 +4,16 @@ import info.kwarc.p.{File, Program}
 
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
-import scala.sys.process.Process
+import scala.sys.process.{Process, ProcessLogger}
 
 object LLVMCompiler {
-  def run(p: Program, path: File): Unit = {
+  def run(p: Program, path: File, printDebug: Boolean = true): Unit = {
     val llvmIr = compile(p)
-    println(llvmIr)
+
+    if (printDebug) println(llvmIr)
 
     // Invokes clang with our llvm IR, redirects the output to stdout and blocks until clang exits.
-    val result = Process(
+    val proc = Process(
       Seq(
         "clang",
         "-x",
@@ -21,9 +22,11 @@ object LLVMCompiler {
         "-o",
         path.toString
       )
-    ).#<(new ByteArrayInputStream(llvmIr.getBytes(StandardCharsets.UTF_8))).!!
-
-    println(result)
+    ).#<(new ByteArrayInputStream(llvmIr.getBytes(StandardCharsets.UTF_8)))
+    if (printDebug)
+      proc.!
+    else
+      proc.!(ProcessLogger(_ => (), _ => ()))
   }
 
   /*
