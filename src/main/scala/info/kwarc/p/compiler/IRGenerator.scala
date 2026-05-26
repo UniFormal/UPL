@@ -133,7 +133,7 @@ private class IRGenerator {
         case inf: InfixOperator =>
           val numArgs = args.length
           if (numArgs == 0) {
-            apply(inf.neutral.get.asInstanceOf[Expression])
+            apply(inf.neutral.get)
           } else if (numArgs == 1) {
             apply(args(0))
           } else {

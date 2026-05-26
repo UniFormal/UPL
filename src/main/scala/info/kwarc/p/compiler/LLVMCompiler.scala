@@ -1,6 +1,6 @@
 package info.kwarc.p.compiler
 
-import info.kwarc.p.{File, Program}
+import info.kwarc.p.{File, GlobalContext, Program}
 
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
@@ -8,6 +8,15 @@ import scala.sys.process.{Process, ProcessLogger}
 
 object LLVMCompiler {
   def run(p: Program, path: File, printDebug: Boolean = true): Unit = {
+    val voc = p.voc
+    val gc = GlobalContext(voc)
+
+    voc.decls.foreach { d =>
+      CoreFragmentTraverser(d)(gc, Context())
+    }
+
+    CoreFragmentTraverser(p.main)(gc, Context())
+
     val llvmIr = compile(p)
 
     if (printDebug) println(llvmIr)
