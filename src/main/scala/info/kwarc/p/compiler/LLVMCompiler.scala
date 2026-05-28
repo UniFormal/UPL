@@ -12,10 +12,10 @@ object LLVMCompiler {
     val gc = GlobalContext(voc)
 
     voc.decls.foreach { d =>
-      CoreFragmentTraverser(d)(gc, Context())
+      CoreFragmentChecker(d)(gc, CoreFragmentContext())
     }
 
-    CoreFragmentTraverser(p.main)(gc, Context())
+    CoreFragmentChecker(p.main)(gc, CoreFragmentContext())
 
     val llvmIr = compile(p)
 

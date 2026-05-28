@@ -3,7 +3,5 @@ module Test {
       a: int = 10
     }
 
-    inst = A { b = 3 }
-
-    test = inst.b
+    test = A {  }.a
 }

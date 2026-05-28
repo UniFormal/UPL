@@ -2,27 +2,7 @@ package info.kwarc.p.compiler
 
 import info.kwarc.p.compiler.Condition.{EQUAL, NOT_EQUAL}
 import info.kwarc.p.compiler.Operation.{IADD, IDIV, IMUL, ISUB}
-import info.kwarc.p.{
-  Application,
-  ApproxReal,
-  BaseOperator,
-  BoolValue,
-  Declaration,
-  Divide,
-  Equality,
-  Expression,
-  GlobalContext,
-  IfThenElse,
-  InfixOperator,
-  Minus,
-  NumberValue,
-  Plus,
-  Program,
-  Rat,
-  RightAssociative,
-  Times,
-  UnitValue
-}
+import info.kwarc.p._
 
 import scala.collection.mutable
 
