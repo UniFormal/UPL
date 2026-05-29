@@ -488,7 +488,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   private def inPhysicalTheory = regions.forall(_.physical.isDefined)
 
   /** the path to the current theory if in physical theory */
-  private def currentParent: Path = {
+  def currentParent: Path = {
     if (!inPhysicalTheory)
       throw IError("not in physical theory")
     else currentRegion.theory match {

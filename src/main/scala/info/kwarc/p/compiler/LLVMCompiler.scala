@@ -45,13 +45,16 @@ object LLVMCompiler {
     val ir = IRGenerator.run(p)
 
     val fnctDecls = ir.declaredFunctions.map(f => f.render()).mkString("\n")
-    val strcts = ir.structs.map(s => s.render()).mkString("\n")
-    val fncts = ir.functions.map(f => f.render()).mkString("\n")
+    val structs = ir.structs.map(s => s.renderStruct()).mkString("\n")
+    val globals = ir.globals.map(g => g.renderGlobal()).mkString("\n")
+    val fncts = ir.functions.map(f => f.renderFun()).mkString("\n\n")
 
     s"""
        |$fnctDecls
        |
-       |$strcts
+       |$structs
+       |
+       |$globals
        |
        |$fncts
        |""".stripMargin
