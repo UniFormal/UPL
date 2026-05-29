@@ -39,7 +39,7 @@ private class IRGenerator {
     ctx.emit(IrReturn(value))
 
     // We currently assume that the main expression evaluates to a 64-bit integer.
-    val mainFun = IrFun("main", IrIntType.I64, Nil, ctx.buildBlocks())
+    val mainFun = IrFun("main", IrFunType(IrIntType.I64, Nil), Nil, ctx.buildBlocks())
     functions += mainFun
   }
 
@@ -48,7 +48,7 @@ private class IRGenerator {
    *
    * @param exp Expression to compile
    * @return IrOperand representing the result of the expression. */
-  def apply(exp: Expression)(implicit gc: GlobalContext): IrOperand = exp match { // TODO Currently all numbers are
+  def apply(exp: Expression)(implicit gc: GlobalContext): IrValue = exp match { // TODO Currently all numbers are
     // treated as i64 integers.
     case NumberValue(_, re, _) => re match {
       case ApproxReal(value) => IrConst(value.toInt)
@@ -93,50 +93,59 @@ private class IRGenerator {
 
       ctx.emit(IrICmp(cmpResult, if (positive) EQUAL else NOT_EQUAL, lO, rO))
       cmpResult
-    case Application(bo@BaseOperator(operator, tp), args) => operator match {
-      case inf: InfixOperator => val numArgs = args.length
-        if (numArgs == 0) {
-          apply(inf.neutral.get)
-        } else if (numArgs == 1) {
-          apply(args(0))
-        } else {
-          val irOp = inf match {
-            case Plus => IADD
-            case Minus => ISUB
-            case Times => IMUL
-            case Divide => IDIV
-            case _ => ???
-          }
-
-          val (left, right) = if (numArgs > 2) {
-            if (inf.assoc == RightAssociative) {
-              (apply(args(0)), apply(Application(bo, args.tail)))
-            } else {
-              (apply(Application(bo, args.init)), apply(args.last))
-            }
+    case Application(f, args) => f match {
+      case bo@BaseOperator(operator, tp) => operator match {
+        case inf: InfixOperator => val numArgs = args.length
+          if (numArgs == 0) {
+            apply(inf.neutral.get)
+          } else if (numArgs == 1) {
+            apply(args(0))
           } else {
-            (apply(args(0)), apply(args(1)))
+            val irOp = inf match {
+              case Plus => IADD
+              case Minus => ISUB
+              case Times => IMUL
+              case Divide => IDIV
+              case _ => ???
+            }
+
+            val (left, right) = if (numArgs > 2) {
+              if (inf.assoc == RightAssociative) {
+                (apply(args(0)), apply(Application(bo, args.tail)))
+              } else {
+                (apply(Application(bo, args.init)), apply(args.last))
+              }
+            } else {
+              (apply(args(0)), apply(args(1)))
+            }
+
+            val op_result = IrVar(IrIntType.I64, ctx.fresh("op_result"))
+            ctx.emit(IrBinOp(op_result, irOp, left, right))
+            op_result
           }
+      }
+      case o: OpenRef => val fieldVar = loadOpenRef(gc, o)
+        val result = IrVar(fieldVar.tp.asInstanceOf[IrFunType].ret, ctx.fresh("result"))
 
-          val op_result = IrVar(IrIntType.I64, ctx.fresh("op_result"))
-          ctx.emit(IrBinOp(op_result, irOp, left, right))
-          op_result
-        }
+        ctx.emit(IrCall(Some(result), fieldVar, args.map(a => apply(a))))
+        result
     }
-    case o@OpenRef(path) => val field = gc.lookupRef(o).get.asInstanceOf[ExprDecl]
-      val modulePath = path.up
-      val module = gc.lookupGlobal(modulePath).get.asInstanceOf[Module]
-      val fieldIndex = module.decls.collect { case d: ExprDecl => d }.indexOf(field)
-      val struct = structs.find(_.name == modulePath.toString).get
-      val structGlobal = globals.find(_.name == modulePath.toString).get
-      val initFun = functions.find(_.name == s"${modulePath}_ensure_initialized").get
+    case o: OpenRef => loadOpenRef(gc, o)
+    case Lambda(ins, body, _) => val prevCtx = ctx
+      ctx = new FunctionContext
+      ctx.insertBlock(ctx.newBlock("entry"))
 
-      val fieldPtr = IrVar(IrPtrType(struct), ctx.fresh(s"${path}_ptr"))
-      ctx.emit(IrCall(None, initFun, Nil))
-      ctx.emit(IrGetElement(fieldPtr, struct, structGlobal, List(0, fieldIndex)))
-      val result = IrVar(llvmType(field.tp), ctx.fresh(s"$path"))
-      ctx.emit(IrLoad(result, fieldPtr))
-      result
+      val result = apply(body)(gc.append(ins))
+      ctx.emit(IrReturn(result))
+
+      val params = ins.variables.reverse
+
+      val lambdaFun = IrFun(ctx.fresh("lambda"), IrFunType(result.tp, params.map(v => llvmType(v.tp))), params.map(v
+      => IrArgument(llvmType(v.tp), v.name)), ctx.buildBlocks())
+      functions += lambdaFun
+      ctx = prevCtx
+      IrFunctionRef(lambdaFun)
+    case VarRef(n) => IrVar(llvmType(gc.lookupLocal(n).get.asInstanceOf[EVarDecl].tp), s"$n")
   }
 
   def apply(d: Declaration)(implicit gc: GlobalContext): Unit = {
@@ -162,7 +171,7 @@ private class IRGenerator {
           ctx = new FunctionContext
           ctx.insertBlock(ctx.newBlock("entry"))
 
-          df.decls.foreach { case e@ExprDecl(name, _, _, Some(exp), _, _) => val result = apply(exp)(gc)
+          df.decls.foreach { case e@ExprDecl(name, _, _, Some(exp), _, _) => val result = apply(exp)(gcI)
             val fieldIndex = df.decls.collect { case d: ExprDecl => d }.indexOf(e)
             val fieldPtr = IrVar(IrPtrType(struct), ctx.fresh(s"$fullName.${name}_ptr"))
             ctx.emit(IrGetElement(fieldPtr, struct, structGlobal, List(0, fieldIndex)))
@@ -170,7 +179,7 @@ private class IRGenerator {
           case _ =>
           }
           ctx.emit(IrReturnVoid)
-          val initializeFun = IrFun(s"${fullName}_initialize", IrVoidType, Nil, ctx.buildBlocks())
+          val initializeFun = IrFun(s"${fullName}_initialize", IrFunType(IrVoidType, Nil), Nil, ctx.buildBlocks())
           functions += initializeFun
 
           ctx = new FunctionContext
@@ -181,13 +190,13 @@ private class IRGenerator {
           ctx.emit(IrLoad(initialized, initializedGlobal))
           ctx.emit(IrCondBranch(initialized, endB.label, initB.label))
           ctx.insertBlock(initB)
-          ctx.emit(IrCall(None, initializeFun, Nil))
-          ctx.emit(IrStore(IrConst(1), initializedGlobal))
+          ctx.emit(IrCall(None, IrFunctionRef(initializeFun), Nil))
+          ctx.emit(IrStore(IrConst(true), initializedGlobal))
           ctx.emit(IRBranch(endB.label))
 
           ctx.insertBlock(endB)
           ctx.emit(IrReturnVoid)
-          functions += IrFun(s"${fullName}_ensure_initialized", IrVoidType, Nil, ctx.buildBlocks())
+          functions += IrFun(s"${fullName}_ensure_initialized", IrFunType(IrVoidType, Nil), Nil, ctx.buildBlocks())
 
           // Recursively traverse other declarations
           // We need to do this after traversing all expression declarations in the current module to prevent inner
@@ -199,10 +208,29 @@ private class IRGenerator {
     }
   }
 
+  private def loadOpenRef(gc: GlobalContext, o: OpenRef): IrValue = {
+    val field = gc.lookupRef(o).get.asInstanceOf[ExprDecl]
+    val path = o.path
+    val modulePath = path.up
+    val module = gc.lookupGlobal(modulePath).get.asInstanceOf[Module]
+    val fieldIndex = module.decls.collect { case d: ExprDecl => d }.indexOf(field)
+    val struct = structs.find(_.name == modulePath.toString).get
+    val structGlobal = globals.find(_.name == modulePath.toString).get
+    val initFun = functions.find(_.name == s"${modulePath}_ensure_initialized").get
+
+    val fieldPtr = IrVar(IrPtrType(struct.fields(fieldIndex)), ctx.fresh(s"${path}_ptr"))
+    ctx.emit(IrCall(None, IrFunctionRef(initFun), Nil))
+    ctx.emit(IrGetElement(fieldPtr, struct, structGlobal, List(0, fieldIndex)))
+    val fieldVar = IrVar(struct.fields(fieldIndex), ctx.fresh(s"$path"))
+    ctx.emit(IrLoad(fieldVar, fieldPtr))
+    fieldVar
+  }
+
   private def llvmType(tp: Type): IrType = {
     tp match {
       case BoolType => IrIntType.I1
       case _: NumberType => IrIntType.I64
+      case FunType(ins, out) => IrFunType(llvmType(out), ins.variables.map(v => llvmType(v.tp)))
       case _ => throw new IllegalArgumentException(s"Unsupported type: $tp")
     }
   }

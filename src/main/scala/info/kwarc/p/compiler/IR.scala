@@ -16,16 +16,14 @@ case class IrDeclFun(name: String, retTp: IrType, paramsTp: List[IrType]) {
     })""".stripMargin
 }
 
-case class IrFun(name: String, retTp: IrType, params: List[IrVar], blocks: List[IrBlock]) {
+case class IrFun(name: String, signature: IrFunType, params: List[IrArgument], blocks: List[IrBlock]) {
   def renderFun(): String =
-    s"""|define ${retTp.render()} @$name(${
-      params.map { p => s"${p.renderWithType()}" }.mkString(", ")
-    }) {
-        |${blocks.map(_.render()).mkString("\n")}
-        |}""".stripMargin
+    s"""define ${signature.ret.render()} @$name(${params.map(_.renderWithType()).mkString(", ")}) {
+       |${blocks.map(_.render()).mkString("\n")}
+       |}""".stripMargin
 }
 
-case class IrGlobal(name: String, tp2: IrType, init: Option[String] = None) extends IrOperand {
+case class IrGlobal(name: String, tp2: IrType, init: Option[String] = None) extends IrGlobalValue {
   override def tp: IrType = IrPtrType(tp2)
 
   def renderGlobal(): String = s"@$name = global ${tp2.render()} ${init.getOrElse("zeroinitializer")}"
@@ -45,7 +43,7 @@ sealed trait IrInstr {
   def render(): String
 }
 
-case class IrReturn(value: IrOperand) extends IrInstr {
+case class IrReturn(value: IrValue) extends IrInstr {
   override def render(): String = s"ret ${value.tp.render()} ${value.render()}"
 }
 
@@ -53,7 +51,7 @@ object IrReturnVoid extends IrInstr {
   override def render(): String = s"ret void"
 }
 
-case class IrICmp(result: IrVar, cond: Condition, left: IrOperand, right: IrOperand) extends IrInstr {
+case class IrICmp(result: IrVar, cond: Condition, left: IrValue, right: IrValue) extends IrInstr {
   override def render(): String = s"${result.render()} = icmp ${cond.label} ${left.tp.render()} ${
     left.render()
   }, ${right.render()}"
@@ -70,7 +68,7 @@ object Condition {
   case object SIGNED_LESS_EQUAL extends Condition("sle")
 }
 
-case class IrBinOp(result: IrVar, op: Operation, left: IrOperand, right: IrOperand) extends IrInstr {
+case class IrBinOp(result: IrVar, op: Operation, left: IrValue, right: IrValue) extends IrInstr {
   override def render(): String = s"${result.render()} = ${op.label} ${left.tp.render()} ${left.render()}, ${
     right.render()
   }"
@@ -89,7 +87,7 @@ object Operation {
   case object FDIV extends Operation("fdiv")
 }
 
-case class IrCondBranch(cond: IrOperand, ifTrue: String, ifFalse: String) extends IrInstr {
+case class IrCondBranch(cond: IrValue, ifTrue: String, ifFalse: String) extends IrInstr {
   override def render() = s"br i1 ${cond.render()}, label %$ifTrue, label %$ifFalse"
 }
 
@@ -97,30 +95,40 @@ case class IRBranch(dest: String) extends IrInstr {
   override def render() = s"br label %$dest"
 }
 
-case class IrPhi(result: IrOperand, values: List[(IrOperand, String)]) extends IrInstr {
+case class IrPhi(result: IrValue, values: List[(IrValue, String)]) extends IrInstr {
   override def render() = s"${result.render()} = phi ${
     result.tp.render()
   } ${values.map(v => s"[ ${v._1.render()}, %${v._2} ]").mkString(", ")}"
 }
 
-case class IrGetElement(result: IrVar, struct: IrStruct, ptr: IrOperand, vals: List[Int]) extends IrInstr {
+case class IrGetElement(result: IrVar, struct: IrStruct, ptr: IrValue, vals: List[Int]) extends IrInstr {
   override def render(): String = s"${result.render()} = getelementptr ${struct.render()}, ${
     ptr.renderWithType()
   }, ${vals.map(v => s"i32 $v").mkString(", ")}"
 }
 
-case class IrStore(op: IrOperand, ptr: IrOperand) extends IrInstr {
+case class IrStore(op: IrValue, ptr: IrValue) extends IrInstr {
   override def render: String = s"store ${op.tp.render()} ${op.render()}, ${ptr.renderWithType()}"
 }
 
-case class IrLoad(result: IrVar, ptr: IrOperand) extends IrInstr {
+case class IrLoad(result: IrVar, ptr: IrValue) extends IrInstr {
   override def render: String = s"${result.render()} = load ${result.tp.render()}, ${ptr.renderWithType()}"
 }
 
-case class IrCall(result: Option[IrVar], fun: IrFun, params: List[IrOperand]) extends IrInstr {
-  override def render = s"${result.map(r => s"${r.render()} = ").getOrElse("")}call ${
-    fun.retTp.render()
-  } @${fun.name}(${params.map(p => s"${p.renderWithType()}").mkString(", ")})"
+case class IrCall(result: Option[IrVar], callee: IrValue, params: List[IrValue]) extends IrInstr {
+
+  override def render(): String = {
+    val fnType = callee.tp match {
+      case IrPtrType(f: IrFunType) => f
+      case f: IrFunType => f
+      case other => throw new IllegalArgumentException(s"Cannot call non-function type: $other")
+    }
+    s"""${result.map(r => s"${r.render()} = ").getOrElse("")}call ${
+      fnType.ret.render()
+    } ${callee.render()}(${
+      params.map(_.renderWithType()).mkString(", ")
+    })"""
+  }
 }
 
 sealed trait IrType {
@@ -140,11 +148,15 @@ case class IrPtrType(to: IrType) extends IrType {
   override def render(): String = "ptr"
 }
 
+case class IrFunType(ret: IrType, params: List[IrType]) extends IrType {
+  override def render(): String = "ptr"
+}
+
 object IrVoidType extends IrType {
   override def render(): String = "void"
 }
 
-sealed trait IrOperand {
+sealed trait IrValue {
   def render(): String
 
   def tp: IrType
@@ -152,11 +164,28 @@ sealed trait IrOperand {
   def renderWithType(): String = s"${tp.render()} ${render()}"
 }
 
-case class IrVar(override val tp: IrType, name: String) extends IrOperand {
+sealed trait IrSSAValue extends IrValue
+
+case class IrVar(override val tp: IrType, name: String) extends IrSSAValue {
   override def render(): String = s"%$name"
 }
 
-case class IrConst(override val tp: IrType, value: Long) extends IrOperand {
+case class IrArgument(tp: IrType, name: String) extends IrSSAValue {
+  override def render(): String = s"%$name"
+}
+
+sealed trait IrConstant extends IrValue
+
+sealed trait IrGlobalValue extends IrConstant
+
+case class IrFunctionRef(fun: IrFun) extends IrGlobalValue {
+
+  override def tp = IrPtrType(fun.signature)
+
+  override def render() = s"@${fun.name}"
+}
+
+case class IrConst(override val tp: IrType, value: Long) extends IrConstant {
   override def render(): String = s"$value"
 }
 
