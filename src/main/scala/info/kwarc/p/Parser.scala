@@ -895,7 +895,12 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         // TODO support operators like object-level turnstiles, which bind weaker than object-level infixes but stronger than UPL infixes
         val e = parseExpression(ctxs.noWeakPostops)
         Application(po, List(e))
-      } else {
+      } else if (startsWithS("Uniformal.")){
+        val builtinName = parseName
+        val exp = parseBracketedExpression
+        Builtin(builtinName, List(exp), Type.unknown())
+      }
+      else {
         //  symbol/variable/module reference
         val n = parseName
         if (n.isEmpty) fail("name expected")

@@ -1656,6 +1656,14 @@ class Checker(errorHandler: ErrorHandler) {
             checkExpression(gc, e, rt)
           } else e
           (Return(eC, thrw), EmptyType)
+        case Builtin(name, param, ret) =>
+          val definition = Builtins.Builtins.findLast(x => x.name == name)
+          if (definition.isEmpty){
+              reportError(s"no definition found for builtin $name")
+              (Builtin(name,param, ret), None)
+          }
+          val varDecl = EVarDecl(param.head.label, definition.get.parameters.head, Some(param.head), false, false)
+          (Builtin(name, param, ret), FunType(ExprContext(varDecl), ret))
         case e => throw IError("missing case in type inference: " + e)
       }
     }
