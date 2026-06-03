@@ -15,3 +15,6 @@ line 13 in subtyping.mmt : how to do structure in UPL?
 line 26 in subtyping.mmt : how to do constant in UPL?
 
 line 73 in algebra.p : Semigroup is missing right?
+
+
+monoids.p line 40 not working

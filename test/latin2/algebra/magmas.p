@@ -4,13 +4,20 @@ module magmas {
         op: (univ,univ) -> univ # infix ∘
     }
 
+    theory MagmaHom {
+        M : Magma
+        N : Magma
+        univ : M -> N
+        op:--- univ(x∘y) == univ(x)∘univ(y)
+    }
+
     theory SubMagma {
         include .relations.SubCarrier
         include Magma
         op_rel:--- x1 % y1 & x2 % y2 => (x1∘y1) % (x2∘y2)
     }
 
-    theory Abelian {
+    theory Commutative {
         include Magma
         comm:--- x∘y == y∘x
     }
@@ -20,23 +27,61 @@ module magmas {
         idem:--- x∘x == x
     }
 
+    theory PowerAssociative {
+        include Magma
+        power_assoc:--- (x∘x)∘x == x∘(x∘x)
+    }
+
     theory Semigroup {
         include Magma
         assoc:--- x∘(y∘z) == (x∘y)∘z
     }
 
-    theory AbelianSemigroup {
+    theory CommSemigroup {
         include Semigroup
-        include Abelian
+        include Commutative
     }
 
-    theory AbelianIdempotent {
-        include Abelian
+    theory Band {
+        include Semigroup
         include Idempotent
+    }
+
+    theory CommIdempotent {
+        include Commutative
+        include Idempotent
+    }
+
+    theory Semilattice {
+        include Commutative
+        include Band
     }
 
     theory Pointed {
         include Magma
-        e: univ
+        point: univ
+    }
+
+    theory AbsorbingElement {
+        include Magma
+        abs : univ
+
+        realize Pointed
+        point = abs
+    }
+
+    theory RightAbsorptive {
+        include AbsorbingElement
+        absorbR:--- x∘abs == x
+    }
+
+    theory LeftAbsorptive {
+        include AbsorbingElement
+        absorbL:--- abs∘x == x
+    }
+
+    theory Absorptive {
+        include LeftAbsorptive
+        include RightAbsorptive
     }
 }
