@@ -111,7 +111,7 @@ module algebra_base {
 
     theory Semiring {
         include BiMonoid
-        add: Abelian
+        add: Abelian 
     }
 
     theory Rng {
@@ -137,7 +137,7 @@ module algebra_base {
         //     invL:--- (x != add.e) => op(x, inv(x)) == e
         //     invR:--- (x != add.e) => op(inv(x), x) == e
         // }
-        mult: Group
+        //mult: Group
     }
 
     theory Field {
