@@ -93,8 +93,8 @@ class Checker(errorHandler: ErrorHandler) {
           case ed: ExprDecl => ed.ntO foreach {nt =>
             ed.tp match {
               case FlatOwnedObject(_,ft:FunType) => (ft.inDecls.last.tp,ft.out) match {
-                case (MaybeAppliedRef(ClosedRef(_),_),_) =>
-                case (_,MaybeAppliedRef(ClosedRef(_),_)) =>
+                case (MaybeAppliedRef(ClosedRef(_),_,_),_) =>
+                case (_,MaybeAppliedRef(ClosedRef(_),_,_)) =>
                 case _ => reportError("notations can only be inferred if the input or output type is declared in the same theory")
               }
               case _ => reportError("notations only allowed for constants of function type")
@@ -281,8 +281,8 @@ class Checker(errorHandler: ErrorHandler) {
                         // TODO merges that involve modifiers, notations
                         case ed: ExprDecl =>
                           val ntO = nw.ntO orElse old.ntO
-                          ExprDecl(nw.name, nw.tc, tM, dM.asInstanceOf[Option[Expression]], ntO, ed.modifiers)
-                        case td: TypeDecl => TypeDecl(nw.name, nw.tc, tM, dM.asInstanceOf[Option[Type]], td.modifiers)
+                          ExprDecl(nw.name, nw.params, tM, dM.asInstanceOf[Option[Expression]], ntO, ed.modifiers)
+                        case td: TypeDecl => TypeDecl(nw.name, nw.params, tM, dM.asInstanceOf[Option[Type]], td.modifiers)
                       }
                       old.subsumed = true
                       merged.subsuming = true
@@ -334,7 +334,7 @@ class Checker(errorHandler: ErrorHandler) {
       */
     def apply(gc: GlobalContext, sd1: SymbolDeclaration, sd2: SymbolDeclaration): Result = {
       if (sd1 == sd2) return Identical
-      if (sd1.tc != sd2.tc) return Clashing
+      if (sd1.params != sd2.params) return Clashing
       // compare type (bound) and definiens separately
       val tpComp = compareTT(gc, sd1.tp, sd2.tp)
       val dfComp = compareOOO(sd1.dfO, sd2.dfO)
@@ -402,28 +402,28 @@ class Checker(errorHandler: ErrorHandler) {
       case td: TypeDecl =>
         if (td.modifiers.mutable) reportError("type declaration may not be mutable")
       case ed: ExprDecl =>
-        if (ed.modifiers.mutable && !ed.tc.empty) reportError("polymorphic declaration may not be mutable")
+        ed.params.decls.foreach {
+          case tv: TVarDecl =>
+          case _ => reportError("only type declarations allowed here")
+        }
+        if (ed.modifiers.mutable && !ed.params.empty) reportError("parametric declaration may not be mutable")
         ed.ntO foreach {nt =>
           if (!ed.modifiers.closed) reportError("notations only allowed in theories")
         }
-    }
-    sd.tc.decls.foreach {
-      case tv: TVarDecl =>
-      case _ => reportError("declaration not allowed here")
     }
     // resolveName finds names in global, contained regional, and local contexts, but we only want the current region and its parent
     val sdP = if (!sd.modifiers.closed) None else gc.resolveName(ClosedRef(sd.name)).flatMap {
       case (ClosedRef(_), dO) => dO
       case _ => None
     }
-    val tcC = checkLocal(gc, sd.tc, false, false)
-    val gcI = gc.append(tcC)
+    val paramsC = checkLocal(gc, sd.params, false, false)
+    val gcI = gc.append(paramsC)
     sdP match {
       // switch on inherited
       case Some(abs: SymbolDeclaration) =>
         if (abs.kind != sd.kind || abs.modifiers != sd.modifiers) reportError("name is inherited but has kind " + abs.kind)
-        // TODO allow alpha-renaming of type arguments
-        if (abs.tc != sd.tc) reportError("name is inherited with different type arguments")
+        // TODO allow alpha-renaming of arguments
+        if (abs.params != sd.params) reportError("name is inherited with different arguments")
         // Concrete: error
         if (abs.defined && sd.defined && abs.dfO != sd.dfO) reportError("name is inherited and already defined differently")
         // Abstract: inherit type
@@ -436,10 +436,10 @@ class Checker(errorHandler: ErrorHandler) {
             // definition = Undefined: nothing to do
             // definition = Defined: check against type
             val dfC = sd.dfO.map {df => checkExpression(gcI,Lambda.allowReturn(df),tpC)}
-            sd.copy(tc = tcC, tp = tpC.skipUnknown,dfO = dfC)
+            sd.copy(params = paramsC, tp = tpC.skipUnknown,dfO = dfC)
           case sd: TypeDecl =>
             val dfC = sd.dfO.map {df => checkType(gcI, df, tpC)}
-            sd.copy(tc = tcC, tp = tpC.skipUnknown,dfO = dfC)
+            sd.copy(params = paramsC, tp = tpC.skipUnknown,dfO = dfC)
         }
       case Some(_) =>
         // Other: error
@@ -462,11 +462,11 @@ class Checker(errorHandler: ErrorHandler) {
           case td: TypeDecl =>
             val tpC = checkType(gcI,td.tp)
             val dfOC = td.dfO map {df => checkType(gcI,df,tpC)}
-            td.copy(tc = tcC, tp = tpC.skipUnknown, dfO = dfOC)
+            td.copy(params = paramsC, tp = tpC.skipUnknown, dfO = dfOC)
           case sd: ExprDecl =>
             val tpC = checkType(gcI,sd.tp)
             val dfC = sd.dfO map {d => checkExpression(gcI,Lambda.allowReturn(d),tpC)}
-            sd.copy(tc = tcC, tp = tpC.skipUnknown, dfO = dfC)
+            sd.copy(params = paramsC, tp = tpC.skipUnknown, dfO = dfC)
         }
     }
   }
@@ -592,7 +592,7 @@ class Checker(errorHandler: ErrorHandler) {
   }
   def checkESubstitution(gc: GlobalContext, es: List[Expression], ctx: ExprContext): List[Expression] = {
     val esC = checkSubstitution(gc, ctx.substitute(es), ctx.toLocalContext)
-    esC.exprs.asInstanceOf[List[Expression]]
+    esC.defs.asInstanceOf[List[Expression]]
   }
 
   /** component-wise subtype check,
@@ -714,18 +714,20 @@ class Checker(errorHandler: ErrorHandler) {
     }
     matchC(tpRR) {
       case _: Ref | _: AppliedRef =>
-        val MaybeAppliedRef(rC,args) = tpRR // always succeeds
-        val argsC = args map {a => checkType(gc,a)}
+        val MaybeAppliedRef(rC,tpArgs,expArgs) = tpRR // always succeeds
+        val hasArgs = tpArgs.nonEmpty || expArgs.nonEmpty
         val sd = sdO.getOrElse {(fail("identifier not a symbol"))}
         (rC,sd) match {
           case (rC: Ref, _: TVarDecl) =>
-            if (argsC.nonEmpty) reportError("type variables may not take arguments")
+            if (hasArgs) reportError("type variables may not take arguments")
             rC
           case (rC: Ref, td: TypeDecl) =>
             // type ref
-            if (argsC.sizeIs != td.tc.length) reportError("wrong number of arguments for type")
-            MaybeAppliedRef(rC,argsC)
-          case (rC: Ref, ed: TypedDeclaration) if argsC.isEmpty =>
+            val argsSub = td.params.substitute(tpArgs:::expArgs)
+            val argsSubC = checkSubstitution(gc, argsSub, td.params)
+            val (tpArgsC,expArgsC) = argsSubC.defs.splitAt(tpArgs.length) // substitution checking preserves order
+            MaybeAppliedRef(rC,tpArgsC.map(_.asInstanceOf[Type]),expArgsC.map(_.asInstanceOf[Expression]))
+          case (rC: Ref, ed: TypedDeclaration) if !hasArgs =>
             // expression ref (by a symbol or a variable), try to coerce to type
             Normalize(gc,ed.tp) match {
               case ClassType(d) => gc.push(d).lookupRegional(UnivType.name) match {
@@ -736,7 +738,7 @@ class Checker(errorHandler: ErrorHandler) {
               }
               case _ => fail("expression cannot be coerced to a type")
             }
-          case (rC: Ref, m: Module) if argsC.isEmpty =>
+          case (rC: Ref, m: Module) if !hasArgs =>
             // module ref, interpret as class type
             if (!m.closed) reportError("open module not a type")
             checkType(gc, ClassType(rC))
@@ -1042,18 +1044,19 @@ class Checker(errorHandler: ErrorHandler) {
       }
     override def apply(tp: Type)(implicit gc: GlobalContext, a:Unit): Type = {
       matchC(tp) {
-        case MaybeAppliedRef(r,tpargs) => gc.lookupRef(r) match {
+        case MaybeAppliedRef(r,tpArgs,expArgs) => gc.lookupRef(r) match {
           case Some(td: TypeDecl) =>
             td.dfO match {
               case Some(df) =>
-                val sub = td.tc.substitute(tpargs)
+                val sub = td.params.substitute(tpArgs:::expArgs)
                 val dfS = df.substituteInType(sub)
                 apply(dfS)
               case None =>
-                val tpargsN = tpargs map apply
-                MaybeAppliedRef(r,tpargsN)
+                val tpArgsN = tpArgs map apply
+                val expArgsN = expArgs map apply
+                MaybeAppliedRef(r,tpArgsN,expArgsN)
             }
-          case Some(_: TVarDecl) if tpargs.isEmpty => r
+          case Some(_: TVarDecl) if tpArgs.isEmpty && expArgs.isEmpty => r
           case _ => fail("illegal type")(tp) // impossible if tp is checked
         }
         case ct: ClassType => ct // We don't recurse into the domain; later checks must be able to handle non-normal domains.
@@ -1437,24 +1440,25 @@ class Checker(errorHandler: ErrorHandler) {
       case (e,None) => e match {
         case e: BaseValue => (e, e.tp)
         case _: Ref | _: AppliedRef =>
-          val MaybeAppliedRef(r,args) = e // always succeeds here
+          val MaybeAppliedRef(r,tpArgs,expArgs) = e // always succeeds here
+          if (expArgs.nonEmpty) reportError("unexpected arguments")
           sdCached match {
-            case Some(td: TypedDeclaration) =>
-              val argsC = if (args.nonEmpty) {
-                if (args.sizeIs != td.tc.length) reportError("wrong number of arguments")
-                args map {a => checkType(gc, a)}
+            case Some(ed: TypedDeclaration) =>
+              val tpArgsC = if (tpArgs.nonEmpty) {
+                if (tpArgs.sizeIs != ed.params.length) reportError("wrong number of arguments")
+                tpArgs map {a => checkType(gc, a)}
               } else {
                 // omitted args should be inferred
-                td.tc.mapDecls {
+                ed.params.mapDecls {
                   case _:TVarDecl => Type.unknown(gc)
                   case _:EVarDecl =>
-                    reportError("term arguments of types not supported yet")
+                    reportError("unexpected non-type argument in " + ed.name)
                     Type.unknown(gc)
                 }
               }
-              val sub = td.tc.substitute(argsC)
-              val tpI = td.tp.substituteInType(sub)
-              (MaybeAppliedRef(r,argsC), tpI)
+              val sub = ed.params.substitute(tpArgsC)
+              val tpI = ed.tp.substituteInType(sub)
+              (MaybeAppliedRef(r,tpArgsC,Nil), tpI)
             case Some(d) => fail("not an expression")
             case _ => fail("undeclared identifier")
           }
@@ -2076,10 +2080,12 @@ class Checker(errorHandler: ErrorHandler) {
         solveType(gc,cons,u,k,false).?
       // recursive cases
       case _ if aK.getClass != bK.getClass => Result.fail // fail quickly
-      case (AppliedRef(r,as), AppliedRef(s,bs)) if r == s && as.sizeIs == bs.length =>
+      case (AppliedRef(r,as,cs), AppliedRef(s,bs,ds)) if r == s =>
         val asC = as.map(a => EVarDecl.anonymous(a))
         val bsC = as.map(b => EVarDecl.anonymous(b))
-        matchTypeLists(ExprContext(asC),ExprContext(bsC),cons,false)(gc,None).?._2 // no variance for type operators
+        // no variance for type operators
+        matchTypeLists(ExprContext(asC),ExprContext(bsC),cons,false)(gc,None).?._2 :::
+        matchExprLists(cs,ds,cons).?
       case (ProdType(as), ProdType(bs)) => matchTypeLists(as,bs,cons,false).?._2
       case (FunType(as,c), FunType(bs,d)) =>
         val asc = as appendE EVarDecl.anonymous(c)
@@ -2135,10 +2141,11 @@ class Checker(errorHandler: ErrorHandler) {
     implicit val subtypeDir = None
     (e1,e2) match {
       case (r1: Ref, r2: Ref) if r1 == r2 => Nil
-      case (AppliedRef(r1,as1), AppliedRef(r2,as2)) if r1 == r2 =>
+      case (AppliedRef(r1,as1,es1), AppliedRef(r2,as2,es2)) if r1 == r2 =>
         val as1C = as1.map(t => EVarDecl.anonymous(t))
         val as2C = as2.map(t => EVarDecl.anonymous(t))
-        matchTypeLists(ExprContext(as1C),ExprContext(as2C),cons,false)(gc,None).?._2
+        matchTypeLists(ExprContext(as1C),ExprContext(as2C),cons,false)(gc,None).?._2 :::
+        matchExprLists(es1,es2,cons).?
       case (v1: BaseValue, v2: BaseValue) if v1 == v2 => Nil
       case (BaseOperator(o1,t1), BaseOperator(o2,t2)) if o1 == o2 =>
         matchTypes(t1,t2,cons).?

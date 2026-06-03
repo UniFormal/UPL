@@ -65,30 +65,40 @@ package info.kwarc.p
    throw e
    e match {case p -> e, ...}
    e catch {case p -> e, ...}
+
+
+   operator parsing:
+   1) after an expression
+      take all operators until a bracket, term-ender (,;), or a non-operator
+      if open bracket: by itself -> applyfix
+                       after other operators -> circumfix
+      if close bracket or term-ender: end of expression, not returned itself
+      remaining operators can be null/pre/in/postfix
+      - non-empty spacing:
+        - asymmetric -> pre/post depending on which side is bigger
+        - symmetric -> infix
+        - exception: nullfix if in/post after in or pre before in, post after pre, pre after post
  */
 
 /**
   * the context passed during parsing
   * @param contexts bound variables in stack of regions
+  * @param inType true if the parsed expression will actually be converted into an expression
+  * @param eager if true, try to parse a long term; if false, end a term early
   * @param allowStatement if false, restrict expression-parsing to declarative expressions (as opposed to statements like while, return)
-  * @param allowWeakPostops if false, force bracketing of infix operators in expressions
-  *                    this is mutable to allow toggling it back for subexpressions
   */
-case class PContext(contexts: List[LocalContext], allowStatement: Boolean, var allowWeakPostops: Boolean, var allowEqual: Boolean) {
+case class PContext(contexts: List[LocalContext], inType: Boolean, eager: Boolean, allowStatement: Boolean, terminators: List[String]) {
   def declares(n: String) = contexts.head.declares(n)
   def append(vd: EVarDecl): PContext = append(LocalContext(vd))
   def append(ctx: AbstractLocalContext[_,_]): PContext = copy(contexts = contexts.head.append(ctx.local)::contexts.tail)
   def pop() = copy(contexts = contexts.tail).append(contexts.head) // TODO: type not correct (but irrelevant anyway)
   def push() = copy(contexts = LocalContext.empty::contexts)
-  def setAllowStatement(b: Boolean) = copy(allowStatement = b)
-  def noWeakPostops = copy(allowWeakPostops = false)
 }
 object PContext {
-  def empty = PContext(List(LocalContext.empty), false, true, false)
+  def empty = PContext(List(LocalContext.empty), false, false, true, Nil)
 }
 
 object Parser {
-  val weakPostops = List("=", "->", "match", "catch")
   val digits = "0123456789".toList
 
   def file(f: File,eh: ErrorHandler) = {
@@ -203,12 +213,13 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   private case class TrialRunFailed() extends Exception
   private var trialRun = false
 
-  def reportError(msg: String, from: Int = index, toIndex: Int = index) = {
+  def reportError(msg: String, sf: SyntaxFragment): Unit = reportError(msg, sf.loc.from, sf.loc.to)
+  def reportError(msg: String, from: Int, to: Int = index): Unit = {
     if (trialRun) throw TrialRunFailed()
-    val to = if (toIndex > from && toIndex <= inputLength) toIndex
-            else Math.min(from + 20, inputLength)
-    val found = input.substring(from,to)
-    val e = Error(Location(origin, from, to), msg + "; found " + (if (found.isEmpty) "[nothing]" else found))
+    val fromPlus = from+20
+    val toDisplay = if (to <= fromPlus) to else if (fromPlus > inputLength) inputLength else fromPlus
+    val found = input.substring(from,toDisplay)
+    val e = Error(Location(origin, from, to), msg + "; found " + found)
     eh(e)
   }
   def fail(msg: String, at: Int = index) = {
@@ -225,8 +236,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     finally {trialRun = trialRunBefore}
   }
 
-  def makeRef(from: Int) = {
-    var to = index // the end of the source region (exclusive)
+  def makeRef(from: Int, toD: Int = index) = {
+    var to = toD // the end of the source region (exclusive)
     while (to > 0 && input(to-1).isWhitespace) to -= 1 // remove trailing whitespace from source region
     Location(origin, from, to)
   }
@@ -244,30 +255,46 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
 
   // all input has been parsed
   def atEnd = {index == inputLength}
+  // whitespace until end of line or end of input
+  def atEndOfLine: Boolean = {
+    var i = index
+    while (!atEnd) {
+      val c = input.codePointAt(i)
+      if (c == '\n') return true
+      else if (Character.isWhitespace(c)) i += 1
+      else return false
+    }
+    true
+  }
 
   // next character to parse, possibly consisting of 2 chars in input
   def next = input.codePointAt(index)
+  def nextIs(c: Unicode.UChar) = !atEnd && next == c
 
+  // take the next character
+  def parseNext = {val c = next; index += Character.charCount(c); Character.toString(c)}
   // n character lookahead
   def nextAfter(n: Int) = if (index+n < inputLength) Some(input.codePointAt(index+n)) else None
 
   // string s occurs at the current index in the input
-  // if s is only letters, we additionally check that no name char follows
-  def startsWith(s: String): Boolean = {
-    val isKeyword = s.nonEmpty && s.forall(_.isLetter)
+  // if s is only letters/symbols, we additionally check that no name char/symbol follows
+  def startsWith(s: String, andSomethingElse: Boolean = true): Boolean = {
+    if (s.isEmpty) return true
     val b = index+s.length <= input.length && input.substring(index, index+s.length) == s
-    if (b && isKeyword) index+s.length == inputLength || !isNameChar(input(index+s.length))
+    if (!b || !andSomethingElse) b
+    else if (s.forall(_.isLetter)) !nextAfter(s.length).exists(isNameChar)
+    else if (s.forall(c => Symbols.isMultiOpChar(c.toInt))) !nextAfter(s.length).exists(Symbols.isMultiOpChar)
     else b
   }
   /** test for some strings, and if found, skip and trim */
-  def startsWithS(s: String): Boolean = {
-    val b = startsWith(s)
+  def startsWithS(s: String, andSomethingElse: Boolean = true): Boolean = {
+    val b = startsWith(s, andSomethingElse)
     if (b) {skip(s); trim}
     b
   }
 
   /** like startsWith but for multiple options */
-  def startsWithAny(k: String*) = k.toList.exists(startsWith)
+  def startsWithAny(k: String*) = k.toList.exists(s => startsWith(s))
   /** skips either of two options, true if it was the first one */
   def skipEither(t: String, f: String): Boolean = {
     if (startsWithS(t)) true else {skipT(f); false}
@@ -302,8 +329,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
 
   // parses the string s and throws it away
   def skip(s: String) = {
-    if (!startsWith(s)) {
-      reportError("expected " + s, index, index + s.length)
+    if (!startsWith(s, false)) {
+      reportError("expected " + s, index, index+1)
     } else {
       index += s.length
     }
@@ -312,39 +339,38 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
 
   // check if input left after parsing
   def parseAll[A](parse: => A) = {
+    val from = index
     val a = parse
-    if (!atEnd) reportError("expected end of input")
+    if (!atEnd) reportError("expected end of input", from)
     a
   }
 
-  // whitespace-separated list with brackets
-  def parseBracketedList[A](parse: => A, begin: String, end: String): List[A] = {
-    skip(begin)
-    val as = parseList(parse, end, false)
-    skip(end)
-    as
-  }
   // list with separator
-  def parseList[A](parse: => A, sep: String, emptyIf: String): List[A] = {
-    if (startsWith(emptyIf)) Nil
-    else parseList(parse, sep, true)
-  }
-  // isSeparator = true:  a1 lookFor ... lookFor an |
-  // isSeparator = false: a1 ... an | lookFor
-  private def parseList[A](parse: => A, lookFor: String, isSeparator: Boolean): List[A] = {
+  def parseList[A](parse: => A, sep: String, term: String): List[A] = parseList(parse, Some(sep), Some(term))
+
+  // a1 sep ... sep an | term
+  // sep and term may not both be empty
+  private def parseList[A](parse: => A, sep: Option[String], term: Option[String]): List[A] = {
+    trim
+    if (term.exists(t => startsWith(t))) return Nil
     var as: List[A] = Nil
     var break = false
     while (!break) {
       trim
       as ::= parse
       trim
-      if (startsWith(lookFor)) {
-        if (isSeparator) skip(lookFor) // skip separator and parse next element
-        else break = true // stop character found, break
-      } else {
-        if (isSeparator) break = true // separator needed, break
-        else {} // whitespace is separator, parse next
+      if (sep.exists(t => startsWith(t))) {
+        sep.foreach(skip)
+      } else if (term.exists(t => startsWith(t))) {
+        break = true
+      } else if (term.isEmpty) {
+        // if no terminator is given, we end if no separator follows
+        break = true
+      } else if (sep.isDefined) {
+        // parse error; will be reported by the caller because no terminator follows
+        break = true
       }
+      // otherwise: no separator, repeat until terminator found
     }
     as.reverse
   }
@@ -361,10 +387,18 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     input.substring(start,index)
   }
 
+  def isNameStart(c: Unicode.UChar) = Character.isLetter(c) || isNameConnector(c)
   def isNameChar(c: Unicode.UChar) = Character.isLetterOrDigit(c) || isNameConnector(c)
   @inline def isNameConnector(c: Unicode.UChar) = c == '_'
 
-  def parseName = {trim; parseWhile(isNameChar)}
+  def parseName = {
+    trim
+    if (atEnd || !isNameStart(next)) "" else {
+      // identifiers end when the script changes; that allows eg sinα or λx without space
+      val script = Character.UnicodeScript.of(next)
+      parseWhile(c => isNameChar(c) && (!Character.isLetter(c) || Character.UnicodeScript.of(c) == script))
+    }
+  }
   def parseNameExtended = {
     trim
     var allowNameChars = true
@@ -378,7 +412,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
 
   def parsePath: Path = addRef {
-    val ns = parseList(parseName, ".", " ")
+    val ns = parseList(parseName, Some("."), None)
     Path(ns)
   }
 
@@ -389,7 +423,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   def startsWithDeclaration = {
     val backtrackPoint = index
     trim
-    val isDecl = allDeclKeywords.exists(startsWith) || {
+    val isDecl = allDeclKeywords.exists(k => startsWith(k)) || {
       val n = parseName
       trim
       n.nonEmpty && (startsWith(":") || startsWith("=") || startsWith("#"))
@@ -397,6 +431,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     index = backtrackPoint
     isDecl
   }
+
+  def startsWithUnbracketedArgument = !atEnd && (isNameChar(next) || Symbols.isOpeningBracketStart(next).isDefined)
 
   def parseExpressionOrDeclarations(defaultName: String) = {
     trim
@@ -488,24 +524,17 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     var declarationFound = false
     val name = nameAlreadyParsed getOrElse parseNameExtended
     if (name.isEmpty) fail("name expected")
-    implicit var pcon = PContext.empty
-    trim
-    val tc = if (startsWithS("@")) parseTypeContext else LocalContext.empty
-    pcon = pcon append tc
-    trim
-    val args = if (startsWith("(")) Some(parseBracketedContext) else None
-    trim
-    args foreach {a => pcon = pcon append a}
+    val (pcon, tpCont, expCont) = parseArgumentContext()
     var equalOptional = false
-    val tp = if (startsWithS(":---")) {
+    val tp = if (startsWithS(":---", false)) {
       // sugar for declaring an axiom: c:--- F ---->  c: |- Forall F
       declarationFound = true
-      val e = parseExpression
+      val e = parseExpression(pcon.copy(eager = true))
       ProofType(Quantifier(true, null, e).copyFrom(e))
-    } else if (startsWithS(":")) {
+    } else if (startsWithS(":", false)) {
       declarationFound = true
-      parseType
-    } else if (startsWith("{")) {
+      parseType(pcon.copy(terminators = List("=","#")))
+    } else if (startsWith("{", false)) {
       // sugar for declaring methods as f(args) {body} instead of f(args):unit = {body}
       equalOptional = true
       UnitType
@@ -516,9 +545,9 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     var nt: Option[Notation] = None
     def parseDef = {
       trim
-      if (startsWithS("=") || equalOptional) {
+      if (startsWithS("=", false) || equalOptional) {
         declarationFound = true
-        vl = Some(parseExpression)
+        vl = Some(parseExpression(pcon))
       }
     }
     def parseNot = {
@@ -538,33 +567,45 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       fail("declaration expected", indexPre)
     }
     // bind arguments in type and definiens
-    val (atp,avl) = args match {
+    val (atp,avl) = expCont match {
       case None => (tp,vl)
-      case Some(lc) => (FunType(lc,tp), vl map {v => Lambda(lc,v, true)})// ToDO no Ref added
+      case Some(lc) => (FunType(lc,tp).copyFrom(tp), vl map {v => Lambda(lc,v, true).copyFrom(v)})
     }
-    ExprDecl(name, tc, atp, avl, nt, mods)
+    ExprDecl(name, tpCont, atp, avl, nt, mods)
   }
 
   // type a[X,Y](x:X, y:Y) where X, Y are type variables
   def parseTypeDecl(mods: Modifiers): TypeDecl = {
     val begin = index
     val name = parseName
-    implicit var pcon = PContext.empty
-    val tc = if (startsWithS("@")) parseTypeContext else LocalContext.empty
-    pcon = pcon append tc
+    val (pcon,tc,ec) = parseArgumentContext()
     val unbounded = Type.unbounded
     setRef(unbounded, begin)  // location of name for the default upper bound
-    val lc = parseBracketedContext
-    pcon = pcon append lc
     trim
     val (tp,df) = if (startsWithS("=")) {
-      (unbounded,Some(parseType))
+      (unbounded,Some(parseType(pcon)))
     } else if (startsWithS("<")) {
-      (parseType, None)
-    } else
+      (parseType(pcon), None)
+    } else {
       (unbounded, None)
-    TypeDecl(name, tc append lc, tp, df, mods)
+    }
+    val jointC = tc append ec.getOrElse(LocalContext.empty)
+    TypeDecl(name, jointC, tp, df, mods)
   }
+
+  // @(a,...)(x:A,...)
+  def parseArgumentContext() = {
+    implicit var pcon = PContext.empty
+    trim
+    val tc = if (startsWithS("@")) parseTypeContext else LocalContext.empty
+    pcon = pcon append tc
+    trim
+    val ec = if (startsWith("(")) Some(parseBracketedContext) else None
+    trim
+    ec foreach {a => pcon = pcon append a}
+    (pcon,tc,ec)
+  }
+
 
   /** counts how many extra : a VarDecl has */
   private class ColonCounter {var extras: Int = 0}
@@ -581,35 +622,37 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     vd
   }
   private def parseVarDecl(mutable: Boolean, nameMandatory: Boolean, colonCounter: ColonCounter)(implicit ctxs: PContext): EVarDecl = addRef {
-    val noStatements = ctxs.setAllowStatement(false)
+    val noStatements = ctxs.copy(allowStatement = false)
     val backtrackPoint = index
     val n = parseName
     trim
-    if (!startsWithAny(":", "=") && !nameMandatory && !mutable) {
+    if (!nextIs(':') && !nextIs('=') && !nameMandatory && !mutable) {
       // n is not actually a variable name, treat this as anonymous var decl
       index = backtrackPoint
       val tp = parseType(noStatements)
       EVarDecl.anonymous(tp)
     } else {
-      val tp = if (startsWithS(":")) {
-        while (startsWithS(":")) colonCounter.extras += 1
+      val tp = if (nextIs(':')) {
+        skip(":")
+        while (nextIs(':')) {colonCounter.extras += 1; skip(":")}
         parseType(noStatements)
       } else Type.unknown()
-      val df = if (startsWithS("=")) {
+      val df = if (nextIs('=')) {
+        skip("=")
         Some(parseExpression(noStatements))
       } else None
       EVarDecl(n, tp, df, mutable)
     }
   }
 
-  def parseContext(namesMandatory: Boolean)(implicit ctxs: PContext): ExprContext = addRef {
+  def parseContext(namesMandatory: Boolean, endIf: Option[String] = None)(implicit ctxs: PContext): ExprContext = addRef {
     val btp = index
-    var vds = parseList(parseMultiVarDecl(false, namesMandatory), ",", ")")
+    var vds = parseList(parseMultiVarDecl(false, namesMandatory), Some(","), endIf)
     // conflict between parsing a single name n as "":n or n:???
     // heuristic: only allow the latter if no other variable is named
     if (!namesMandatory && vds.exists(!_._1.anonymous) && vds.exists(vd => vd._1.anonymous && vd._1.tp.isInstanceOf[ClosedRef])) {
       index = btp
-      vds = parseList(parseMultiVarDecl(false, true), ",", ")")
+      vds = parseList(parseMultiVarDecl(false, true), Some(","), endIf)
     }
     // number of previous (i.e., later since we revert the list) declarations into which a type should be copied
     var previousType: Type = null
@@ -639,7 +682,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   def parseBracketedContext(implicit ctxs: PContext): ExprContext = {
     trim
     if (startsWithS("(")) {
-      val c = parseContext(false)
+      val c = parseContext(false, Some(")"))(ctxs.copy(terminators = List(")")))
       skip(")")
       c
     } else {
@@ -662,18 +705,21 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
 
   def parseTypeArgs(implicit ctxs: PContext) = {
     trim
+    val ctxsT = ctxs.copy(inType = true, eager = true, terminators = List(",",")"))
     if (startsWithS("(")) {
-      val r = parseList(parseType, ",", ")")
+      val r = parseList(parseType(ctxsT), ",", ")")
       trim
       skip(")")
       r
     } else {
-      List(parseType(ctxs.noWeakPostops))
+      List(parseType(ctxs.copy(eager = false)))
     }
   }
 
   def parseNotation = {
-    val fix = if (startsWithS(Keywords.infix)) {
+    val fix = if (startsWithS(Keywords.nullfix)) {
+      Nullfix
+    } else if (startsWithS(infix)) {
       Infix
     } else if (startsWithS(prefix)) {
       Prefix
@@ -693,8 +739,9 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
 
   def parseExpressions(open: String, close: String)(implicit ctxs: PContext) = {
+    val ctxsI = ctxs.copy(eager = true, terminators = List(",", close))
     skip(open)
-    val es = parseList(parseExpression, ",", close)
+    val es = parseList(parseExpression(ctxsI), ",", close)
     skip(close)
     es
   }
@@ -708,35 +755,37 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
   def parseBracketedExpression(implicit ctxs: PContext) = {
     skip("(")
-    val e = parseExpression
+    val e = parseExpression(ctxs.copy(eager = true, terminators = List(")")))
     skip(")")
     e
   }
   // needed because addRef does not work with return-statements
   private def parseExpressionInner(implicit ctxs: PContext): Expression = {
-    val allowWeakPostops = ctxs.allowWeakPostops
-    val allowEqual = ctxs.allowEqual
-    val rightOpen = ctxs.copy() // for right-open subexpressions
-    ctxs.allowWeakPostops = true // only active for one level
-    ctxs.allowEqual = true
-    val allowS = ctxs.allowStatement
-    val doAllowS = ctxs.setAllowStatement(true)
-    val doNotAllowS = ctxs.setAllowStatement(false)
-    // seen.reverse = (e1,o1,l1)::... represents having parsed "e1 o1 ..." where l1 is the location of o1
-    var seen: List[(Expression,PseudoOperator,Location)] = Nil
+    val upcoming = input.substring(index,Math.min(index+10,inputLength)) // for debugging
+    println(upcoming)
+    val eagerly = ctxs.copy(eager = true)
+    val lazily = ctxs.copy(eager = false)
+    val allowS = lazily.allowStatement
+    val doAllowS = ctxs.copy(allowStatement = true)
+    val doNotAllowS = ctxs.copy(allowStatement = false)
     val allExpBeginAt = index
-    while (true) {
+    // seen.reverse = (e,o)::... represents having shifted "e o ..."; exp is the current expression, the RHS of the last infix
+    var seen: List[(Expression,PseudoOperator)] = Nil
+    var exp: Expression = null
+    var shiftInfixes = true
+    while (shiftInfixes) {
       trim
       val expBeginAt = index
-      var exp: Expression = if (startsWithS(".")) {
+      var expBracketed = false
+      exp = if (nextIs('.')) {
+        skip(".")
         if (!atEnd && isNameChar(next)) {
           // .id is OpenRef
           OpenRef(parsePath)
         } else {
           // . is this, .. is parent and so on
           var l = 1
-          while (startsWithS(".")) {l += 1}
-          trim
+          while (nextIs('.')) {l += 1; skip(".")}
           // .a is this.a, ..a is parent.a, and so on; thus: if .id follows, we keep the last .
           if (!atEnd && isNameChar(next)) index-=1
           This(l)
@@ -747,10 +796,10 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         trim
         skip("}")
         val thy = setRef(Theory(ds),begin)
-        Instance(thy)
-      } else if (startsWithS("{")) {
+        if (ctxs.inType) UndefinedValue(ClassType(thy)) else Instance(thy)
+      } else if (!ctxs.inType && startsWithS("{")) {
         var cs: List[Expression] = Nil
-        var ctxL = ctxs.setAllowStatement(true)
+        var ctxL = ctxs.copy(allowStatement = true, terminators = List(";", "}"))
         trim
         while (!startsWithS("}")) {
           val c = parseExpression(ctxL)
@@ -763,63 +812,60 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           if (startsWith(";")) skip(";")
         }
         Block(cs.reverse)
-      } else if (startsWithS(Keywords.mutableVarDecl)) {
+      } else if (!ctxs.inType && startsWithS(Keywords.mutableVarDecl)) {
         trim
         parseVarDecl(true, true)
-      } else if (startsWithS(Keywords.varDecl)) {
+      } else if (!ctxs.inType && startsWithS(Keywords.varDecl)) {
         trim
         parseVarDecl(false,true)
-      } else if (startsWithAny("exists","forall")) {
+      } else if (!ctxs.inType && startsWithAny("exists","forall")) {
         val univ = skipEither("forall", "exists")
-        val vars = parseContext(true)
+        val vars = parseContext(true)(ctxs.copy(terminators = List(".")))
         skipT(".")
-        val body = parseExpression(rightOpen)
+        val body = parseExpression(eagerly)
         Quantifier(univ,vars,body)
-      } else if (startsWithS("Forall")) {
-        val body = parseExpression(rightOpen)
+      } else if (!ctxs.inType && startsWithS("Forall")) {
+        val body = parseExpression(eagerly)
         Quantifier(true,null,body) // universal closure: Forall e --> forall ???. e
-      } else if (startsWithS("ASSERT")) {
+      } else if (!ctxs.inType && startsWithS("ASSERT")) {
         trim
-        skip("(")
-        val test = parseExpression
-        trim
-        val expected = if (startsWithS(",")) {
-          parseExpression
-        } else {
-          BoolValue(true)
+        val es = parseExpressions("(", ")")
+        val (test, expected) = if (es.length == 1) (es.head, BoolValue(true))
+        else if (es.length == 2) (es(0),es(1))
+        else {
+          reportError("only 2 arguments allowed", es(2))
+          (es(0),es(1))
         }
-        trim
-        skip(")")
         Assert(test,Type.unknown(),expected)
-      } else if (allowS && startsWithS("while")) {
+      } else if (!ctxs.inType && allowS && startsWithS("while")) {
         val c = parseBracketedExpression
         val b = parseExpression(doAllowS)
         While(c,b)
-      } else if (allowS && startsWithS("for")) {
+      } else if (!ctxs.inType && allowS && startsWithS("for")) {
         skipT("(")
         val v = parseName
         trim
         skipT("in")
-        val r = parseExpression
+        val r = parseExpression(ctxs.copy(terminators = List(")")))
         skipT(")")
         val b = parseExpression(doAllowS.append(EVarDecl(v,Type.unknown())))
         For(EVarDecl(v,Type.unknown()),r,b)
-      } else if (startsWithS("if")) {
+      } else if (!ctxs.inType && startsWithS("if")) {
         val c = parseBracketedExpression
-        val th = parseExpression
+        val th = parseExpression(ctxs.copy(terminators = "else" :: ctxs.terminators))
         trim
         val el = if (startsWithS("else")) {
           Some(parseExpression)
         } else {
-          if (!allowS) reportError("else branch expected")
+          if (!allowS) reportError("else branch expected", index)
           None
         }
         IfThenElse(c,th,el)
-      } else if (allowS && startsWithAny("return","throw")) {
+      } else if (!ctxs.inType && allowS && startsWithAny("return","throw")) {
         val thrw = skipEither("throw","return")
-        val r = parseExpression(rightOpen)
+        val r = parseExpression(eagerly)
         Return(r,thrw)
-      } else if (startsWithS("\"")) {
+      } else if (!ctxs.inType && startsWithS("\"")) {
         val s = parseWhile(_ != '"')
         skip("\"")
         StringValue(s)
@@ -830,13 +876,11 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         skip("'")
         CharLiteral(c)
          */
-      } else if (startsWithS("true")) {
+      } else if (!ctxs.inType && startsWithS("true")) {
         BoolValue(true)
-      } else if (startsWithS("false")) {
+      } else if (!ctxs.inType && startsWithS("false")) {
         BoolValue(false)
-      } else if (startsWithS("???")) {
-        UndefinedValue(Type.unknown())
-      } else if (!atEnd && Parser.digits.contains(next)) {
+      } else if (!ctxs.inType && !atEnd && Parser.digits.contains(next)) {
         val begin = index
         var seenDot = false
         while (!atEnd && (Parser.digits.contains(next) || (!seenDot && next == '.'))) {
@@ -848,130 +892,299 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           FloatValue(s.toFloat)
         else
          IntValue(s.toInt)
-      } else if (startsWith("(")) {
-        // unit (), bracketed (e), or tuple (e,...,e)
-        val es = parseExpressions("(",")")
-        trim
-        es match {
-          case Nil => UnitValue
-          case List(e) => e
-          case es => Tuple(es)
-        }
-      } else if (startsWithAny("[" :: CollectionKind.allKeywords :_*)) {
-          val kindO = if (startsWith("[")) None
-          else CollectionKind.allKinds.find(k => startsWithS(k._1)).map(_._2)
-          val es = parseExpressions("[","]")
-          val k = kindO.getOrElse {if (es.sizeIs > 1) CollectionKind.List else CollectionKind.Option}
-          CollectionValue(es,k)
-      } else if (startsWithS("`")) {
+      } else if (startsWithS("???")) {
+        UndefinedValue(Type.unknown())
+      } else if (!ctxs.inType && startsWithS("`")) {
         if (ctxs.contexts.length <= 1) reportError("eval outside quotation", index-1, inputLength)
         val e = parseExpression(ctxs.pop())
         skip("`")
         Eval(e)
-      } else if (!atEnd && Symbols.isOpeningBracketStart(next).isDefined) {
-        val begin = index
-        val open = parseWhile(Symbols.isOpeningBracketChar)
-        val op = new PseudoOperator(open,Circumfix)
-        val bo = setRef(BaseOperator(op,Type.unknown()), begin)
-        val es = parseExpressions("", op.close)
-        Application(bo, es)
-      } else if (!atEnd && Symbols.isBindfixStart(next)) {
-        // binder operators are parsed as unary operators applied to Lambda
-        val begin = index
-        val binder = parseWhile(Symbols.isBindfixChar)
-        val op = new PseudoOperator(binder,Bindfix)
-        val bo = setRef(BaseOperator(op,Type.unknown()), begin)
-        val vars = parseContext(true)
-        trim;
-        skipT(".")
-        val body = parseExpression
-        val arg = Lambda(vars,body,false)
-        arg.loc = vars.loc extendTo body.loc
-        Application(bo, List(arg))
-      } else if (!atEnd && Symbols.isPrefixChar(next)) {
-        // prefix is default if no specialized fixity applies like circumfix or bindfix
-        val po = parsePrefix
-        // prefix operators bind stronger than all infix operators
-        // TODO support operators like object-level turnstiles, which bind weaker than object-level infixes but stronger than UPL infixes
-        val e = parseExpression(ctxs.noWeakPostops)
-        Application(po, List(e))
-      } else if (startsWithS("Uniformal.")){
-        val builtinName = parseName
-        val exp = parseBracketedExpression
-        Builtin(builtinName, List(exp), Type.unknown())
-      }
-      else {
-        //  symbol/variable/module reference
-        val n = parseName
-        if (n.isEmpty) fail("name expected")
-        trim
-        if (startsWith(":") && !nextAfter(1).exists(Symbols.isOperatorChar)) {
-          // variable declaration
-          skip(":")
-          val tp = parseType(doNotAllowS)
-          EVarDecl(n,tp)
-        } else if (n == "_") {
-          EVarDecl.anonymous(Type.unknown()) // anonymous variable
-        } else if (ctxs.declares(n)) {
-          VarRef(n) // reference to bound variable
+      } else if (startsWith("(")) {
+        /* options: inType; -> follows; brackets contain VarDecls
+             (type): bracketed type, parsed as (_:type)
+             (context): unit type, bracketed type, product type
+             (type) -> type: bracketed domain in function type,
+             (context) -> type: function type
+             (exp): unit value, bracketed expression, tuple
+             (context): not allowed, var decls parsed as tuple components
+             (exp) -> exp: match case
+             (context) -> exp: lambda
+         */
+        if (ctxs.inType) {
+          val comps = parseBracketedContext // allows for (A,...)
+          val tp = comps.variables match {
+            case List(vd) if vd.anonymous =>
+              // (type)
+              vd.tp
+            case _ =>
+              trim
+              if (startsWithS("->")) {
+                val r = parseType
+                // (context) -> type
+                FunType(comps, r)
+              } else {
+                // (context)
+                ProdType(comps)
+              }
+          }
+          UndefinedValue(tp)
         } else {
-          ClosedRef(n) // default for names that must be resolved during type-checking
+          val es = parseExpressions("(", ")")
+          val tuple = setRef(TupleGeneral(es), expBeginAt)
+          trim
+          if (!ctxs.terminators.contains("->") && startsWith("->")) {
+            val vdOs = es.map(expToVarDecl)
+            if (vdOs.forall(_.isDefined)) {
+              val ins = ExprContext.make(vdOs.map(_.get)).copyFrom(tuple)
+              skip("->")
+              val bd = parseExpression(doAllowS)
+              Lambda(ins,bd,false)
+            } else {
+              tuple
+            }
+          } else {
+            expBracketed = true
+            tuple
+          }
+        }
+      } else if (startsWith("[") || startsWithAny(CollectionKind.allKeywords :_*)) {
+          val kind = if (startsWith("[")) CollectionKind.List
+          else CollectionKind.allKinds.find(k => startsWithS(k._1)).get._2
+          if (ctxs.inType) {
+            skip("[")
+            val tp = parseType(ctxs.copy(terminators = List("]")))
+            skip("]")
+            UndefinedValue(CollectionType(tp,kind))
+          } else {
+            val es = parseExpressions("[","]")
+            CollectionValue(es, kind)
+          }
+      } else if (ctxs.inType && startsWithS("|-")) {
+        // will be turned into ProofType by parseType
+        val ctxF = eagerly.copy(inType = false, allowStatement = false, terminators = "->" :: ctxs.terminators)
+        val f = parseExpression(ctxF)
+        UndefinedValue(ProofType(f))
+      } else if (ctxs.inType && startsWith("_") && nextAfter(1).exists(!isNameChar(_))) {
+        skip("_")
+        UndefinedValue(Type.unknown())
+      } else if (ctxs.inType && startsWithS("int")) {
+        val tp = if (startsWithS("[")) {
+          trim
+          val lower = if (startsWith(";")) null else parseExpression(ctxs.copy(inType = false, terminators = List(";")))
+          trim
+          skip(";")
+          val upper = if (startsWith("]")) null else parseExpression(ctxs.copy(inType = false, terminators = List("]")))
+          trim
+          skip("]")
+          IntervalType(Option(lower), Option(upper))
+        } else {
+          NumberType.Int
+        }
+        UndefinedValue(tp)
+      } else {
+        val opO = if (ctxs.inType) None else parseOperator
+        opO match {
+          case Some(op) =>
+            // initial operator
+            if (op.opening) {
+              val es = parseExpressions("", Symbols.makeClosingBracket(op.symbol))
+              val oes = op.toApplication(Circumfix, es)
+              if (startsWithUnbracketedArgument) {
+                // a circumfix can take one extra argument without whitespace
+                setRef(oes, op.loc.from)
+                val a = parseExpression(lazily)
+                Application(oes, List(a))
+              } else
+                oes
+            } else if (op.closing) {
+              fail("unexpected closing bracket", at = index-op.symbol.length)
+            } else {
+              // multiple resolutions for op
+              @inline def nullfix() = op.withFixity(Nullfix).toExpression
+              @inline def prefix() = {
+                val e = parseExpression(lazily)
+                op.toApplication(Prefix, List(e))
+              }
+              @inline def bindfix() = parseBinding(op.withFixity(Bindfix).toExpression)
+              if (atEndOfLine || startsWithAny(ctxs.terminators:_*)) {
+                nullfix()
+              } else if (startsWithBinding) {
+                bindfix()
+              } else if (op.attachRight || op.unspaced) {
+                prefix()
+              } else if (!ctxs.eager) {
+                nullfix()
+              } else {
+                // peek at the next operator (if any)
+                trim
+                val afterOp = index
+                val op2O = parseOperator
+                index = afterOp
+                op2O match {
+                  case Some(op2) =>
+                    if (op2.opening) prefix()
+                    else if (op2.closing) nullfix()
+                    else if (op2.symmetric) {
+                      // op2 is infix whose left argument is op
+                      nullfix()
+                    } else {
+                      prefix()
+                    }
+                  case None => prefix()
+                }
+              }
+            }
+          case None =>
+            // symbol/variable/module reference
+            val n = parseName
+            if (n.isEmpty) fail("name expected")
+            trim
+            if (startsWith(":") && !nextAfter(1).exists(Symbols.isOperatorChar)) {
+              // variable declaration
+              skip(":")
+              val tp = parseType(doNotAllowS)
+              EVarDecl(n, tp)
+            } else if (n == "_") {
+              EVarDecl.anonymous(Type.unknown()) // anonymous variable
+            } else if (ctxs.declares(n)) {
+              VarRef(n) // reference to bound variable
+            } else {
+              ClosedRef(n) // default for names that must be resolved during type-checking
+            }
         }
       } // end exp =
+      setRef(exp, expBeginAt)
       trim
-      // repeated check for and apply post-operators by modifying exp
-      // if expressions are split over multiple lines, strong postops must occur at the end of the line, not the beginning
-      // also, some expression can never be followed by a strong postop
-      val tryPostOps = !newlineBefore && (exp match {
-        case _:BaseValue | _: Block | _: Assign | _: EVarDecl | _:While | _:For | _: Return => false
-        case _ => true
-      })
-      var tryStrongPostOps = tryPostOps
-      while (tryStrongPostOps) {
-        // updates exp after parsing a postfix operator
-        def modifyExp(e: Expression) = {
-          setRef(exp,expBeginAt) // only the outermost expression gets its source reference automatically
-          exp = e
+
+      // ******** repeated check for and apply post-operators by modifying exp
+      /* state
+          seen: shifted expressions and infixes
+          exp: current expression
+          and the Booleans below
+       */
+      var takePostops = true // termination condition
+      // available state transitions
+      def stopPostops() = {
+        takePostops = false
+      }
+      // updates exp after parsing a postop (without changing the shifted infixes)
+      def modifyExp(e: Expression) = {
+        exp = e
+        setRef(exp,expBeginAt)
+      }
+      // reduce infixes and stop trying postops
+      def reduceInfixes() = {
+        exp = disambiguateInfixOperators(seen.reverse,exp)
+        setRef(exp,allExpBeginAt)
+        seen = Nil
+        takePostops = false
+        shiftInfixes = false
+      }
+      // shift exp with an infix operator; exp set to null to indicate shifting
+      def shift(op: PseudoOperator) = {
+        seen ::= (exp, op)
+        exp = null
+        stopPostops()
+      }
+      // backtrack and turn the first of a sequence of unspaced postfix operators into infix
+      // infOp remembers the operator from the previous iteration
+      def reparsePostfixAsInfix(infOp: PseudoOperator = null): Unit = {
+        exp match {
+          case Application(BaseOperator(pop: PseudoOperator,_), List(e)) if pop.fixity == Postfix && pop.unfixed.unspaced =>
+            exp = e
+            reparsePostfixAsInfix(pop)
+          case _ =>
+            index = infOp.unfixed.loc.from
+            shift(infOp.copy(fixity = Infix))
         }
+      }
+      while (takePostops) {
         trim
-        if (startsWithS("@") && exp.isInstanceOf[Ref]) {
-          val r = exp.asInstanceOf[Ref]
+        // properties of exp that are used to determine whether certain postifes are available
+        // unitary expressions can take a tight-binding postfix operator
+        val expIsUnitary = exp match {
+          case _ if expBracketed => true
+          case _: BaseValue | _: Ref | _: This | _: OwnedObject | _: Tuple | _: CollectionValue | _: Instance
+               | _: Block | _: OwnedExpr => true
+          case Application(BaseOperator(pop: PseudoOperator,_), _) =>
+              val f = pop.fixity
+              f != Infix && f != Prefix
+          case _: Application => true
+          case _ => false
+        }
+
+        // identifiers can take parameters
+        def asRef(e: Expression): Option[Ref] = e match {
+          case OwnedExpr(e, _, ClosedRef(n)) => asRef(e).map {
+            case OpenRef(p) => OpenRef(p / n)
+            case ClosedRef(m) => OpenRef(Path(m) / n)
+            case VarRef(m) => OpenRef(Path(m) / n)
+          }
+          case r: Ref => Some(r)
+          case _ => None
+        }
+
+        val expIsRef = asRef(exp)
+        // Block can return a value, so not a statement
+        val expIsStatement = exp match {
+          case _: Assign | _: EVarDecl | _: While | _: For | _: Return => true
+          case _ => false
+        }
+        // previous operator was an unspaced postfix that can be reparsed as infix
+        def previousMayHaveBeenInfix = {
+          exp match {
+            case Application(BaseOperator(pop: PseudoOperator, _), _) =>
+              pop.fixity == Postfix && pop.unfixed.unspaced
+            case _ => false
+          }
+        }
+        val startOfLine = newlineBefore
+        // now a large if-else that checks for what follows and calls the state transitions above
+        if (atEnd || (!ctxs.eager && next == ' ')) {
+          stopPostops()
+        } else if (startsWith(".") && nextAfter(1).exists(isNameStart) && expIsUnitary) {
+          // we check this before the terminators so that "." is no terminator if identifier follows without whitespace
+          skip(".")
+          val nB = index
+          val n = parseName
+          // if (n.isEmpty) fail("identifier expected")
+          val owned = setRef(ClosedRef(n),nB)
+          val expM = if (ctxs.inType) UndefinedValue(OwnedType(exp,null,owned)) else OwnedExpr(exp,null,owned)
+          modifyExp(expM)
+        } else if (startsWithAny(ctxs.terminators :_*)) {
+          // the term is done
+          reduceInfixes()
+        } else if (!startOfLine && expIsRef.isDefined && startsWithS("@")) {
+          val r = expIsRef.get
           val tps = parseTypeArgs
-          modifyExp(AppliedRef(r,tps))
-        } else if (startsWithS("(")) {
+          modifyExp(AppliedRef(r,tps,Nil))
+        } else if (!startOfLine && expIsUnitary && startsWithS("(")) {
           val es = parseExpressions("",")")
           modifyExp(Application(exp,es))
-        } else if (startsWithS("[")) {
+        } else if (ctxs.eager && startsWithUnbracketedArgument && expIsRef.isDefined) {
+          // switch to whitespace-application
+          val btp = index
+          if (startsWithBinding) {
+            val bexp = parseBinding(exp)
+            modifyExp(bexp)
+          } else {
+            var args: List[Expression] = Nil
+            trim
+            while (startsWithUnbracketedArgument) {
+              args ::= parseExpression(lazily)
+              trim
+            }
+            modifyExp(Application(exp, args.reverse))
+          }
+        } else if (!ctxs.inType && startsWith("[") && expIsUnitary && !startOfLine) {
+          skip("[")
           val e = parseExpression
           skip("]")
           modifyExp(ListElem(exp,e))
-        } else if (startsWith(".")) {
-          val btp = index
-          skip(".")
-          if (!atEnd && next == ' ') {
-            // . only works if followed by identifier; this allows using ". " in a quantifier without ambiguity
-            index = btp
-            tryStrongPostOps = false
-          } else {
-            val nB = index
-            val n = parseName
-            if (n.isEmpty) fail("identifier expected")
-            val owned = setRef(ClosedRef(n),nB)
-            modifyExp(OwnedExpr(exp,null,owned))
-          }
-        } else if (startsWithS("{")) {
+        } else if (expIsUnitary && startsWithS("{")) {
           // conflict between M{decls} and exp{exp}
           // check if there was a Ref before
-          def asRef(e: Expression): Option[Ref] = e match {
-            case OwnedExpr(e,_,ClosedRef(n)) => asRef(e).map {
-              case OpenRef(p) => OpenRef(p/n)
-              case ClosedRef(m) => OpenRef(Path(m) / n)
-              case VarRef(m) => OpenRef(Path(m) / n)
-            }
-            case r: Ref => Some(r)
-            case _ => None
-          }
-          asRef(exp) match {
+          expIsRef match {
             case Some(r) if startsWithDeclaration || startsWith("}") =>
               // p{decls}
               val incl = setRef(Include(r), expBeginAt)
@@ -982,153 +1195,206 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
                 case _ => reportError("symbol declaration expected", indexPre); Nil
               }
               val thy = setRef(Theory(incl::sds), incl.loc.from)
-              modifyExp(Instance(thy))
+              val expM = if (ctxs.inType) UndefinedValue(ClassType(thy)) else Instance(thy)
+              modifyExp(expM)
             case _ =>
               // in e{q}, q is a closed expression in a different theory
-              val e = parseExpression(ctxs.push())
-              modifyExp(OwnedExpr(exp,null,e))
+              val ctxsI = ctxs.push().copy(terminators = List("}"))
+              val expM = if (ctxs.inType) {
+                val t = parseType(ctxsI)
+                UndefinedValue(OwnedType(exp,null,t))
+              } else {
+                val e = parseExpression(ctxsI)
+                OwnedExpr(exp, null, e)
+              }
+              modifyExp(expM)
           }
           skip("}")
-        } else if (startsWithS("°")) {
+        } else if (expIsUnitary && startsWithS("°")) {
+          reduceInfixes()
           // function application with Andrews' dot
-          val a = parseExpression
+          val a = parseExpression(eagerly)
           modifyExp(Application(exp, List(a)))
-        } else {
-          val opBegin = index
-          tryParse(parseOperarorAfterExpression) match {
-            case Some(Some(p)) if p.fixity == Postfix =>
-              val pop = setRef(BaseOperator(p, Type.unknown()), opBegin)
-              modifyExp(Application(pop,List(exp)))
-            case Some(Some(p)) if p.fixity == Applyfix =>
-              val pop = setRef(BaseOperator(p, Type.unknown()), opBegin)
-              val es = parseExpressions("", p.close)
-              modifyExp(Application(pop,exp::es))
-            case _ =>
-              index = opBegin // needed in case some other operator was parsed successfully
-              tryStrongPostOps = false
-          }
-        }
-      } // end while, applying postops
-      trim
-      setRef(exp, expBeginAt)
-      // weak postops; all of the below either
-      // - end the infix chain: call expDone, possibly modify the expression with postops, return
-      // - continue the infix chain
-      def expDone() = {
-        disambiguateInfixOperators(seen.reverse,exp)
-      }
-      // TODO parse Lambdas entirely differently
-      // postops that stop the infix chain: -> , match, etc.
-      val cannotTakeWeakPostops = exp match {
-        case _: While | _: For | _: Return => true
-        case _ => false // all values can take infix operators, multiple cases can take ->, Assign/Block can take catch or dynamic connectives
-      }
-      if (!allowWeakPostops || cannotTakeWeakPostops) {
-        return expDone()
-      } else if (startsWith("=") && !nextAfter(1).exists(Symbols.isOperatorChar)) {
-        if (allowEqual) {
+        } else if (!ctxs.inType && startsWith("=")) {
+          reduceInfixes()
           skip("=")
           val df = parseExpression
-          return Assign(expDone(), df)
-        } else {
-          // ensures types like |- e end before = so that a definition can follow
-          return expDone()
-        }
-      } else if (startsWith("->") && !nextAfter(2).exists(Symbols.isOperatorChar)) {
-        skip("->")
-        exp = expDone()
-        // decls -> body is a Lambda, pattern -> body is a MatchCase
-        def asVarDecls(e: Expression,top: Boolean): Option[List[EVarDecl]] = e match {
-          case UnitValue if top => Some(Nil)
-          case Tuple(es) if top =>
-            val esV = es.map(e => asVarDecls(e,false))
-            if (esV.forall(_.isDefined)) Some(esV.flatMap(_.get))
-            else None
-          case e =>
-            val vd = e match {
-              case vd: EVarDecl => vd
-              case VarRef(n) => EVarDecl(n,Type.unknown()).copyFrom(e)
-              case ClosedRef(n) => EVarDecl(n,Type.unknown()).copyFrom(e)
-              case _ => return None
+          modifyExp(Assign(exp, df))
+        } else if (startsWithS("->")) {
+          reduceInfixes()
+          // if the LHS of -> had been bracketed, this would already have been parsed above
+          if (ctxs.inType) {
+            val lhs = expressionToType(exp).getOrElse(UnivType(exp,null))
+            val ins = ExprContext.make(List(EVarDecl.anonymous(lhs))).copyFrom(lhs)
+            val rhs = parseType
+            val ftp = UndefinedValue(FunType(ins, rhs))
+            modifyExp(ftp)
+          } else {
+            val bd = parseExpression
+            val expM = expToVarDecl(exp) match {
+              case Some(vd) =>
+                Lambda(ExprContext.make(List(vd)), bd, false)
+              case None =>
+                reportError("variable declaration expected", exp)
+                Lambda(ExprContext.empty, bd, false)
             }
-            Some(List(vd))
-        }
-        asVarDecls(exp,true) match {
-          case None =>
-            val b = parseExpression(doAllowS)
-            return MatchCase(null, exp, b)
-          case Some(ins) =>
-            val ctx = ExprContext.make(ins).copyFrom(exp)
-            val b = parseExpression(doAllowS.append(ctx))
-            return Lambda(ctx, b, false)
-        }
-      } else if (startsWithAny("match","catch")) {
-        exp = expDone()
-        val handle = skipEither("catch","match")
-        skip("{")
-        val cs = parseList(parseMatchCase,"}",false)
-        skip("}")
-        return Match(exp,cs,handle)
-      } else if (newlineBefore) {
-        return expDone() // treat operators at the start of a line as prefix/circumfix
-      } else {
-        // postops that continue the infix chain
-        val opBegin = index
-        parseOperarorAfterExpression match {
-          case None =>
-            return expDone()
-          case Some(o) if o.fixity == Infix =>
-            seen ::= (exp,o, makeRef(opBegin))
-          case o =>
-            // Applyfix and Postfix are handled as post-operators above
-            throw IError("impossible case at " + this)
-        }
-      } // end if for weak postops
-    } // end while that builds 'seen'
-    null // impossible
+            modifyExp(expM)
+          }
+        } else if (ctxs.inType && startsWithS("?")) {
+          val tp = expressionToType(exp).getOrElse(UnivType(exp,null))
+          val tpM = UndefinedValue(CollectionKind.Option(tp))
+          modifyExp(tpM)
+        } else if (!ctxs.inType && startsWithAny("match","catch")) {
+          reduceInfixes()
+          val handle = skipEither("catch", "match")
+          skip("{")
+          val cs = parseList(parseMatchCase, None, Some("}"))
+          skip("}")
+          modifyExp(Match(exp, cs, handle))
+        } else if (expIsUnitary) {
+          // try for postfix or infix operator
+          val opO = parseOperator
+          opO match {
+            case None =>
+              if (previousMayHaveBeenInfix && !atEnd) {
+                reparsePostfixAsInfix()
+              } else {
+                stopPostops()
+              }
+            case Some(op) =>
+              if (op.closing || op.attachRight) {
+                stopPostops()
+                index = op.loc.from // unparse op
+              } else if (op.opening) {
+                // before an opening bracket
+                if (previousMayHaveBeenInfix) {
+                  // e p (... ---> p was infix
+                  reparsePostfixAsInfix()
+                  index = op.loc.from  // unparse the bracket
+                } else {
+                  // e (... ---> applyfix
+                  val es = parseExpressions("", Symbols.makeClosingBracket(op.symbol))
+                  modifyExp(op.toApplication(Applyfix, exp :: es))
+                }
+              } else if (op.symmetric && !op.unspaced) {
+                shift(op.withFixity(Infix))
+              } else {
+                // left-attaching or unspaced: postfix (but if unspaced, it may be reparsed later)
+                modifyExp(op.toApplication(Postfix, List(exp)))
+              }
+            }
+        } else {
+          stopPostops()
+        } // end if
+      } // end while that applies postops
+      // no more postops and no infixes: finalize expression
+      if (exp != null) {
+        // stop shifting
+        reduceInfixes()
+        shiftInfixes = false
+      }
+      // otherwise, the current expression was shifted and we continue
+    } // end while that shifts infix ops
+    // seen.isEmpty here
+    exp
   }
 
   def parseMatchCase(implicit ctxs: PContext) = addRef {
-    val indexPre = index
-    val e = parseExpression
-    e match {
-      case mc: MatchCase => mc
-      case Lambda(ins,bd,_) =>
-        // awkward: if parseExpression was able to turn the pattern into a lambda, undo that here
-        val p = if (ins.decls.length != 1)
-          Tuple(Util.reverseMap(ins.decls)(_.toRef))
-        else
-          VarRef(ins.decls.head.name)
-        MatchCase(null, p.copyFrom(ins), bd)
-      case e => reportError("match case expected", indexPre); MatchCase(null,setRef(VarRef(""),indexPre), e)
-    }
+    val e = parseExpression(ctxs.copy(terminators = List("->")))
+    trim
+    skip("->")
+    val b = parseExpression
+    MatchCase(null, e, b)
   }
 
-  def parseOperarorAfterExpression: Option[PseudoOperator] = {
-    if (!atEnd && Symbols.isOpeningBracketStart(next).isDefined) {
-      val op = parseWhile(Symbols.isOpeningBracketChar)
-      Some(new PseudoOperator(op,Applyfix))
+  private def expToVarDecl(e: Expression): Option[EVarDecl] = {
+    val vdO = e match {
+      case vd: EVarDecl if !vd.mutable => vd
+      case ClosedRef(n) => EVarDecl(n, Type.unknown()).copyFrom(e)
+      case VarRef(n) => EVarDecl(n, Type.unknown()).copyFrom(e) // shadowing
+      case e => null
+    }
+    Option(vdO)
+  }
+
+  // tests for "x,...,x:", "x,...,x. "
+  def startsWithBinding(implicit ctxs: PContext): Boolean = {
+    // check if we're already parsing a binding
+    if (ctxs.terminators.contains(".")) return false
+    val btp = index
+    trim
+    val vr = parseName
+    trim
+    val r = vr.nonEmpty && (
+      if (startsWithS(",")) startsWithBinding
+      else startsWith(":") || (startsWith(".") && nextAfter(1).exists(Character.isWhitespace))
+      )
+    index = btp
+    r
+  }
+
+  // binder ctx. body
+  def parseBinding(binder: Expression)(implicit ctxs: PContext) = {
+    val vars = parseContext(true)(ctxs.copy(terminators = List(".")))
+    trim
+    skipT(".")
+    val body = parseExpression(ctxs.copy(eager = true)) // binder scopes as far as possible
+    val arg = Lambda(vars, body, false)
+    arg.loc = vars.loc extendTo body.loc
+    Application(binder, List(arg))
+  }
+
+  // parses an unfixed operator
+  // TODO handle _
+  def parseOperator: Option[UnfixedOperator] = {
+    trim
+    val start = index
+    if (atEnd) {
+      None
+    } else if (Symbols.isOpeningBracketStart(next).isDefined) {
+      val op = parseNext + parseWhile(Symbols.isBracketChar)
+      Some(unfixedOperator(op, start, opening = true))
+    } else if (Symbols.isClosingBracketStart(next).isDefined) {
+      val op = parseNext + parseWhile(Symbols.isBracketChar)
+      Some(unfixedOperator(op, start, closing = true))
+    } else if (Symbols.isSingleOpStart(next)) {
+      val op = parseNext + parseWhile(Symbols.isSingleOpChar)
+      Some(unfixedOperator(op, start))
+    } else if (Symbols.isMultiOpStart(next)) {
+      val op = parseNext + parseWhile(Symbols.isMultiOpChar)
+      Some(unfixedOperator(op, start))
     } else {
-      val op = parseWhile(Symbols.isOperatorChar)
-      if (op.nonEmpty) {
-        val fix = if (Symbols.isPostfixOp(op)) Postfix else Infix
-        Some(new PseudoOperator(op,fix))
-      } else {
-        None
-      }
+      None
     }
   }
-
-  def parsePrefix: BaseOperator = addRef {
-    val sym = parseWhile(Symbols.isPrefixChar)
-    val op = new PseudoOperator(sym,Prefix)
-    BaseOperator(op, Type.unknown())
+  private def unfixedOperator(symbol: String, startIndex: Int, opening: Boolean = false, closing: Boolean = false) = {
+    val endIndex = startIndex + symbol.length
+    val spaceBefore = {
+      var i = 0
+      while (startIndex-1-i >= 0 && input(startIndex-1-i) == ' ') i+=1
+      i
+    }
+    val spaceAfter = {
+      var i = 0
+      while (endIndex+i<inputLength && input(endIndex+i) == ' ') i+=1
+      i
+    }
+    val loc = makeRef(startIndex, endIndex)
+    UnfixedOperator(symbol, loc, spaceBefore, spaceAfter, opening, closing)
   }
-
-// a shift-reduce parser of e1 o1 ... en on last
-  def disambiguateInfixOperators(eos: List[(Expression,PseudoOperator,Location)], lastExp: Expression): Expression = {
+  // a shift-reduce parser of e1 o1 ... en on last, using space counts for precedence
+  def disambiguateInfixOperators(eos: List[(Expression,PseudoOperator)], lastExp: Expression): Expression = {
+    /** Precedence of an operator occurrence: number of spaces on the tighter side.
+     *  For a symmetric infix operator (sb == sa) this is sb (== sa).
+     *  For an asymmetric occurrence we warn and use the minimum (tighter side wins).
+     *  Fewer spaces = higher precedence (binds more tightly).
+     *  We negate so that higher precedence = larger integer for the shift-reduce comparisons.
+     */
+    @inline def precedence(o: PseudoOperator): Int = {
+      o.precedence
+    }
     // invariant: eos last = shifted rest last
-    var shifted: List[(Expression, PseudoOperator, Location)] = Nil
+    var shifted: List[(Expression, PseudoOperator)] = Nil
     var rest = eos
     var last = lastExp
     // shift: shifted.reverse | hd tl last ---> shifted hd | tl last
@@ -1137,39 +1403,37 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       rest = rest.tail
     }
     // before (a1 o) ... (an o) | after   ---> before (args e o) | after
-    @inline def reduce(o: PseudoOperator, l: Location, e: Expression) = {
-      val bo = BaseOperator(o,Type.unknown()).withLocation(l)
+    @inline def reduce(o: PseudoOperator, e: Expression) = {
       var args = List(e)
-      while (shifted.nonEmpty && shifted.head._2 == o) {
+      while (shifted.nonEmpty && shifted.head._2.symbol == o.symbol) {
         args ::= shifted.head._1
         shifted = shifted.tail
       }
-      Application(bo,args).withLocation(args.head.loc.extendTo(last.loc))
+      Application(o.toExpression,args).withLocation(args.head.loc.extendTo(last.loc))
     }
-
     while (shifted.nonEmpty || rest.nonEmpty) {
       rest match {
         case Nil =>
-          // reduce on the right: before (a1 o) ... (an o) (e o) | last  ---> before | (a1 ... an e last o)
-          val (_,o,l) = shifted.head
-          last = reduce(o,l,last)
-        case (e2,o2,l2) :: tl =>
+          // reduce on the right
+          val (_,o) = shifted.head
+          last = reduce(o,last)
+        case (e2,o2) :: tl =>
           if (shifted.isEmpty) {
             shift
           } else {
-            val (e1,o1,l1) = shifted.head
+            val (e1,o1) = shifted.head
+            val p1 = precedence(o1)
+            val p2 = precedence(o2)
             if (o1 == o2) {
-              // chained operators are collected during reduce
+              // same operator: collect for n-ary application
               shift
-            }
-            // ... e1 o1 | e2 o2 tl last
-            else if (o1.precedence >= o2.precedence) {
-              // before (a1 o1) ... (an o1) (e1 o1) | e2 o2 tl last ---> before (a1 ... an e1 e2 o1) o2 | tl last
-              val o1Applied = reduce(o1,l1,e2)
-              shifted ::= (o1Applied,o2,l2)
+            } else if (p1 >= p2) {
+              // o1 binds at least as tightly as o2: reduce o1 first
+              val o1Applied = reduce(o1,e2)
+              shifted ::= (o1Applied,o2)
               rest = tl
-            } else if (o1.precedence < o2.precedence) {
-              // shift: ---> before e1 o1 e2 o2 | tl last
+            } else {
+              // o2 binds more tightly: shift
               shift
             }
           }
@@ -1178,110 +1442,44 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     last
   }
 
-  private val typePostOps = List("->","?")
-  def parseType(implicit ctxs: PContext): Type = addRef {
-    val allowWeakPostops = ctxs.allowWeakPostops
-    ctxs.allowWeakPostops = true // only false for one level
-    val tpBegin = index
-    var tp = if (startsWith(".") && !startsWith("..")) {
-      skip(".")
-      OpenRef(parsePath)
-    } else if (startsWithS("int")) {
-      trim
-      if (startsWithS("[")) {
-        trim
-        val l = if (startsWith(";")) None else Some(parseExpression)
-        trim
-        skipT(";")
-        val u = if (startsWith("]")) None else Some(parseExpression)
-        trim
-        skip("]")
-        IntervalType(l, u)
-      } else
-        NumberType.Int
+  // We reuse expression parsing for 3 reasons:
+  // - reuse the code for parsing (applied) references
+  // - owned type starts with an expression
+  // - expr-to-type coercion allows expressions in type-positions
+  // The expression parser uses UndefinedValue(tp) to represent a type and handles all type parsing along the way.
+  def parseType(implicit ctxs: PContext): Type = {
+    val exp = parseExpression(ctxs.copy(inType = true))
+    val tp = expressionToType(exp).getOrElse {
+      reportError("type expected", from = exp.loc.from)
+      AnyType
     }
-    else if (startsWithS("nat")) NumberType.Nat
-    else if (startsWithS("rat")) NumberType.Rat
-    else if (startsWithS("comp")) NumberType.RatComp
-    else if (startsWithS("float")) NumberType.Float
-    else if (startsWithS("string")) StringType
-    //else if (startsWithS("char")) CharType
-    else if (startsWithS("bool")) BoolType
-    else if (startsWithS("empty")) EmptyType
-    else if (startsWithS("exn")) ExceptionType
-    else if (startsWithS("any")) AnyType
-    else if (startsWithAny("[" :: CollectionKind.allKeywords: _*)) {
-      val kind = if (startsWith("[")) CollectionKind.List
-      else CollectionKind.allKinds.find(k => startsWithS(k._1)).get._2
-      skip("[")
-      val y = parseType
-      skip("]")
-      CollectionType(y, kind)
-    } else if (startsWith("(")) {
-      val ys = parseBracketedContext
-      ys.decls match {
-        case Nil => UnitType
-        case List(vd: EVarDecl) if vd.anonymous => vd.tp
-        case _ => ProdType(ys)
+    tp.copyFrom(exp)
+  }
+  private def expressionToType(exp: Expression): Option[Type] = exp match {
+    case UndefinedValue(t) => Some(t)
+    case exp: ClosedRef =>
+      val t = exp.name match {
+        case "nat" => NumberType.Nat
+        case "int" => NumberType.Int
+        case "rat" => NumberType.Rat
+        case "comp" => NumberType.RatComp
+        case "float" => NumberType.Float
+        case "string" => NumberType.Float
+        case "bool" => BoolType
+        case "empty" => EmptyType
+        case "exn" => ExceptionType
+        case "any" => AnyType
+        case _ => exp
       }
-    } else if (startsWithS("|-")) {
-      val e = parseExpression(ctxs.copy(allowEqual = false))
-      ProofType(e)
-    } else {
-      // conflict between types that start with a name and those starting with an expression, i.e., e{tp} or e.tp
-      val backtrackPoint = index
-      val n = parseName
-      trim
-      if (n == "_") {
-        Type.unknown()
-      } else if (n != "" && !atEnd && typePostOps.exists(startsWith)) {
-        // looks like a type that starts with a name
-        if (ctxs.declares(n))
-          VarRef(n)
-        else
-          ClosedRef(n) // default for unresolved names
-      } else {
-        // We reuse expression parsing for 3 reasons:
-        // - reuse the code for parsing Refs
-        // - owned types starts with an expression
-        // - expr-to-type coercion allows expressions in type-positions
-        // Setting noWeakPostops avoids parsing -> and other operators, which we want to handle ourselves.
-        index = backtrackPoint
-        val indexPre = index
-        val exp = parseExpression(ctxs.noWeakPostops)
-        val tp = exp match {
-          case r: Ref => r
-          case r: AppliedRef => r
-          // The above falsely parses e.tp and e{tp} into OwnedExpr. We can turn only some of those into OwnedType:
-          case OwnedExpr(o, d, r: Ref) => OwnedType(o, d, r)
-          case OwnedExpr(o, d, r: AppliedRef) => OwnedType(o, d, r)
-          // Similarly, it parses M{ds} into Instance, which we can turn into ClassType.
-          case Instance(thy) => ClassType(thy)
-          // Any other expression, we coerce into a type.
-          // This coercion should happen during type-checking (and it does for Refs and OwnedType(_,_,Ref)),
-          // but because it changes Scala-type, we have to do it here already.
-          case _: VarRef | _: Application | _: Projection | _: ListElem => UnivType(exp, null)
-          case _ => reportError("type expected", indexPre); AnyType
-        }
-        tp.copyFrom(exp)
-      }
-    }
-    trim
-    // postfix/infix type operators
-    while (allowWeakPostops && typePostOps.exists(startsWith)) {
-      setRef(tp,tpBegin)
-      if (startsWithS("->")) {
-        val (ctxR,ins) = tp match {
-          case ProdType(ys) => (ctxs.append(ys),ys)
-          case y => (ctxs, ExprContext(EVarDecl.anonymous(y).copyFrom(y)))
-        }
-        val out = parseType(ctxR) // makes -> right-associative and dependent
-        tp = FunType(ins.copyFrom(tp),out)
-      } else if (startsWithS("?")) {
-        tp = CollectionType(tp, CollectionKind.Option)
-      }
-    }
-    tp
+      Some(t)
+    case r: Ref => Some(r)
+    case r: AppliedRef => Some(r)
+    case Application(MaybeAppliedRef(r,tpargs,Nil), es) => Some(MaybeAppliedRef(r,tpargs,es))
+    // Any other expression, we coerce into a type.
+    // This coercion should happen during type-checking (and it does for Refs and OwnedType(_,_,Ref)),
+    // but because it changes Scala-type, we have to do it here already.
+    case _: Application | _: Projection | _: ListElem => Some(UnivType(exp, null))
+    case _ => None
   }
 }
 
@@ -1305,6 +1503,7 @@ object Keywords {
   val circumfix = "circumfix"
   val applyfix = "applyfix"
   val bindfix = "bindfix"
-  val fixities = List(infix, prefix, circumfix, applyfix, bindfix)
+  val nullfix = "nullfix"
+  val fixities = List(nullfix, infix, prefix, circumfix, applyfix, bindfix)
 }
 

@@ -158,7 +158,7 @@ object LocalContext {
 
 /** parent of all variable declarations */
 trait VarDecl extends Named {
-  def tc = LocalContext.empty
+  def params = LocalContext.empty
   def dfO: Option[Object]
   def defined = dfO.isDefined
   def label = if (name != "") name else "_"
@@ -183,7 +183,7 @@ case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
   def children = decls.map(_.dfO.get)
 
   /** e_1, ..., e_n */
-  def exprs = Util.reverseMap(decls)(_.dfO.get)
+  def defs = Util.reverseMap(decls)(_.dfO.get)
   def map(f: VarDecl => VarDecl) = Substitution(
     Util.reverseMap(decls)(f).reverse
   )
@@ -372,7 +372,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   }
 
   private def similar(a: Type, b: Type) = (a,b) match {
-    case (MaybeAppliedRef(r,_),MaybeAppliedRef(s,_)) => r == s
+    case (MaybeAppliedRef(r,_,_),MaybeAppliedRef(s,_,_)) => r == s
     case (CollectionType(_,k),CollectionType(_,l)) => k == l
     case _ => a == b
   }
@@ -533,10 +533,9 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   }
   /** resolves an ambiguous name */
   def resolveName(obj: Object): Option[(Object, Option[Named])] = {
-    val (ref,args) = MaybeAppliedRef.unapply(obj).getOrElse{return Some((obj, None))}
+    val (ref,tpargs, args) = MaybeAppliedRef.unapply(obj).getOrElse{return Some((obj, None))}
     def make(r: Ref) = {
-      val ra = MaybeAppliedRef(r,args)
-      if (ra == obj) obj else ra.copyFrom(obj)
+      if (r == ref) obj else MaybeAppliedRef(r,tpargs,args).copyFrom(obj)
     }
     val n = ref match {
       case VarRef(n) => n
@@ -558,7 +557,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
           d match {
             case nd: NamedDeclaration =>
               val dO = OwnersSubstitutor.applyDecl(gc,nd,-level).asInstanceOf[NamedDeclaration]
-              val objC = OwnedReference(owner,null,nd,args) // we keep the domain uninfered to avoid triggering checks later; but it will be inferred eventually anyway
+              val objC = OwnedReference(owner,null,nd,tpargs,args) // we keep the domain uninfered to avoid triggering checks later; but it will be inferred eventually anyway
               (objC.copyFrom(obj),Some(dO))
             case _ => throw IError("impossible case")
           }

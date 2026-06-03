@@ -170,29 +170,41 @@ object Include {
 
 /** parent class of all declarations that introduce symbols, e.g., type, function, predicate symbols */
 sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
+  def params: LocalContext
   def tpSep: String // ":", "<", ...
   override def toString = {
+    var paramsS = ""
+    var inTpVars: Option[Boolean] = None
+    params.variables.reverse.foreach {
+      case td: TVarDecl =>
+        val sep = if (inTpVars.contains(true)) "," else if (inTpVars.contains(false)) ")@(" else "@("
+        paramsS += sep + td.name
+        inTpVars = Some(true)
+      case ed: EVarDecl =>
+        val sep = if (inTpVars.contains(true)) ")(" else if (inTpVars.contains(false)) "," else "("
+        paramsS += sep + ed.toString
+        inTpVars = Some(false)
+    }
     val tpS = if (tp == null || tp == AnyType) "" else " " + tpSep + " " + tp.toString
     val dfOS = dfO match {
       case Some(t) => " = " + t
       case None    => ""
     }
-    kind + " " + name + tpS + dfOS
+    kind + " " + name + paramsS + tpS + dfOS
   }
   def toRef = ClosedRef(name)
   def ntO: Option[Notation]
   def modifiers: Modifiers
   def subsumedBy(that: SymbolDeclaration): Boolean = {
-    this.kind == that.kind && this.name == that.name && this.tp == that.tp &&
+    this.kind == that.kind && this.name == that.name && this.params == that.params && this.tp == that.tp &&
       (!this.defined || this.dfO == that.dfO) &&
       modifiers == that.modifiers
   }
-  def tc: LocalContext
 }
 
 /** unifies [[ExprDecl]] and [[EVarDecl]] */
 trait TypedDeclaration extends Named {
-  def tc: LocalContext
+  def params: LocalContext
   def tp: Type
 }
 
@@ -210,7 +222,7 @@ case class Modifiers(closed: Boolean, mutable: Boolean) {
   * @param tp the upper type bound, [AnyType] if unrestricted, null if to be inferred during checking
   * @param args input (bound in both type bound and definition)
   */
-case class TypeDecl(name: String, tc: LocalContext, tp: Type, dfO: Option[Type], modifiers: Modifiers) extends SymbolDeclaration with KindedDeclaration {
+case class TypeDecl(name: String, params: LocalContext, tp: Type, dfO: Option[Type], modifiers: Modifiers) extends SymbolDeclaration with KindedDeclaration {
   def kind = Keywords.typeDecl
   def tpSep = "<"
   def ntO = None
@@ -219,7 +231,7 @@ case class TypeDecl(name: String, tc: LocalContext, tp: Type, dfO: Option[Type],
 /** declares a typed symbol
   * @param tp the type, null if to be inferred during checking
   */
-case class ExprDecl(name: String, tc: LocalContext, tp: Type, dfO: Option[Expression], ntO: Option[Notation], modifiers: Modifiers) extends SymbolDeclaration with TypedDeclaration {
+case class ExprDecl(name: String, params: LocalContext, tp: Type, dfO: Option[Expression], ntO: Option[Notation], modifiers: Modifiers) extends SymbolDeclaration with TypedDeclaration {
   def kind = if (modifiers.mutable) Keywords.mutableExprDecl else Keywords.exprDecl
   def tpSep = ":"
 }
@@ -329,18 +341,21 @@ case class VarRef(name: String) extends Ref {
 }
 
 /** reference to an open/closed symbol with its type arguments */
-case class AppliedRef(ref: Ref, args: List[Type]) extends Expression with Type {
-  override def toString = ref.toString + "@" + args.mkString("(", ", ", ")")
+case class AppliedRef(ref: Ref, tpargs: List[Type], args: List[Expression]) extends Expression with Type {
+  override def toString = ref.toString +
+    (if (tpargs.nonEmpty) "@" else "") + Util.mkString(tpargs,"(", ", ", ")") +
+    Util.mkString(args, "(", ", ", ")", bracketOne = true)
   def label = "ref"
-  def children = ref :: args
+  def children = ref :: tpargs ::: args
   def finite = false
 }
 /** unifies Ref and AppliedRef; AppliedRef(r,Nil) is the same as r */
 object MaybeAppliedRef {
-  def apply(r: Ref, tpargs: List[Type]) = if (tpargs.isEmpty) r else AppliedRef(r,tpargs)
+  def apply(r: Ref, tpargs: List[Type], args: List[Expression] = Nil) =
+    if (tpargs.isEmpty && args.isEmpty) r else AppliedRef(r,tpargs,args)
   def unapply(t: Object) = t match {
-    case r: Ref => Some((r,Nil))
-    case AppliedRef(r,tpargs) => Some((r,tpargs))
+    case r: Ref => Some((r,Nil,Nil))
+    case AppliedRef(r,tpargs,args) => Some((r,tpargs,args))
     case _ => None
   }
 }
@@ -403,9 +418,9 @@ object FlatOwnedObject {
 }
 
 object OwnedReference {
-  def apply(o: Expression, d: Theory, nd: NamedDeclaration, args: List[Type] = Nil): OwnedObject = {
+  def apply(o: Expression, d: Theory, nd: NamedDeclaration, tpargs: List[Type] = Nil, args: List[Expression] = Nil): OwnedObject = {
     val r = ClosedRef(nd.name)
-    val ra = MaybeAppliedRef(r, args)
+    val ra = MaybeAppliedRef(r, tpargs, args)
     nd match {
       case _:ExprDecl => OwnedExpr(o,d,ra)
       case _:TypeDecl => OwnedType(o,d,ra)
@@ -1022,6 +1037,13 @@ case class Tuple(comps: List[Expression]) extends Expression {
   def label = "tuple"
   def children = comps
 }
+object TupleGeneral {
+  def apply(es: List[Expression]) = es match {
+    case Nil => UnitValue
+    case List(e) => e
+    case l => Tuple(l)
+  }
+}
 
 /** projection, elimination form for [[ProdType]]
   * @param index tuple component, starting at 1
@@ -1435,48 +1457,39 @@ abstract class InferenceCallbacks {
 
 object Symbols {
   import Unicode.UChar
-  // We work with Unicode characters (i.e., Int), not Java characters (limited 16 bit UTF-16 style)
-  /** character types that are allowed in operators */
-  val operators = Unicode.symbolCategories ::: Unicode.modifierCategories
-  /** characters that are used by UPL to delimit expressions and are not allowed in operators
-   * ':' is allowed in operators */
-  val notOpChars: List[UChar] = Unicode.characters("\"'`;,.")
 
-  /** tests if c is allowed in an operator */
-  def isOperatorChar(c: UChar) = (operators contains Character.getType(c)) && !notOpChars.contains(c)
+  /** true if c may appear in an operator */
+  def isOperatorChar(c: UChar): Boolean = Unicode.symbolCategories.contains(Character.getType(c))
+  def isModifierChar(c: UChar): Boolean = Unicode.modifierCategories.contains(Character.getType(c))
 
-  /** differentiates between infix and postfix operator */
-  def isPostfixOp(s: String) = {
-    Unicode.forall(s)(c => Unicode.symbolType(c) == PostfixSymbol)
+  /** starts a multi-character operator: basic Latin but not letter, digit, whitespace, bracket, underscore, comma, or semicolon */
+  def isMultiOpStart(c: UChar): Boolean = {
+    c >= 0x21 && c <= 0x7E && !Character.isLetterOrDigit(c) && !Character.isWhitespace(c) && !"_,;()[]{}".contains(c)
   }
-
-  /** ends an infix or bracket operator that is followed by a bracket */
-  def isPrefixChar(c: UChar) = List(PrefixSymbol,GeneralOperatorSymbol) contains Unicode.symbolType(c)
-
-  // right-pointing tacks and similar, not used yet, but could be used for precedences
-  def isTurnstileLike(c: UChar) = {
-    c == 0x22A2 || (c >= 0x22A6 && c <= 0x22AF) || c == 0x2AE2 || c == 0x2AE6 || c == 0x27DD
+  /** continues a multi-character operator */
+  def isMultiOpChar(c: UChar): Boolean = {
+    isMultiOpStart(c) || Unicode.modifierCategories.contains(Character.getType(c))
   }
+  /**
+   * starts a single-character operator: higher Unicode symbol
+   */
+  def isSingleOpStart(c: UChar): Boolean = {
+    c > 0x7E && Unicode.symbolCategories.contains(Character.getType(c))
+  }
+  /** continues a single-character operator (only modifiers allowed) */
+  def isSingleOpChar(c: UChar): Boolean = isModifierChar(c)
 
-  def isOpeningBracketStart(c: UChar) = Unicode.symbolType(c) match {
-    case OpenBracketSymbol(cls) => Some(cls)
-    case _ => None
+  /** starts an opening bracket */
+  def isOpeningBracketStart(c: UChar) = Unicode.closingBracketFor(c)
+  /** starts an opening bracket */
+  def isClosingBracketStart(c: UChar) = Unicode.openingBracketFor(c)
+  /** continues an opening bracket */
+  def isBracketChar(c: UChar) = isModifierChar(c)
+  /** continues an opening bracket */
+  def makeClosingBracket(s: String) = {
+    val o = Character.codePointAt(s,0)
+    Character.toString(Unicode.closingBracketFor(o).get) + s.substring(Character.charCount(o))
   }
-  def isOpeningBracketChar(c: UChar) = isOperatorChar(c) || isOpeningBracketStart(c).isDefined
-  /** differentiates between infix and bracket operator */
-  def isOpeningBracket(s: String) = {
-    isOpeningBracketStart(s.codePointAt(0))
-  }
-  def makeClosingBracket(op: String): String = {
-    var cl = ""
-    op.codePointStepper.iterator.foreach {c =>
-      cl = Unicode.toString(Unicode.closingBracketSymbol(c).getOrElse(c)) + cl
-    }
-    cl
-  }
-
-  def isBindfixStart(c: UChar) = Unicode.symbolType(c) == BindfixSymbol
-  def isBindfixChar(c: UChar) = isOperatorChar(c) || isBindfixStart(c)
 }
 
 /** parent class of all operators
@@ -1487,13 +1500,11 @@ object Symbols {
  */
 sealed abstract class Operator {
   val symbol: String
-  val length = symbol.length
+  def length = symbol.length
   /** for known operators: as defined; for pseudo-operators: as they were parsed */
   def fixity: Fixity
-  /** closing bracket, only useful for BracketFix */
+  /** closing bracket, only useful for bracket fixities */
   def close: String = Symbols.makeClosingBracket(symbol)
-  /** only useful for Infix */
-  def precedence = Precedence.get(symbol)
   /** if the operator has exactly one type, this should be overridden for easy type inference */
   def uniqueType: Option[FunType] = None
   def makeExpr(args: List[Expression]) = Application(BaseOperator(this, uniqueType.getOrElse(Type.unknown(null))), args)
@@ -1505,8 +1516,12 @@ sealed abstract class Operator {
 }
 
 /** operators in parsed unchecked syntax, must be elaborated during checking */
-case class PseudoOperator(symbol: String, fixity: Fixity) extends Operator {
+case class PseudoOperator(unfixed: UnfixedOperator, fixity: Fixity) extends Operator {
+  val symbol = unfixed.symbol
   def magicName: String = "_" + fixity.toString.toLowerCase + "_" + symbol
+  def precedence = unfixed.spaceAfter + symbol.length + unfixed.spaceBefore
+
+  def toExpression = BaseOperator(this, Type.unknown()).withLocation(unfixed.loc)
 
   def interpret(meaning: Expression, args: List[Expression]): Expression = {
     fixity match {

@@ -141,11 +141,12 @@ object Path {
  */
 case class Location(origin: SourceOrigin, from: Int, to: Int) {
   override def toString = s"$origin#$from:$to"
+  def length = to-from
   def contains(that: Location): Boolean = this.origin == that.origin && this.from <= that.from && that.to <= this.to
   def contains(that: Int): Boolean = contains(Location.single(origin, that))
   def extendTo(l: Location) = copy(to=l.to)
   def union(l: Location): Location =
-    if(l==null || l.origin != origin) this
+    if (l==null || l.origin != origin) this
     else Location(origin, Math.min(l.from, from), Math.max(l.to, to))
 }
 

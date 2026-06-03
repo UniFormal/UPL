@@ -153,7 +153,7 @@ class Interpreter(vocInit: TheoryValue) {
     exp match {
       case _: BaseValue => exp
       case _: BaseOperator => exp
-      case AppliedRef(r,_) => interpretExpression(r) // type arguments can be ignored
+      case AppliedRef(r,_,_) => interpretExpression(r) // type arguments can be ignored; terms do not have term arguments
       case OpenRef(p) =>
         env.voc.lookupPath(p) match {
           case Some(sd: ExprDecl) => sd.dfO match {

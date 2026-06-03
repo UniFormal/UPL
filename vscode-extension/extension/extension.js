@@ -5,7 +5,7 @@ const upl = require('./src/main.js');
 function activate(context) {
   console.log('Activating UPL');
 
-  // subscribed disposables are automatically cleaned up when the extension is deactivated
+  // subscribed disposables are automatically cleaned up when the extension is deactivated
   function push(disposable) { context.subscriptions.push(disposable); }
 
   const uplDiagnostics = vscode.languages.createDiagnosticCollection('upl');
