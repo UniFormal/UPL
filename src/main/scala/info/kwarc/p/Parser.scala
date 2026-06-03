@@ -1427,7 +1427,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
             if (o1 == o2) {
               // same operator: collect for n-ary application
               shift
-            } else if (p1 >= p2) {
+            } else if (p1 <= p2) {
               // o1 binds at least as tightly as o2: reduce o1 first
               val o1Applied = reduce(o1,e2)
               shifted ::= (o1Applied,o2)
@@ -1464,7 +1464,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         case "rat" => NumberType.Rat
         case "comp" => NumberType.RatComp
         case "float" => NumberType.Float
-        case "string" => NumberType.Float
+        case "string" => StringType
         case "bool" => BoolType
         case "empty" => EmptyType
         case "exn" => ExceptionType
