@@ -48,7 +48,7 @@ module Logic {
     zero: term
     succ: term -> term # prefix $
     plus: (term,term) -> term # infix ++
-    plus_zero: |- ⊦ ∀x. x ++ zero ≐ x
-    plus_succ: |- ⊦ ∀x,n. x ++ $n ≐ $(x++n)
+    plus_zero: |- ⊦ ∀x. x++zero ≐ x
+    plus_succ: |- ⊦ ∀x,n. x ++ $n  ≐  $(x++n)
   }
 }

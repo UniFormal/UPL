@@ -6,10 +6,10 @@ module Numbers {
     o = s(z)
     plus: (num,num) -> num
     plus_z: |- forall x. plus(x,z)==x
-    plus_s: |- forall x,n. plus(x,s(n))== s(plus(x,n))
+    plus_s: |- forall x,n. plus(x,s(n))==s(plus(x,n))
     times: (num,num) -> num
     times_z: |- forall x. times(x,z)==z
-    times_s: |- forall x,n. times(x,s(n))== plus(times(x,n), x)
+    times_s: |- forall x,n. times(x,s(n))==plus(times(x,n), x)
     square = x -> times(x,x)
   }
   theory Int {

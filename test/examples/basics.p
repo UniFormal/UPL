@@ -228,7 +228,7 @@ module Basic {
     val k = if ([val u, val v] = x) u+v else 0
     // Dynamic binding also happens if P is a short-circuiting connective: A and B are the left and right argument.
     // (But if A is an implication, it does not export any bindings, i.e., (true => (val x=1)) & x==1 is illegal.)
-    val q = ([val u, val v] = x) & (val z = u+v) => z == k
+    val q = ([val u, val v] = x) & (val z = u+v) => z==k
     ASSERT(k, expected)
     ASSERT(q)
   }

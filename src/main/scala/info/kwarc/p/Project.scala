@@ -151,13 +151,12 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     if (checkErrors()) return None
     val voc = check(false)
     if (checkErrors()) return None
-    val e = main.getOrElse(UnitValue)
+    val e = main.getOrElse(Unit.Value)
     // Add program arguments into the scope of main
     val argDecl = EVarDecl("args",
       CollectionType(StringType, CollectionKind.List),
       Some(CollectionValue(programArgs.map {a => StringValue(a)}, CollectionKind.List))
     )
-
     val ch = new Checker(ErrorThrower)
     try {
       val (eC, _) = ch.checkAndInferExpression(GlobalContext(voc), Block(List(argDecl, e)))

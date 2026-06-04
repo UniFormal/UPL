@@ -659,10 +659,10 @@ case object EmptyType extends BaseType {
   def finite = true
 }
 
-/** 1 element */
-case object UnitType extends BaseType {
-  val name = "unit"
-  def finite = true
+/** 1 element; defined as empty product */
+object Unit {
+  val Type = ProdType(ExprContext.empty)
+  val Value = Tuple(Nil)
 }
 
 /** 2 elements */
@@ -1019,10 +1019,16 @@ object Lambda {
 case class Application(fun: Expression, args: List[Expression]) extends Expression {
   override def toString = {
     fun match {
-      case BaseOperator(o: InfixOperator, _) =>
-        args.mkString("(", " " + o.symbol + " ", ")")
-      case BaseOperator(o: PrefixOperator, _) => o.symbol + args.mkString
-      case _                                  => fun.toString + args.mkString("(", ", ", ")")
+      case BaseOperator(o,_) => o.fixity match {
+        case Infix => args.mkString("(", " " + o.symbol + " ", ")")
+        case Prefix => o.symbol + args.mkString
+        case Postfix => args.mkString + o.symbol
+        case Applyfix => args.head.toString + args.tail.mkString(o.symbol, ",", o.close)
+        case Circumfix => args.mkString(o.symbol, ",", o.close)
+        case Bindfix => args.head.toString + args(1).toString
+        case Nullfix => fun.toString // args.isEmpty
+      }
+      case _ => fun.toString + args.mkString("(", ", ", ")")
     }
   }
   def label = "apply"
@@ -1039,7 +1045,6 @@ case class Tuple(comps: List[Expression]) extends Expression {
 }
 object TupleGeneral {
   def apply(es: List[Expression]) = es match {
-    case Nil => UnitValue
     case List(e) => e
     case l => Tuple(l)
   }
@@ -1128,11 +1133,6 @@ case class ProofElim(elim: Expression, cases: List[List[VarDecl]]) extends Expre
 sealed abstract class BaseValue(val value: Any, val tp: BaseType) extends Expression {
   def label = value.toString + "  :" + tp.toString
   def children = Nil
-}
-
-/** element of [[UnitType]] */
-case object UnitValue extends BaseValue((), UnitType) {
-  override def toString = "()"
 }
 
 /** elements of [[BoolType]] */
@@ -1519,7 +1519,7 @@ sealed abstract class Operator {
 case class PseudoOperator(unfixed: UnfixedOperator, fixity: Fixity) extends Operator {
   val symbol = unfixed.symbol
   def magicName: String = "_" + fixity.toString.toLowerCase + "_" + symbol
-  def precedence = unfixed.spaceAfter + symbol.length + unfixed.spaceBefore
+  def precedence = unfixed.precedence
 
   def toExpression = BaseOperator(this, Type.unknown()).withLocation(unfixed.loc)
 
@@ -1535,6 +1535,9 @@ case class PseudoOperator(unfixed: UnfixedOperator, fixity: Fixity) extends Oper
             Application(meaning, List(lI))
           case e => Application(meaning, args)
         }
+      case Nullfix =>
+        if (args.nonEmpty) throw IError("nullfix with arguments")
+        meaning
       case _ => Application(meaning, args)
     }
   }

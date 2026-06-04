@@ -29,6 +29,7 @@ package info.kwarc.p
    (x:A,...) -> t
    x -> t         function
    f(t,...)       application
+   f t ...        whitespace-application
    
    (x:A,...)
    (A,...)        dependent product type
@@ -38,6 +39,16 @@ package info.kwarc.p
    C[A]           collection type of kind C, e.g., List[A], Set[A], Option[A],  ([A], A? shortcut for List[A], Option[A])
    [t,...]        collection, e.g., list, set, ...
    l[i]           list access
+
+   custom operator application  (op- must be closing bracket corresponding to op)
+   op              nullfix
+   op t            prefix
+   t op            postfix
+   t op t          infix (precedence decided based on op-length: number of characters + surrounding space)
+   op t,... op-    circumfix
+   t op t, ... op- applyfix
+   op ctx. body    bindfix
+   id ctx. body    whitespace-binding
 
    M{decls}      new instance of M, decls must define all remaining abstract fields
    Instance{exp}
@@ -63,8 +74,8 @@ package info.kwarc.p
    for (x in L) {b}
    return e
    throw e
-   e match {case p -> e, ...}
-   e catch {case p -> e, ...}
+   e match {p -> e ...}
+   e catch {p -> e ...}
 
 
    operator parsing:
@@ -84,10 +95,10 @@ package info.kwarc.p
   * the context passed during parsing
   * @param contexts bound variables in stack of regions
   * @param inType true if the parsed expression will actually be converted into an expression
-  * @param eager if true, try to parse a long term; if false, end a term early
+  * @param eager Some(true): continue across newline; None: continue across space; Some(false) do not continue across space
   * @param allowStatement if false, restrict expression-parsing to declarative expressions (as opposed to statements like while, return)
   */
-case class PContext(contexts: List[LocalContext], inType: Boolean, eager: Boolean, allowStatement: Boolean, terminators: List[String]) {
+case class PContext(contexts: List[LocalContext], inType: Boolean, eager: Option[Boolean], allowStatement: Boolean, terminators: List[String]) {
   def declares(n: String) = contexts.head.declares(n)
   def append(vd: EVarDecl): PContext = append(LocalContext(vd))
   def append(ctx: AbstractLocalContext[_,_]): PContext = copy(contexts = contexts.head.append(ctx.local)::contexts.tail)
@@ -95,7 +106,7 @@ case class PContext(contexts: List[LocalContext], inType: Boolean, eager: Boolea
   def push() = copy(contexts = LocalContext.empty::contexts)
 }
 object PContext {
-  def empty = PContext(List(LocalContext.empty), false, false, true, Nil)
+  def empty = PContext(List(LocalContext.empty), false, None, true, Nil)
 }
 
 object Parser {
@@ -316,15 +327,24 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
 
   /** the whitespace before the current index contains a newline */
-  def newlineBefore: Boolean = {
+  def newlinesBefore(multiple: Boolean = false): Boolean = {
+    var needMultiple = multiple
     var i = index-1
     while (i>0) {
       val c = input(i)
       if (!c.isWhitespace) return false
-      if (c == '\n') return true
+      if (c == '\n') {
+        if (needMultiple) needMultiple = false
+        else return true
+      }
       i -= 1
     }
     false
+  }
+  def newlineBefore = newlinesBefore(multiple = false)
+  def emptyLineBefore = newlinesBefore(multiple = true)
+  def whitespaceBefore: Boolean = {
+    index != 0 && Character.isWhitespace(input(index-1))
   }
 
   // parses the string s and throws it away
@@ -426,13 +446,14 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     val isDecl = allDeclKeywords.exists(k => startsWith(k)) || {
       val n = parseName
       trim
-      n.nonEmpty && (startsWith(":") || startsWith("=") || startsWith("#"))
+      n.nonEmpty && (nextIs(':') || nextIs('=') || nextIs('#'))
     }
     index = backtrackPoint
     isDecl
   }
 
-  def startsWithUnbracketedArgument = !atEnd && (isNameChar(next) || Symbols.isOpeningBracketStart(next).isDefined)
+  def startsWithUnbracketedArgument = !atEnd &&
+    (isNameChar(next) || (whitespaceBefore && Symbols.isOpeningBracketStart(next).isDefined))
 
   def parseExpressionOrDeclarations(defaultName: String) = {
     trim
@@ -469,7 +490,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     var break = false
     while (!break) {
       trim
-      if (atEnd || startsWith("}")) {break = true}
+      if (atEnd || nextIs('}')) {break = true}
       else {
         if (startsWith(",")) skip(",")
         val d = try {
@@ -502,7 +523,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   def parseInclude: Include = {
     implicit val ctx = PContext.empty
     val rz = skipEither(totalInclude,include)
-    val dom = parseTheory
+    val dom = parseTheory(ctx.copy(terminators = List("=")))
     trim
     val dfO = if (!rz && startsWithS("=")) {
       Some(parseExpression)
@@ -529,7 +550,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     val tp = if (startsWithS(":---", false)) {
       // sugar for declaring an axiom: c:--- F ---->  c: |- Forall F
       declarationFound = true
-      val e = parseExpression(pcon.copy(eager = true))
+      val e = parseExpression(pcon.copy(eager = None))
       ProofType(Quantifier(true, null, e).copyFrom(e))
     } else if (startsWithS(":", false)) {
       declarationFound = true
@@ -537,7 +558,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     } else if (startsWith("{", false)) {
       // sugar for declaring methods as f(args) {body} instead of f(args):unit = {body}
       equalOptional = true
-      UnitType
+      Unit.Type
     } else {
       Type.unknown()
     }
@@ -564,7 +585,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     // TODO this does not work yet because # is parsed as a postfix operator in the definiens
     if (vl.isEmpty && nt.isDefined) parseDef
     if (!declarationFound) {
-      fail("declaration expected", indexPre)
+      fail("declaration of " + name + " ends unexpectedly", indexPre)
     }
     // bind arguments in type and definiens
     val (atp,avl) = expCont match {
@@ -635,7 +656,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       val tp = if (nextIs(':')) {
         skip(":")
         while (nextIs(':')) {colonCounter.extras += 1; skip(":")}
-        parseType(noStatements)
+        parseType(noStatements.copy(terminators = "=" :: ctxs.terminators))
       } else Type.unknown()
       val df = if (nextIs('=')) {
         skip("=")
@@ -705,14 +726,14 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
 
   def parseTypeArgs(implicit ctxs: PContext) = {
     trim
-    val ctxsT = ctxs.copy(inType = true, eager = true, terminators = List(",",")"))
+    val ctxsT = ctxs.copy(inType = true, eager = Some(true), terminators = List(",",")"))
     if (startsWithS("(")) {
       val r = parseList(parseType(ctxsT), ",", ")")
       trim
       skip(")")
       r
     } else {
-      List(parseType(ctxs.copy(eager = false)))
+      List(parseType(ctxs.copy(eager = Some(false))))
     }
   }
 
@@ -739,7 +760,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
 
   def parseExpressions(open: String, close: String)(implicit ctxs: PContext) = {
-    val ctxsI = ctxs.copy(eager = true, terminators = List(",", close))
+    val ctxsI = ctxs.copy(eager = Some(true), inType = false, terminators = List(",", close))
     skip(open)
     val es = parseList(parseExpression(ctxsI), ",", close)
     skip(close)
@@ -755,16 +776,16 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
   def parseBracketedExpression(implicit ctxs: PContext) = {
     skip("(")
-    val e = parseExpression(ctxs.copy(eager = true, terminators = List(")")))
+    val e = parseExpression(ctxs.copy(eager = Some(true), terminators = List(")")))
     skip(")")
     e
   }
   // needed because addRef does not work with return-statements
   private def parseExpressionInner(implicit ctxs: PContext): Expression = {
-    val upcoming = input.substring(index,Math.min(index+10,inputLength)) // for debugging
-    println(upcoming)
-    val eagerly = ctxs.copy(eager = true)
-    val lazily = ctxs.copy(eager = false)
+    // val upcoming = input.substring(index,Math.min(index+10,inputLength)) // for debugging
+    val veryEagerly = ctxs.copy(eager = Some(true))
+    val eagerly = ctxs.copy(eager = None)
+    val lazily = ctxs.copy(eager = Some(false))
     val allowS = lazily.allowStatement
     val doAllowS = ctxs.copy(allowStatement = true)
     val doNotAllowS = ctxs.copy(allowStatement = false)
@@ -820,7 +841,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         parseVarDecl(false,true)
       } else if (!ctxs.inType && startsWithAny("exists","forall")) {
         val univ = skipEither("forall", "exists")
-        val vars = parseContext(true)(ctxs.copy(terminators = List(".")))
+        val vars = parseContext(true, Some("."))(ctxs.copy(terminators = List(".")))
         skipT(".")
         val body = parseExpression(eagerly)
         Quantifier(univ,vars,body)
@@ -896,7 +917,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         UndefinedValue(Type.unknown())
       } else if (!ctxs.inType && startsWithS("`")) {
         if (ctxs.contexts.length <= 1) reportError("eval outside quotation", index-1, inputLength)
-        val e = parseExpression(ctxs.pop())
+        val e = parseExpression(ctxs.pop().copy(terminators = List("`")))
         skip("`")
         Eval(e)
       } else if (startsWith("(")) {
@@ -952,7 +973,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           else CollectionKind.allKinds.find(k => startsWithS(k._1)).get._2
           if (ctxs.inType) {
             skip("[")
-            val tp = parseType(ctxs.copy(terminators = List("]")))
+            val tp = parseType(ctxs.copy(eager = Some(true), terminators = List("]")))
             skip("]")
             UndefinedValue(CollectionType(tp,kind))
           } else {
@@ -968,12 +989,13 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         skip("_")
         UndefinedValue(Type.unknown())
       } else if (ctxs.inType && startsWithS("int")) {
+        trim
         val tp = if (startsWithS("[")) {
           trim
-          val lower = if (startsWith(";")) null else parseExpression(ctxs.copy(inType = false, terminators = List(";")))
+          val lower = if (nextIs(';')) null else parseExpression(ctxs.copy(inType = false, terminators = List(";")))
           trim
-          skip(";")
-          val upper = if (startsWith("]")) null else parseExpression(ctxs.copy(inType = false, terminators = List("]")))
+          skipT(";")
+          val upper = if (nextIs(']')) null else parseExpression(ctxs.copy(inType = false, terminators = List("]")))
           trim
           skip("]")
           IntervalType(Option(lower), Option(upper))
@@ -997,7 +1019,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
               } else
                 oes
             } else if (op.closing) {
-              fail("unexpected closing bracket", at = index-op.symbol.length)
+              fail("unexpected closing bracket", at = op.loc.from)
             } else {
               // multiple resolutions for op
               @inline def nullfix() = op.withFixity(Nullfix).toExpression
@@ -1006,13 +1028,13 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
                 op.toApplication(Prefix, List(e))
               }
               @inline def bindfix() = parseBinding(op.withFixity(Bindfix).toExpression)
-              if (atEndOfLine || startsWithAny(ctxs.terminators:_*)) {
+              if (atEndOfLine || startsWithTerminator) {
                 nullfix()
               } else if (startsWithBinding) {
                 bindfix()
               } else if (op.attachRight || op.unspaced) {
                 prefix()
-              } else if (!ctxs.eager) {
+              } else if (ctxs.eager contains false) {
                 nullfix()
               } else {
                 // peek at the next operator (if any)
@@ -1072,6 +1094,17 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         exp = e
         setRef(exp,expBeginAt)
       }
+      def modifyExpByApplying(es: List[Expression]) = {
+        val expM = if (!ctxs.inType) Application(exp,es) else {
+          val tp = expressionToType(exp).getOrElse(fail("not a type that can take arguments"))
+          val tpes = tp match {
+            case MaybeAppliedRef(r,tps,Nil) => MaybeAppliedRef(r,tps,es)
+            case _ => fail("type cannot take multiple argument lists")
+          }
+          UndefinedValue(tpes)
+        }
+        modifyExp(expM)
+      }
       // reduce infixes and stop trying postops
       def reduceInfixes() = {
         exp = disambiguateInfixOperators(seen.reverse,exp)
@@ -1086,25 +1119,15 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         exp = null
         stopPostops()
       }
-      // backtrack and turn the first of a sequence of unspaced postfix operators into infix
-      // infOp remembers the operator from the previous iteration
-      def reparsePostfixAsInfix(infOp: PseudoOperator = null): Unit = {
-        exp match {
-          case Application(BaseOperator(pop: PseudoOperator,_), List(e)) if pop.fixity == Postfix && pop.unfixed.unspaced =>
-            exp = e
-            reparsePostfixAsInfix(pop)
-          case _ =>
-            index = infOp.unfixed.loc.from
-            shift(infOp.copy(fixity = Infix))
-        }
-      }
+      // non-bracket postops that can still be applied after a postifx operator and therefore prevent infix operators
+      val weakBindingPostops = List("catch", "match", "->", ".")
       while (takePostops) {
         trim
         // properties of exp that are used to determine whether certain postifes are available
         // unitary expressions can take a tight-binding postfix operator
         val expIsUnitary = exp match {
           case _ if expBracketed => true
-          case _: BaseValue | _: Ref | _: This | _: OwnedObject | _: Tuple | _: CollectionValue | _: Instance
+          case _: BaseValue | _: Ref | _: AppliedRef | _: This | _: OwnedObject | _: Tuple | _: CollectionValue | _: Instance
                | _: Block | _: OwnedExpr => true
           case Application(BaseOperator(pop: PseudoOperator,_), _) =>
               val f = pop.fixity
@@ -1130,19 +1153,15 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           case _: Assign | _: EVarDecl | _: While | _: For | _: Return => true
           case _ => false
         }
-        // previous operator was an unspaced postfix that can be reparsed as infix
-        def previousMayHaveBeenInfix = {
-          exp match {
-            case Application(BaseOperator(pop: PseudoOperator, _), _) =>
-              pop.fixity == Postfix && pop.unfixed.unspaced
-            case _ => false
-          }
+        val expIsType = exp match {
+          case UndefinedValue(tp) => !tp.isInstanceOf[UnknownType]
+          case _ => false
         }
         val startOfLine = newlineBefore
         // now a large if-else that checks for what follows and calls the state transitions above
-        if (atEnd || (!ctxs.eager && next == ' ')) {
+        if (endOfTermPassed) {
           stopPostops()
-        } else if (startsWith(".") && nextAfter(1).exists(isNameStart) && expIsUnitary) {
+        } else if (nextIs('.') && nextAfter(1).exists(isNameStart) && expIsUnitary) {
           // we check this before the terminators so that "." is no terminator if identifier follows without whitespace
           skip(".")
           val nB = index
@@ -1151,7 +1170,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           val owned = setRef(ClosedRef(n),nB)
           val expM = if (ctxs.inType) UndefinedValue(OwnedType(exp,null,owned)) else OwnedExpr(exp,null,owned)
           modifyExp(expM)
-        } else if (startsWithAny(ctxs.terminators :_*)) {
+        } else if (startsWithTerminator) {
           // the term is done
           reduceInfixes()
         } else if (!startOfLine && expIsRef.isDefined && startsWithS("@")) {
@@ -1160,32 +1179,17 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           modifyExp(AppliedRef(r,tps,Nil))
         } else if (!startOfLine && expIsUnitary && startsWithS("(")) {
           val es = parseExpressions("",")")
-          modifyExp(Application(exp,es))
-        } else if (ctxs.eager && startsWithUnbracketedArgument && expIsRef.isDefined) {
-          // switch to whitespace-application
-          val btp = index
-          if (startsWithBinding) {
-            val bexp = parseBinding(exp)
-            modifyExp(bexp)
-          } else {
-            var args: List[Expression] = Nil
-            trim
-            while (startsWithUnbracketedArgument) {
-              args ::= parseExpression(lazily)
-              trim
-            }
-            modifyExp(Application(exp, args.reverse))
-          }
-        } else if (!ctxs.inType && startsWith("[") && expIsUnitary && !startOfLine) {
+          modifyExpByApplying(es)
+        } else if (!expIsType && startsWith("[") && expIsUnitary && !startOfLine) {
           skip("[")
-          val e = parseExpression
+          val e = parseExpression(ctxs.copy(terminators = List("]")))
           skip("]")
           modifyExp(ListElem(exp,e))
         } else if (expIsUnitary && startsWithS("{")) {
           // conflict between M{decls} and exp{exp}
           // check if there was a Ref before
           expIsRef match {
-            case Some(r) if startsWithDeclaration || startsWith("}") =>
+            case Some(r) if startsWithDeclaration || nextIs('}') =>
               // p{decls}
               val incl = setRef(Include(r), expBeginAt)
               val indexPre = index
@@ -1213,8 +1217,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         } else if (expIsUnitary && startsWithS("°")) {
           reduceInfixes()
           // function application with Andrews' dot
-          val a = parseExpression(eagerly)
-          modifyExp(Application(exp, List(a)))
+          val a = parseExpression(eagerly.copy(inType = false))
+          modifyExpByApplying(List(a))
         } else if (!ctxs.inType && startsWith("=")) {
           reduceInfixes()
           skip("=")
@@ -1251,38 +1255,97 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           val cs = parseList(parseMatchCase, None, Some("}"))
           skip("}")
           modifyExp(Match(exp, cs, handle))
-        } else if (expIsUnitary) {
-          // try for postfix or infix operator
-          val opO = parseOperator
-          opO match {
-            case None =>
-              if (previousMayHaveBeenInfix && !atEnd) {
-                reparsePostfixAsInfix()
-              } else {
-                stopPostops()
-              }
-            case Some(op) =>
-              if (op.closing || op.attachRight) {
-                stopPostops()
-                index = op.loc.from // unparse op
-              } else if (op.opening) {
-                // before an opening bracket
-                if (previousMayHaveBeenInfix) {
-                  // e p (... ---> p was infix
-                  reparsePostfixAsInfix()
-                  index = op.loc.from  // unparse the bracket
+        } else if (!ctxs.eager.contains(false) && startsWithUnbracketedArgument && expIsUnitary) {
+          // switch to whitespace-application
+          val btp = index
+          if (startsWithBinding) {
+            val bexp = parseBinding(exp)
+            modifyExp(bexp)
+          } else {
+            trim
+            // if we currently very eager, we take arguments also from the next line
+            // continue on the next line eagerly, on the same line lazily
+            while (!endOfTermPassed && startsWithUnbracketedArgument) {
+              val conA = if (newlineBefore) eagerly else lazily
+              val a = parseExpression(conA.copy(inType = false))
+              // multiple arguments are curried to match the curried style of writing functions
+              modifyExpByApplying(List(a))
+              trim
+            }
+          }
+        } else if (!expIsType) {
+          // lookahead and collect all following operators, possibly ending in an open bracket
+          var opsR: List[UnfixedOperator] = Nil
+          var openBracket: Option[UnfixedOperator] = None
+          var parseOps = true
+          var termEnds = false
+          val beforeOps = index
+          while (parseOps) {
+            trim
+            if (endOfTermPassed || startsWithTerminator || startsWithAny(weakBindingPostops:_*)) {
+              parseOps = false; termEnds = true
+            }
+            else parseOperator match {
+              case Some(o) if o.opening => parseOps = false; openBracket = Some(o)
+              case Some(o) if o.closing => parseOps = false; termEnds = true
+              case Some(o) => opsR ::= o
+              case None => parseOps = false; termEnds = false
+            }
+          }
+          index = beforeOps // index will be moved manually below when operators are consumed
+          val ops = opsR.reverse
+          if (ops.nonEmpty || openBracket.isDefined) {
+            // now decide which opeartors we consume and how
+            // longest operator is infix; if tied, taking the first one prefers prefix over postfix
+            val (postfixes, infixO, applyO) = if (ops.isEmpty) {
+              // open bracket by itself: applyfix
+              (Nil, None, openBracket)
+            } else {
+              val (opM, i) = ops.zipWithIndex.maxBy(_._1.precedence)
+              val lastOpIsLongest = i == ops.length - 1
+              if (!expIsUnitary && ops.nonEmpty) {
+                // non-unitary expression cannot take applyfix or postfix
+                (Nil, Some(ops.head), None)
+              } else if (lastOpIsLongest) {
+                // special case if the last operator should be outermost
+                if (termEnds) {
+                  (ops, None, None) // openBracket.isEmpty
                 } else {
-                  // e (... ---> applyfix
-                  val es = parseExpressions("", Symbols.makeClosingBracket(op.symbol))
-                  modifyExp(op.toApplication(Applyfix, exp :: es))
+                  openBracket match {
+                    case None =>
+                      // postfixes until opM
+                      (ops.init, Some(opM), None)
+                    case Some(ob) =>
+                      // postfix+applyfix vs. infix+circumfix: decide for the former
+                      (ops.init, Some(opM), None)
+                  }
                 }
-              } else if (op.symmetric && !op.unspaced) {
-                shift(op.withFixity(Infix))
               } else {
-                // left-attaching or unspaced: postfix (but if unspaced, it may be reparsed later)
-                modifyExp(op.toApplication(Postfix, List(exp)))
+                // postfixes until opM, then reparse the rest later
+                (ops.take(i), Some(opM), None)
               }
             }
+            postfixes.foreach {pf =>
+              index = pf.loc.to
+              modifyExp(pf.toApplication(Postfix, List(exp)))
+            }
+            // applyO and infixO are not both defined
+            applyO.foreach {ob =>
+              index = ob.loc.to
+              // the special cases ([{ are reparsed above
+              if (ob.symbol != "(" && ob.symbol != "[" && ob.symbol != "{") {
+                val es = parseExpressions("", Symbols.makeClosingBracket(ob.symbol))
+                modifyExp(ob.toApplication(Applyfix, exp :: es))
+              }
+            }
+            infixO.foreach {ifo =>
+              index = ifo.loc.to
+              shift(ifo.withFixity(Infix))
+            }
+            // remaining operators will be parsed again, usually as prefixes
+          } else {
+            stopPostops()
+          }
         } else {
           stopPostops()
         } // end if
@@ -1333,12 +1396,22 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     r
   }
 
+  def endOfTermPassed(implicit ctxs: PContext) = atEnd || (ctxs.eager match {
+    case Some(false) => whitespaceBefore
+    case None => newlineBefore
+    case Some(true) => emptyLineBefore
+  })
+
+  def startsWithTerminator(implicit ctxs: PContext) = {
+    startsWithAny(ctxs.terminators:_*)
+  }
+
   // binder ctx. body
   def parseBinding(binder: Expression)(implicit ctxs: PContext) = {
-    val vars = parseContext(true)(ctxs.copy(terminators = List(".")))
+    val vars = parseContext(true, Some("."))(ctxs.copy(terminators = List(".")))
     trim
     skipT(".")
-    val body = parseExpression(ctxs.copy(eager = true)) // binder scopes as far as possible
+    val body = parseExpression(ctxs.copy(eager = None)) // binder scopes till ends of line
     val arg = Lambda(vars, body, false)
     arg.loc = vars.loc extendTo body.loc
     Application(binder, List(arg))
