@@ -19,3 +19,4 @@ line 73 in algebra.p : Semigroup is missing right?
 
 monoids.p line 40 not working
 lattices.p line 11 and 25 not working
+ringoids.p line 
