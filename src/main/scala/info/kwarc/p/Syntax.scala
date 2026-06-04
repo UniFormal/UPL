@@ -1112,7 +1112,7 @@ case class Assert(test: Expression, tp: Type, expected: Expression) extends Expr
 }
 
 /**node which represents predefined Builtin function*/
-case class Builtin( name: String, parameters: List[Expression], returnType: Type)  extends Expression {
+case class Builtin(name: String, parameters: List[Expression], returnType: Type)  extends Expression {
 
   override  def toString = s"$label: $returnType${parameters.mkString("(", ", ", ")")}"
   def label: String = name

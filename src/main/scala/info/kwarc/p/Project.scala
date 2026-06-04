@@ -176,7 +176,7 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     if (checkErrors()) return
     val voc = check(false)
     if (checkErrors()) return
-    val e = main.getOrElse(UnitValue)
+    val e = main.getOrElse(Unit.Value)
     val ch = new Checker(ErrorThrower)
     try {
       val (eC, _) = ch.checkAndInferExpression(GlobalContext(voc), e)

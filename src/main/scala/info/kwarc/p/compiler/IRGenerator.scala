@@ -56,7 +56,7 @@ private class IRGenerator {
     } // Booleans are represented using i1 integers.
     case BoolValue(value) => IrConst(value) // Unit value is represented as a special constant to make it easy to
     // spot when debugging
-    case UnitValue => IrConst(0xdeadbeef)
+    case Unit.Value => IrConst(0xdeadbeef) // note that Unit.Value is defined
     case IfThenElse(cond, thn, Some(els)) => // Based on ideas from
       // https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl05.html#if-then-else
       var thenB = ctx.newBlock("then")

@@ -4,6 +4,5 @@ module printing{
         value: string
     }
     instance: Th = Th {value = "some value"}
-    callPrint = () -> {Uniformal.print(instance.value)
-    }
+    // callPrint = () -> {Uniformal.print(instance.value)}
 }

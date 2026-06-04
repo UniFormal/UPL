@@ -1,16 +1,6 @@
 package info.kwarc.p.compiler
 
-import info.kwarc.p.{
-  Checker,
-  ErrorThrower,
-  File,
-  GlobalContext,
-  Interpreter,
-  PError,
-  Program,
-  Project,
-  UnitValue
-}
+import info.kwarc.p._
 
 import scala.sys.process.Process
 
@@ -36,7 +26,7 @@ object Test {
         if (proj.checkErrors()) {
           return
         }
-        val mn = proj.main.getOrElse(UnitValue)
+        val mn = proj.main.getOrElse(Unit.Value)
         val ch = new Checker(ErrorThrower)
         try {
           val (eC, _) = ch.checkAndInferExpression(GlobalContext(voc), mn)
