@@ -50,7 +50,7 @@ module ringoids {
 
     theory Semiring {
         include BiMonoid
-        add: .monoids.Commutative
+        add: .magmas.Commutative
     }
 
     theory CommSemiring {
@@ -75,7 +75,7 @@ module ringoids {
 
     theory BooleanRing {
         include Ring
-        mult: IdempotentMonoid
+        mult: .monoids.IdempotentMonoid
     }
 
     theory CommRing {
@@ -84,7 +84,7 @@ module ringoids {
     }
 
     theory IntegralDomain {
-        include CommGroup
+        include .groups.CommGroup
         include NoZeroDividers
     }
 
@@ -102,6 +102,17 @@ module ringoids {
     theory BilinearRingoid {
         include Ringoid
         f: (univ, univ) -> univ
-        bilinear:--- f(add.op(x, y), z) == add.op(f(x, z),f(y, z)) 
+        bilinear:--- f(add.op(x, y), z) == add.op(f(x, z),f(y, z)) & f(x, add.op(y, z)) == add.op(f(x, y),f(x, z))
+        homogen:--- f(mult.op(r, x), y) == mult.op(r, f(x, y)) & f(x, mult.op(r, y)) == mult.op(r, f(x, y))
+    }
+
+    theory LieRing {
+        include Ring
+        include BilinearRingoid
+        bracket: (univ, univ) -> univ # circumfix ⟨
+        bracket = f
+        // bracket_defn:--- ⟨x, y⟩ == mult.op(x, y)
+        jacobi:--- add.op(⟨x, ⟨y, z⟩⟩, add.op(⟨y, ⟨z, x⟩⟩, ⟨z, ⟨x, y⟩⟩)) == add.e
+        alternating:--- ⟨x, x⟩ == add.e
     }
 }
