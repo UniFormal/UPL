@@ -50,4 +50,44 @@ object Unicode {
     else if (c == 0x298E) Some(0x298F)
     else Some(c-1)
   }
+
+  def scriptOf(c: UChar) = {
+    // This should simply be UnicodeScript.of(c), but that is not supported by Scala.js.
+    // In any case, Unicode script doesn't support the block of Mathematical Alphanumeric Symbols (see below).
+    // So we need a native implementation anyway.
+    if (!Character.isLetter(c)) -1
+    else if (c >= 0x0041 && c <= 0x02E4) 1   // LATIN
+    else if (c >= 0x0370 && c <= 0x03FF) 100 // GREEK and COPTIC
+    else {
+      // various extension blocks
+      val b = Character.UnicodeBlock.of(c).toString
+      if (b.startsWith("LATIN")) 1
+      else if (b.startsWith("GREEK")) 100
+      // skipping the phonetic extensions U+1D00-U+1DBF
+      else if (c >= 0x1D400 && c <= 0x1D7FF) {
+        // Mathematical Alphanumeric Symbols, U+1D400-U+1D7FF
+        if      (c <= 0x1D433)  2 // bold
+        else if (c <= 0x1D467)  3 // italic
+        else if (c <= 0x1D49B)  4 // bold, italic
+        else if (c <= 0x1D4CF)  5 // script
+        else if (c <= 0x1D503)  6 // script, bold
+        else if (c <= 0x1D537)  7 // fraktur
+        else if (c <= 0x1D56B)  8 // double-struck
+        else if (c <= 0x1D59F)  9 // fraktur, bold
+        else if (c <= 0x1D5D3) 10 // sans-serif
+        else if (c <= 0x1D607) 11  // sans-serif, bold
+        else if (c <= 0x1D63B) 12  // sans-serif, italic
+        else if (c <= 0x1D66F) 13  // sans-serif, italic, bold
+        else if (c <= 0x1D6A3) 14  // monospace
+        else if (c <= 0x1D6A5)  3  // italic, dotless variants
+        else if (c <= 0x1D6E1) 101 // greek bold (here and below: including a few variants at the end)
+        else if (c <= 0x1D71B) 102 // greek, italic
+        else if (c <= 0x1D755) 103 // greek, bold, italic
+        else if (c <= 0x1D78F) 104 // greek, sans-serif, bold
+        else if (c <= 0x1D7C9) 105 // greek, sans-serif, bold, italic
+        else 0 // digits
+      } else
+        0 // other
+    }
+  }
 }

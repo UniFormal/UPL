@@ -415,8 +415,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     trim
     if (atEnd || !isNameStart(next)) "" else {
       // identifiers end when the script changes; that allows eg sinα or λx without space
-      val script = Character.UnicodeScript.of(next)
-      parseWhile(c => isNameChar(c) && (!Character.isLetter(c) || Character.UnicodeScript.of(c) == script))
+      val script = Unicode.scriptOf(next)
+      parseWhile(c => isNameChar(c) && (!Character.isLetter(c) || Unicode.scriptOf(c) == script))
     }
   }
   def parseNameExtended = {

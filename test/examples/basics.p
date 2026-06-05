@@ -32,7 +32,6 @@ module Basic {
   // Dependent product types, tuples, and positional access are written with (...).
   t: (x:int,s:string) = (1,"foo")
   t_1: int = t(1)
-
   // Dependent function types and lambda abstractions are written with (...) -> ..., application as fun(args).
   f1 : int -> int = (x:int) -> x+1
   // Inferable parts can be omitted.
@@ -44,7 +43,9 @@ module Basic {
   f5_multiarg: (int,int) -> int = (x,y) -> x+y
   f5_multiarg_applied = f5_multiarg(0,1)
   f5_curried:   int -> int -> int = x -> y -> x+y
-  f5_curried_applied = f5_curried(0)(1)
+  // application can be in f(x) or (f x) style
+  f5_curried_applied_1 = f5_curried(0)(1)
+  f5_curried_applied_2 = f5_curried 0 1
   // Arguments may also be declared right after the function name
   // They  apply to type and definiens, i.e., the type is Pi-bound and the definiens lambda-bound.
   f5_multiarg_variant(x: int,y:int): int = x+y
@@ -190,6 +191,24 @@ module Basic {
     foreach(l,f)
     x
   }
+
+  // Operators do neither hard-coded not user-customizable precedences.
+  // Instead, the length of the operator including the surrounding whitespace is used to resolve conflicts.
+  // That way neither a context nor a global table is needed.
+  module IdentifierAndOperatorParsing {
+    x: int
+    y: int 
+    a = x+y==y+x       // + has length 1, == has length 2
+    b = x + y == y + x // +  3, ==  4
+    c = x==y => y==x   // ==  2, => 4
+    d = x==y & x==1 => (y == 1)  // == 0, & 3, => 4, == 4
+
+    // identifiers are alphanumeric using only letters of the same script
+    sin: float -> float
+    α: float
+    x = sinα // Greek letter starts separate identifier
+  }
+
 
   // exn is the type of exceptions, throw/catch use the same syntax as return/match except for the change in keyword
 
