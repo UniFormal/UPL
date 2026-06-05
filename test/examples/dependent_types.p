@@ -1,4 +1,3 @@
-// test file for quotation
 module DepTypes {
   theory STT {
     type tp
