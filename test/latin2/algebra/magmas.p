@@ -14,7 +14,7 @@ module magmas {
     theory SubMagma {
         include .relations.SubCarrier
         include Magma
-        op_rel:--- x1 % y1 & x2 % y2 => (x1∘y1) % (x2∘y2)
+        op_rel:--- (x1 % y1) & (x2 % y2) => (x1∘y1) % (x2∘y2)
     }
 
     theory Commutative {
@@ -53,8 +53,9 @@ module magmas {
     }
 
     theory Semilattice {
-        include Commutative
+        include CommSemigroup
         include Band
+        include CommIdempotent
     }
 
     theory Pointed {
@@ -65,7 +66,6 @@ module magmas {
     theory AbsorbingElement {
         include Magma
         abs : univ
-
         realize Pointed
         point = abs
     }

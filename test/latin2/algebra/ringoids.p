@@ -1,15 +1,8 @@
 module ringoids {
-    // redundant
-    theory Magma {
-        include .relations.Carrier
-        op: (univ,univ) -> univ # infix ∘
-    }
-    
     theory BiMagma {
         include .relations.Carrier
-        // add must be a model of {type univ == ..univ, op: (univ,univ) -> univ}
-        add: Magma {type univ = ..univ} // .. accesses surrounding theory
-        mult: Magma {type univ = ..univ}
+        add: .magmas.Magma {type univ = ..univ} 
+        mult: .magmas.Magma {type univ = ..univ}
     }
 
     theory Ringoid {
@@ -50,27 +43,41 @@ module ringoids {
 
     theory Semiring {
         include BiMonoid
-        add: .magmas.Commutative
+        add: .monoids.CommMonoid
     }
 
     theory CommSemiring {
         include Semiring
-        include .magmas.Commutative
+        mult: .monoids.CommMonoid
     }
 
-    theory NearRing {
-        include BiMonoid 
+    theory LeftNearRing {
+        include BiMagma 
         add: .groups.Group
+        mult: .magmas.Semigroup
+        left_distrib:--- mult.op(r, add.op(x, y)) == add.op(mult.op(r, x), mult.op(r, y))
     }
 
-    theory CommNearRing {
-        include NearRing
-        include CommRingoid
+    theory RightNearRing {
+        include BiMagma 
+        add: .groups.Group
+        mult: .magmas.Semigroup
+        right_distrib:--- mult.op(add.op(x, y), r) == add.op(mult.op(x, r), mult.op(y, r))
+    }
+
+    theory CommLeftNearRing {
+        include LeftNearRing
+        mult: .magmas.CommSemigroup
+    }
+
+    theory CommRightNearRing {
+        include RightNearRing
+        mult: .magmas.CommSemigroup
     }
 
     theory Ring {
-        include NearRing
-        add: .magmas.Commutative
+        include Semiring
+        add: .groups.CommGroup
     }
 
     theory BooleanRing {
@@ -80,11 +87,11 @@ module ringoids {
 
     theory CommRing {
         include Ring
-        include .magmas.Commutative
+        mult: .monoids.CommMonoid
     }
 
     theory IntegralDomain {
-        include .groups.CommGroup
+        include CommRing
         include NoZeroDividers
     }
 
@@ -96,23 +103,50 @@ module ringoids {
 
     theory Field {
         include SkewField
-        include CommRingoid
+        mult: .monoids.CommMonoid
     }
 
-    theory BilinearRingoid {
-        include Ringoid
-        f: (univ, univ) -> univ
-        bilinear:--- f(add.op(x, y), z) == add.op(f(x, z),f(y, z)) & f(x, add.op(y, z)) == add.op(f(x, y),f(x, z))
-        homogen:--- f(mult.op(r, x), y) == mult.op(r, f(x, y)) & f(x, mult.op(r, y)) == mult.op(r, f(x, y))
-    }
-
+    // The traditional definition of a Lie ring
     theory LieRing {
-        include Ring
-        include BilinearRingoid
+        include .relations.Carrier
+        add: .groups.CommGroup {type univ = ..univ}
         bracket: (univ, univ) -> univ # circumfix ⟨
-        bracket = f
-        // bracket_defn:--- ⟨x, y⟩ == mult.op(x, y)
-        jacobi:--- add.op(⟨x, ⟨y, z⟩⟩, add.op(⟨y, ⟨z, x⟩⟩, ⟨z, ⟨x, y⟩⟩)) == add.e
+        bilinear:--- (⟨add.op(x, y), z⟩ == add.op(⟨x, z⟩,⟨y, z⟩)) & (⟨x, add.op(y, z)⟩ == add.op(⟨x, y⟩,⟨x, z⟩))
         alternating:--- ⟨x, x⟩ == add.e
+        jacobi:--- add.op(⟨x, ⟨y, z⟩⟩, add.op(⟨y, ⟨z, x⟩⟩, ⟨z, ⟨x, y⟩⟩)) == add.e
     }
+
+    // The Lie ring obtained from a ring by defining the bracket as the commutator
+    theory CommutatorLieRing {
+        include Ring
+        bracket: (univ, univ) -> univ # circumfix ⟨
+        // bracket is defined as the commutator, i.e. ⟨x, y⟩ == x*y - y*x
+        bracket_defn:--- ⟨x, y⟩ == add.op(mult.op(x, y), add.inv(mult.op(y, x)))
+
+        // derivable from the above
+        bilinear:--- (⟨add.op(x, y), z⟩ == add.op(⟨x, z⟩,⟨y, z⟩)) & (⟨x, add.op(y, z)⟩ == add.op(⟨x, y⟩,⟨x, z⟩))
+        alternating:--- ⟨x, x⟩ == add.e
+        jacobi:--- add.op(⟨x, ⟨y, z⟩⟩, add.op(⟨y, ⟨z, x⟩⟩, ⟨z, ⟨x, y⟩⟩)) == add.e
+
+        // not homogen (for homogen mult needs to be commutative, but then we have ⟨x, y⟩ == add.e, which makes the Lie ring trivial)
+    }
+
+    // definitions in MMT
+
+    // theory BilinearRingoid {
+    //     include Ringoid
+    //     f: (univ, univ) -> univ
+    //     bilinear:--- (f(add.op(x, y), z) == add.op(f(x, z),f(y, z))) & (f(x, add.op(y, z)) == add.op(f(x, y),f(x, z)))
+    //     homogen:--- (f(mult.op(r, x), y) == mult.op(r, f(x, y))) & (f(x, mult.op(r, y)) == mult.op(r, f(x, y)))
+    // }
+
+    // theory LieRing {
+    //     include Ring
+    //     include BilinearRingoid
+    //     bracket: (univ, univ) -> univ # circumfix ⟨
+    //     bracket = f
+    //     bracket_defn:--- ⟨x, y⟩ == add.op(mult.op(x, y), add.inv(mult.op(y, x)))
+    //     jacobi:--- add.op(⟨x, ⟨y, z⟩⟩, add.op(⟨y, ⟨z, x⟩⟩, ⟨z, ⟨x, y⟩⟩)) == add.e
+    //     alternating:--- ⟨x, x⟩ == add.e
+    // }
 }

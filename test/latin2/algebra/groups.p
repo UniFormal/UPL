@@ -13,7 +13,7 @@ module groups {
     theory InverseOperator {
         include .magmas.Semigroup
         inv: univ -> univ # postfix ⁻
-        is_weak_inverse: (univ, univ) -> bool = (x, y) -> x∘(y∘x) == x & y∘(x∘y) == y
+        is_weak_inverse: (univ, univ) -> bool = (x, y) -> (x∘(y∘x) == x) & (y∘(x∘y) == y)
     }
 
     theory WeakInverse {
@@ -46,7 +46,7 @@ module groups {
 
     theory CommGroup {
         include Group
-        include .magmas.Commutative
+        include .monoids.CommMonoid
     }
 
     theory GroupHom {

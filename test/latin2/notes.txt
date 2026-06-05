@@ -18,5 +18,5 @@ line 73 in algebra.p : Semigroup is missing right?
 
 
 monoids.p line 40 not working
-lattices.p line 11 and 25 not working
-ringoids.p magma import from other file not working
+ringoids.p lie ring definition
+modules.p not sure if scalars works like that
