@@ -21,6 +21,8 @@ module relations {
     theory Transitivity {
         include Relation
         trans:--- (x % y) => (y % z) => (x % z)
+        trans3:--- (x % y) => (y % z) => (z % w) => (x % w)
+        trans4:--- (x % y) => (y % z) => (z % w) => (w % v) => (x % v)
     }
 
     theory Preorder {
@@ -54,9 +56,20 @@ module relations {
         include Congruence
     }
 
+    theory SemanticEquivality {
+        include EquivalenceRelation
+        cong:--- (x % y) => forall A. (A(x) => A(y))
+    }
+
+    theory EqualityType {
+        include Carrier
+        equalityRel: EquivalenceRelation {type univ = ..univ}
+    }
+
     theory AntiSymmetry {
+        include EqualityType
         include Relation
-        antisym:--- (x % y) => (y % x) => (x == y)
+        antisym:--- (x % y) => (y % x) => equalityRel.rel(x,y)
     }
 
     theory PartialOrder {

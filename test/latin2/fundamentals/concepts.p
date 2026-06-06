@@ -6,7 +6,6 @@ module concepts {
     theory Proofs {
         include Propositions
         ded: prop -> bool   # prefix ⊦
-        
         lemma:--- ⊦F => (⊦F => ⊦G) => ⊦G
     }
 
@@ -34,7 +33,12 @@ module concepts {
         type tp
     }
 
-   theory SoftTypedTerms {
+    theory TypedTerms {
+        include Types
+        type tm(a: tp)
+    }
+
+    theory SoftTypedTerms {
         include Terms
         include Types
         include Propositions
@@ -42,37 +46,54 @@ module concepts {
         of: (term, tp) -> prop
     }
 
+    theory Kinds {
+        type kd
+    }
+
+    theory KindedTypes {
+        include Kinds
+        type tf(k: kd)
+        tpk: kd
+
+        // needs type-valued decrarations
+        // realize Types
+        // tp = tf(tpk)
+    }
+
     theory Booleans {
         include Types
         boolean: tp
     }
 
-    // needs dependent types
+    theory InternalPropositions {
+        include Booleans
 
-    // theory InternalPropositions {
-    //     include Booleans
-    //     realize Propositions
-    //     prop = tm(boolean)
-    // }
+        // needs type-valued decrarations
+        // realize Propositions 
+        // prop = tm boolean
+    }
 
-    // theory TypesAsPredicates {
-    //     include Terms
-    //     include Propositions
-    //     include Logic
+    theory TypesAsPredicates {
+        include Terms
+        include Propositions
+        include Logic
 
-    //     realize SoftTypedTerms
-    //     tp = term -> prop
-    //     of = (X, A) -> A(X)
+        typesAsPredicates : SoftTypedTerms {
+            // needs type-valued decrarations
+            // tp = term -> prop
+            // of = (X, A) -> (A X)
+        }
+    }
 
-    // }
+    theory InternalTypes {
+        include Terms
+        include Propositions
 
-    // theory InternalTypes {
-    //     include Terms
-    //     include Propositions
+        iin: term -> term -> prop
 
-    //     iin: term -> term -> prop
-    //     realize SoftTypedTerms
-    //     tp = term
-    //     of = iin
-    // }
+        // needs type-valued decrarations
+        // realize SoftTypedTerms
+        // tp = term
+        // of = iin
+    }
 }

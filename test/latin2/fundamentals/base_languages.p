@@ -4,6 +4,11 @@ module base_languages {
         include .concepts.Terms
     }
 
+    theory TypedLogic {
+        include .concepts.Logic
+        include .concepts.TypedTerms
+    }
+
     theory SoftTypedLogic {
         include .concepts.Logic
         include .concepts.SoftTypedTerms

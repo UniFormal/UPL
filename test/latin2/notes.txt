@@ -14,9 +14,19 @@ line 13 in subtyping.mmt : how to do structure in UPL?
 
 line 26 in subtyping.mmt : how to do constant in UPL?
 
-line 73 in algebra.p : Semigroup is missing right?
 
 
 monoids.p line 40 not working
 ringoids.p lie ring definition
 modules.p not sure if scalars works like that
+
+concepts.p line 58, 71, 82 still doesn't work because type-valued declarations arent supported right?
+more examples:
+equality.p line 13 (interesting)
+
+
+
+
+equality.p line 28 how to do "as"? 
+isn't "⊦ x∶A" a dependent type?
+
