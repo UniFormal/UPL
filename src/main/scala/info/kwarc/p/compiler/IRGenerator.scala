@@ -1,19 +1,20 @@
 package info.kwarc.p.compiler
 
-import info.kwarc.p.compiler.Condition.{EQUAL, NOT_EQUAL}
-import info.kwarc.p.compiler.Operation.{IADD, IDIV, IMUL, ISUB}
 import info.kwarc.p._
+import info.kwarc.p.compiler.Condition.{EQUAL, NOT_EQUAL}
+import info.kwarc.p.compiler.IRGenerator.TOP_LEVEL_STRUCT_NAME
+import info.kwarc.p.compiler.Operation.{IADD, IDIV, IMUL, ISUB}
 
 import scala.collection.mutable
 
 object IRGenerator {
+  val TOP_LEVEL_STRUCT_NAME = "__top_level"
+
   def run(p: Program): IrProgram = {
-    val voc = p.voc
     val ig = new IRGenerator()
 
-    val gc = GlobalContext(voc)
-    voc.decls.foreach(d => ig.apply(d)(gc))
-
+    val gc = GlobalContext(p.voc)
+    ig.compileModule(p.voc, closed = false, TOP_LEVEL_STRUCT_NAME, gc)
     ig.compileMain(p.main)(gc)
 
     IrProgram(ig.declaredFunctions, ig.structs.toList, ig.globals.toList, ig.functions.toList)
@@ -41,6 +42,61 @@ private class IRGenerator {
     // We currently assume that the main expression evaluates to a 64-bit integer.
     val mainFun = IrFun("main", IrFunType(IrIntType.I64, Nil), Nil, ctx.buildBlocks())
     functions += mainFun
+  }
+
+  private def compileModule(df: TheoryValue, closed: Boolean, moduleName: String, gcI: GlobalContext): Unit = {
+    val fields = df.decls.collect { case d: ExprDecl => llvmType(d.tp) }
+
+    val struct = IrStruct(moduleName, fields)
+    structs += struct
+
+    if (closed) {
+      ???
+    } else { // The initialized field indicates whether the module has been initialized
+      // Fields will be initialized on first module access
+      val initializedGlobal = IrGlobal(s"${moduleName}_initialized", IrIntType.I1)
+      val structGlobal = IrGlobal(moduleName, struct)
+      globals += initializedGlobal
+      globals += structGlobal
+
+      // Function to initialize all struct fields
+      ctx = new FunctionContext
+      ctx.insertBlock(ctx.newBlock("entry"))
+
+      df.decls.foreach { case e@ExprDecl(name, _, _, Some(exp), _, _) => val result = apply(exp)(gcI)
+        val fieldIndex = df.decls.collect { case d: ExprDecl => d }.indexOf(e)
+        val fieldPtr = IrVar(IrPtrType(struct), ctx.fresh(s"$moduleName.${name}_ptr"))
+        ctx.emit(IrGetElement(fieldPtr, struct, structGlobal, List(0, fieldIndex)))
+        ctx.emit(IrStore(result, fieldPtr))
+      case _ =>
+      }
+      ctx.emit(IrReturnVoid)
+      val initializeFun = IrFun(s"${moduleName}_initialize", IrFunType(IrVoidType, Nil), Nil, ctx.buildBlocks())
+      functions += initializeFun
+
+      ctx = new FunctionContext
+      ctx.insertBlock(ctx.newBlock("entry"))
+      val initB = ctx.newBlock("init")
+      val endB = ctx.newBlock("end")
+      val initialized = IrVar(IrIntType.I1, ctx.fresh("initialized"))
+      ctx.emit(IrLoad(initialized, initializedGlobal))
+      ctx.emit(IrCondBranch(initialized, endB.label, initB.label))
+      ctx.insertBlock(initB)
+      ctx.emit(IrCall(None, IrFunctionRef(initializeFun), Nil))
+      ctx.emit(IrStore(IrConst(true), initializedGlobal))
+      ctx.emit(IRBranch(endB.label))
+
+      ctx.insertBlock(endB)
+      ctx.emit(IrReturnVoid)
+      functions += IrFun(s"${moduleName}_ensure_initialized", IrFunType(IrVoidType, Nil), Nil, ctx.buildBlocks())
+
+      // Recursively traverse other declarations
+      // We need to do this after traversing all expression declarations in the current module to prevent inner
+      // modules from messing with the function context
+      df.decls.foreach { case _: ExprDecl =>
+      case d => apply(d)(gcI)
+      }
+    }
   }
 
   /** Compiles an expression
@@ -151,60 +207,8 @@ private class IRGenerator {
   def apply(d: Declaration)(implicit gc: GlobalContext): Unit = {
     d match {
       case m@Module(name, closed, df) => val gcI = gc.enter(m)
-
         val fullName = (gc.currentParent / name).toString
-        val fields = df.decls.collect { case d: ExprDecl => llvmType(d.tp) }
-
-        val struct = IrStruct(fullName, fields)
-        structs += struct
-
-        if (closed) {
-          ???
-        } else { // The initialized field indicates whether the module has been initialized
-          // Fields will be initialized on first module access
-          val initializedGlobal = IrGlobal(s"${fullName}_initialized", IrIntType.I1)
-          val structGlobal = IrGlobal(fullName, struct)
-          globals += initializedGlobal
-          globals += structGlobal
-
-          // Function to initialize all struct fields
-          ctx = new FunctionContext
-          ctx.insertBlock(ctx.newBlock("entry"))
-
-          df.decls.foreach { case e@ExprDecl(name, _, _, Some(exp), _, _) => val result = apply(exp)(gcI)
-            val fieldIndex = df.decls.collect { case d: ExprDecl => d }.indexOf(e)
-            val fieldPtr = IrVar(IrPtrType(struct), ctx.fresh(s"$fullName.${name}_ptr"))
-            ctx.emit(IrGetElement(fieldPtr, struct, structGlobal, List(0, fieldIndex)))
-            ctx.emit(IrStore(result, fieldPtr))
-          case _ =>
-          }
-          ctx.emit(IrReturnVoid)
-          val initializeFun = IrFun(s"${fullName}_initialize", IrFunType(IrVoidType, Nil), Nil, ctx.buildBlocks())
-          functions += initializeFun
-
-          ctx = new FunctionContext
-          ctx.insertBlock(ctx.newBlock("entry"))
-          val initB = ctx.newBlock("init")
-          val endB = ctx.newBlock("end")
-          val initialized = IrVar(IrIntType.I1, ctx.fresh("initialized"))
-          ctx.emit(IrLoad(initialized, initializedGlobal))
-          ctx.emit(IrCondBranch(initialized, endB.label, initB.label))
-          ctx.insertBlock(initB)
-          ctx.emit(IrCall(None, IrFunctionRef(initializeFun), Nil))
-          ctx.emit(IrStore(IrConst(true), initializedGlobal))
-          ctx.emit(IRBranch(endB.label))
-
-          ctx.insertBlock(endB)
-          ctx.emit(IrReturnVoid)
-          functions += IrFun(s"${fullName}_ensure_initialized", IrFunType(IrVoidType, Nil), Nil, ctx.buildBlocks())
-
-          // Recursively traverse other declarations
-          // We need to do this after traversing all expression declarations in the current module to prevent inner
-          // modules from messing with the function context
-          df.decls.foreach { case _: ExprDecl =>
-          case d => apply(d)(gcI)
-          }
-        }
+        compileModule(df, closed, fullName, gcI)
     }
   }
 
@@ -212,11 +216,16 @@ private class IRGenerator {
     val field = gc.lookupRef(o).get.asInstanceOf[ExprDecl]
     val path = o.path
     val modulePath = path.up
+    val moduleName = if (modulePath.isRoot) {
+      TOP_LEVEL_STRUCT_NAME
+    } else {
+      modulePath.toString
+    }
     val module = gc.lookupGlobal(modulePath).get.asInstanceOf[Module]
     val fieldIndex = module.decls.collect { case d: ExprDecl => d }.indexOf(field)
-    val struct = structs.find(_.name == modulePath.toString).get
-    val structGlobal = globals.find(_.name == modulePath.toString).get
-    val initFun = functions.find(_.name == s"${modulePath}_ensure_initialized").get
+    val struct = structs.find(_.name == moduleName).get
+    val structGlobal = globals.find(_.name == moduleName).get
+    val initFun = functions.find(_.name == s"${moduleName}_ensure_initialized").get
 
     val fieldPtr = IrVar(IrPtrType(struct.fields(fieldIndex)), ctx.fresh(s"${path}_ptr"))
     ctx.emit(IrCall(None, IrFunctionRef(initFun), Nil))
