@@ -1,5 +1,32 @@
 Questions:
 
+------------------------------------------------------
+
+fundamentals:
+
+equality.p line 28 how to do "as"? 
+isn't "⊦ x∶A" a dependent type?
+can I write types like "⊦ x∶A" in UPL?
+same problem in:
+subtyping.p line 37
+type_equality.p line 15
+
+"is this correct?" list:
+subtyping.p line 22
+universes.p line 39 "Pi_legal U V" needs to be a judgement AND a type
+
+------------------------------------------------------
+
+algebra:
+
+monoids.p line 40 not working
+ringoids.p lie ring definition
+modules.p not sure if scalars works like that
+
+------------------------------------------------------
+
+logic:
+
 What does total structure do in MMT?
 How to translate it into UPL?
 Example: line 39 in pl.mmt
@@ -15,18 +42,4 @@ line 13 in subtyping.mmt : how to do structure in UPL?
 line 26 in subtyping.mmt : how to do constant in UPL?
 
 
-
-monoids.p line 40 not working
-ringoids.p lie ring definition
-modules.p not sure if scalars works like that
-
-concepts.p line 58, 71, 82 still doesn't work because type-valued declarations arent supported right?
-more examples:
-equality.p line 13 (interesting)
-
-
-
-
-equality.p line 28 how to do "as"? 
-isn't "⊦ x∶A" a dependent type?
-
+------------------------------------------------------

@@ -55,22 +55,20 @@ module concepts {
         type tf(k: kd)
         tpk: kd
 
-        // needs type-valued decrarations
-        // realize Types
-        // tp = tf(tpk)
+        realize Types
+        type tp = tf(tpk)
     }
 
     theory Booleans {
-        include Types
+        include TypedTerms
         boolean: tp
     }
 
     theory InternalPropositions {
         include Booleans
 
-        // needs type-valued decrarations
-        // realize Propositions 
-        // prop = tm boolean
+        realize Propositions 
+        type prop = tm boolean
     }
 
     theory TypesAsPredicates {
@@ -79,9 +77,8 @@ module concepts {
         include Logic
 
         typesAsPredicates : SoftTypedTerms {
-            // needs type-valued decrarations
-            // tp = term -> prop
-            // of = (X, A) -> (A X)
+            type tp = term -> prop
+            of = (X, A) -> (A X)
         }
     }
 
@@ -89,11 +86,10 @@ module concepts {
         include Terms
         include Propositions
 
-        iin: term -> term -> prop
+        iin: (term, term) -> prop
 
-        // needs type-valued decrarations
-        // realize SoftTypedTerms
-        // tp = term
-        // of = iin
+        realize SoftTypedTerms
+        type tp = term
+        of = iin
     }
 }

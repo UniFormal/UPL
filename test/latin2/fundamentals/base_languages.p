@@ -13,4 +13,14 @@ module base_languages {
         include .concepts.Logic
         include .concepts.SoftTypedTerms
     }
+
+    theory InternalLogic {
+        include .concepts.InternalPropositions
+        include .concepts.Proofs
+    }
+
+    theory InternallyTypedLogic {
+        include .concepts.InternalTypes
+        include .concepts.Logic
+    }
 }
