@@ -24,7 +24,7 @@ module equality {
         requal: (tp, term, term) -> prop
 
         // don't know how to do this
-        as: ???
+        // as: dedT(of(x, A)) -> term
     }
 
     theory SoftTypedEqualityND {

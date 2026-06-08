@@ -22,6 +22,11 @@ module magmas {
         comm:--- x∘y == y∘x
     }
 
+    OppositeMagma: Magma -> Magma = m -> Magma {
+        type univ = m.univ,
+        op = (x, y) -> m.op(y,x)
+    }
+
     theory Idempotent {
         include Magma
         idem:--- x∘x == x

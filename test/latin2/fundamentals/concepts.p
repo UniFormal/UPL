@@ -6,6 +6,7 @@ module concepts {
     theory Proofs {
         include Propositions
         ded: prop -> bool   # prefix ⊦
+        type dedT(p: prop)
         lemma:--- ⊦F => (⊦F => ⊦G) => ⊦G
     }
 

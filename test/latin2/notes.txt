@@ -5,41 +5,40 @@ Questions:
 fundamentals:
 
 equality.p line 28 how to do "as"? 
-isn't "⊦ x∶A" a dependent type?
-can I write types like "⊦ x∶A" in UPL?
+need "⊦ x∶A" as a type => is adding type dedT(p: prop) the right way? (concepts.p line 9)
 same problem in:
 subtyping.p line 37
 type_equality.p line 15
+universes.p line 39 "Pi_legal U V" needs to be a judgement AND a type
+fol.p line 129 - 153
+dependent_pl.p (simplest example, show this)
 
 "is this correct?" list:
 subtyping.p line 22
-universes.p line 39 "Pi_legal U V" needs to be a judgement AND a type
 
 ------------------------------------------------------
 
 algebra:
 
+magma.p line 25 should views look like this?
+
 monoids.p line 40 not working
 ringoids.p lie ring definition
+
 modules.p not sure if scalars works like that
+(for example does scalars.univ in line 8 use the scalars from line 3)
 
 ------------------------------------------------------
 
 logic:
 
-What does total structure do in MMT?
-How to translate it into UPL?
-Example: line 39 in pl.mmt
+How to do the include in Lindenbaum (line 40 in pl.p | line 55 in pl.mmt)?
 
-How to do Lindenbaum (line 55 in pl.mmt)?
+pl.p line 46 can I do "true: prop" here?
 
-How to do ProofIrrelevance (line 221 in pl.mmt)?
+pl.p line 192 is this correct? (why equalityRel? Not in PartOrder)
 
-line 131 in fol.mmt : {P} {x} is the same as {P, x} right?
-
-line 13 in subtyping.mmt : how to do structure in UPL?
-
-line 26 in subtyping.mmt : how to do constant in UPL?
+How to do ProofIrrelevance (line 207 in pl.p | line 221 in pl.mmt)?
 
 
 ------------------------------------------------------
