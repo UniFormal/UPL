@@ -125,18 +125,13 @@ private class IRGenerator {
             op_result
           }
       }
-      case o: OpenRef => val fieldVar = loadOpenRef(o)
-        val result = IrVar(fieldVar.tp.asInstanceOf[IrFunType].ret, fresh("result"))
-
-        ctx.emit(IrCall(Some(result), fieldVar, args.map(a => apply(a))))
-        result
-      case o: OwnedExpr => val fieldVar = loadOwnedExpr(o)
-        val result = IrVar(fieldVar.tp.asInstanceOf[IrFunType].ret, fresh("result"))
-
-        ctx.emit(IrCall(Some(result), fieldVar, args.map(a => apply(a))))
-        result
+      case o: OpenRef => applyField(loadOpenRef(o), args)
+      case o: ClosedRef => applyField(loadClosedRef(o), args)
+      case o: OwnedExpr => applyField(loadOwnedExpr(o), args)
     }
     case o: OpenRef => loadOpenRef(o)
+    case r: ClosedRef => loadClosedRef(r)
+    case o: OwnedExpr => loadOwnedExpr(o)
     case Lambda(ins, body, _) => val prevCtx = ctx
       ctx = new FunctionContext
       ctx.insertBlock(ctx.newBlock("entry"))
@@ -154,7 +149,6 @@ private class IRGenerator {
     case VarRef(n) => // TODO This should be reworked
       IrVar(llvmType(gc.lookupLocal(n).get.asInstanceOf[EVarDecl].tp), s"$n")
     case Instance(theory) => val theoryPath = mainTheoryPath(theory)
-
       val module = gc.lookupGlobal(theoryPath).get.asInstanceOf[Module]
       val exprDecls = module.decls.collect { case d: ExprDecl => d }
       val struct = IrStruct(theoryPath.toString, exprDecls.map { d => llvmType(d.tp) })
@@ -174,7 +168,13 @@ private class IRGenerator {
       }
 
       structPtr
-    case o: OwnedExpr => loadOwnedExpr(o)
+  }
+
+  def applyField(fieldVar: IrValue, args: List[Expression])(implicit gc: GlobalContext): IrVar = {
+    val result = IrVar(fieldVar.tp.asInstanceOf[IrFunType].ret, fresh("result"))
+
+    ctx.emit(IrCall(Some(result), fieldVar, args.map(a => apply(a))))
+    result
   }
 
   def apply(d: Declaration)(implicit gc: GlobalContext): Unit = {
@@ -196,6 +196,14 @@ private class IRGenerator {
     val fieldPtr = IrVar(IrPtrType(struct), fresh(s"field_${fieldIndex}_ptr"))
     ctx.emit(IrGetElement(fieldPtr, struct, structPtr, List(0, fieldIndex)))
     ctx.emit(IrStore(apply(exp)(gc), fieldPtr))
+  }
+
+  private def loadField(struct: IrStruct, structPtr: IrValue, fieldIndex: Int): IrVar = {
+    val fieldPtr = IrVar(IrPtrType(struct.fields(fieldIndex)), fresh(s"field_${fieldIndex}_ptr"))
+    ctx.emit(IrGetElement(fieldPtr, struct, structPtr, List(0, fieldIndex)))
+    val fieldVar = IrVar(struct.fields(fieldIndex), fresh(s"field_$fieldIndex"))
+    ctx.emit(IrLoad(fieldVar, fieldPtr))
+    fieldVar
   }
 
   private def compileModule(df: TheoryValue, closed: Boolean, moduleName: String, gcI: GlobalContext): Unit = { //
@@ -264,21 +272,27 @@ private class IRGenerator {
     }
   }
 
+  private def loadClosedRef(r: ClosedRef)(implicit gc: GlobalContext): IrValue = {
+    val theoryPath = gc.currentParent
+    val module = gc.lookupGlobal(theoryPath).get.asInstanceOf[Module]
+    val exprDecls = module.decls.collect { case d: ExprDecl => d }
+    val fieldIndex = exprDecls.indexWhere(_.name == r.name)
+    val struct = IrStruct(theoryPath.toString, exprDecls.map { d => llvmType(d.tp) })
+
+    val instanceArgument = IrArgument(IrPtrType(struct), "__instance")
+    loadField(struct, instanceArgument, fieldIndex)
+  }
+
   private def loadOwnedExpr(o: OwnedExpr)(implicit gc: GlobalContext): IrValue = {
     o match {
       case OwnedExpr(owner@OpenRef(_), ownerDom, ClosedRef(owned)) => val theoryPath = mainTheoryPath(ownerDom)
         val module = gc.lookupGlobal(theoryPath).get.asInstanceOf[Module]
         val exprDecls = module.decls.collect { case d: ExprDecl => d }
+        val fieldIndex = exprDecls.indexWhere(e => e.name == owned)
         val struct = IrStruct(theoryPath.toString, exprDecls.map { d => llvmType(d.tp) })
 
-        val fieldIndex = exprDecls.indexWhere(e => e.name == owned)
-        val fieldPtr = IrVar(IrPtrType(struct.fields(fieldIndex)), fresh(s"$theoryPath.${owned}_ptr"))
-
         val structPtr = loadOpenRef(owner)
-        ctx.emit(IrGetElement(fieldPtr, struct, structPtr, List(0, fieldIndex)))
-        val fieldVar = IrVar(struct.fields(fieldIndex), fresh(s"$theoryPath.$owned"))
-        ctx.emit(IrLoad(fieldVar, fieldPtr))
-        fieldVar
+        loadField(struct, structPtr, fieldIndex)
       case _ => ???
     }
   }
@@ -292,19 +306,16 @@ private class IRGenerator {
     } else {
       modulePath.toString
     }
+    val initFun = IrDeclFun(s"${moduleName}_ensure_initialized", IrFunType(IrVoidType, Nil))
+    ctx.emit(IrCall(None, IrFunctionRef(initFun), Nil))
+
     val module = gc.lookupGlobal(modulePath).get.asInstanceOf[Module]
     val exprDecls = module.decls.collect { case d: ExprDecl => d }
-    val fieldIndex = exprDecls.indexOf(field)
     val struct = IrStruct(moduleName, exprDecls.map { d => llvmType(d.tp) })
+    val fieldIndex = exprDecls.indexOf(field)
     val structGlobal = IrGlobal(moduleName, struct)
-    val initFun = IrDeclFun(s"${moduleName}_ensure_initialized", IrFunType(IrVoidType, Nil))
 
-    val fieldPtr = IrVar(IrPtrType(struct.fields(fieldIndex)), fresh(s"${path}_ptr"))
-    ctx.emit(IrCall(None, IrFunctionRef(initFun), Nil))
-    ctx.emit(IrGetElement(fieldPtr, struct, structGlobal, List(0, fieldIndex)))
-    val fieldVar = IrVar(struct.fields(fieldIndex), fresh(s"$path"))
-    ctx.emit(IrLoad(fieldVar, fieldPtr))
-    fieldVar
+    loadField(struct, structGlobal, fieldIndex)
   }
 
   private def llvmType(tp: Type): IrType = {

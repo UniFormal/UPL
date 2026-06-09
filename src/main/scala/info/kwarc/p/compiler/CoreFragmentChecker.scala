@@ -16,8 +16,8 @@ object CoreFragmentChecker extends Traverser[CoreFragmentContext] {
       throw fail(s"Anonymous theory: '$exp'")
     }
       applyDefault(exp)(gc, nCtx)
-    case _: ClosedRef => if (ctx.inModule) {
-      throw fail(s"Closed reference in module: '$exp'")
+    case _: ClosedRef => if (ctx.inLambda) {
+      throw fail(s"Closed reference in lambda: '$exp'")
     }
       applyDefault(exp)(gc, nCtx)
     case _: OpenRef => if (ctx.inLambda) {
