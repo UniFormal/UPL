@@ -13,7 +13,7 @@ case class TPTPFile(decls: List[TPTPDecl]) extends TPTP {
 }
 
 case class TPTPDecl(id: String, role: String, formula: TPTPFormula) extends TPTP {
-  override def toString = s"th1($id,$role,$formula)."
+  override def toString = s"thf($id,$role,$formula)."
 }
 
 case class TPTPContext(decls: List[(String,TPTPFormula)]) extends TPTP
@@ -28,6 +28,10 @@ abstract class TPTPFormula extends TPTP
 
 case class FunType(domain: TPTPFormula, range: TPTPFormula) extends TPTPFormula {
     override def toString = s"($domain > $range)"
+}
+
+case class TypeAssignment(ident: TPTPFormula, tpe: TPTPFormula) extends TPTPFormula {
+    override def toString = s"$ident : $tpe"
 }
 
 case class Constant(name : String) extends TPTPFormula {
@@ -110,7 +114,7 @@ case class TypeQuantifier(vars: TPTPContext, body: TPTPFormula) extends TPTPForm
 class UPLParser extends RegexParsers {
 
     def formula: Parser[TPTPFormula] = 
-        implication | conjunction | equivilant | disjunction | simpleFormula | choice | xor | ifthenelse | typequantifier | funtype
+        implication | conjunction | equivilant | disjunction | simpleFormula | choice | xor | ifthenelse | typequantifier
 
     def simpleFormula: Parser[TPTPFormula] = (
         quantifier
@@ -122,9 +126,49 @@ class UPLParser extends RegexParsers {
         | "(" ~> formula <~ ")" 
     )
   
+    def module: Parser[TPTPFile] = 
+        "module" ~> """[a-zA-Z0-9_]+""".r ~ ("{" ~> rep(declaration) <~ "}") ^^ {
+            case name ~ declsList => TPTPFile(declsList.flatten)
+        }
+    
+    def declaration: Parser[List[TPTPDecl]] = typeDecl | valDecl
+
+    def typeDecl: Parser[List[TPTPDecl]] = 
+    "type" ~> """[a-z][a-zA-Z0-9_]*""".r ~ ("=" ~> """[a-z][a-zA-Z0-9_]*""".r) ^^ {
+    case typeName ~ baseType => 
+      List(TPTPDecl(
+        id = s"${typeName}_type",
+        role = "type", 
+        formula = TypeAssignment(Constant(typeName), Constant("$tType")) 
+      ))
+    }
+
+    def valDecl: Parser[List[TPTPDecl]] = 
+    opt("val") ~> """[a-z][a-zA-Z0-9_]*""".r ~ opt(":" ~> """[a-z][a-zA-Z0-9_]*""".r) ~ ("=" ~> """[0-9]+""".r) ^^ {
+    case varName ~ maybeType ~ value =>
+      
+      val typeName = maybeType.getOrElse("$i")
+      
+      val typeDecl = TPTPDecl(
+        id = s"${varName}_type", 
+        role = "type", 
+        formula = TypeAssignment(Constant(varName), Constant(typeName)) 
+      )
+      
+      val axiomDecl = TPTPDecl(
+        id = s"${varName}_def", 
+        role = "axiom", 
+        formula = Equality(isEqual = true, Constant(varName), Constant(value)) 
+      )
+      
+      List(typeDecl, axiomDecl)
+    }
+
     def constant: Parser[Constant] = """[a-z][a-zA-Z0-9_]*""".r ^^ { name => Constant(name) }
   
     def variable: Parser[Variable] = """[A-Z][a-zA-Z0-9_]*""".r ^^ { name => Variable(name) }
+
+
 
     def quantifier: Parser[Quantifier] = ???
     def lambda: Parser[Lambda] = ???
@@ -156,4 +200,38 @@ class UPLParser extends RegexParsers {
     def ifthenelse: Parser[IfThenElse] = ???
     def typequantifier: Parser[TypeQuantifier] = ???
     def funtype: Parser[FunType] = ???
+}
+
+
+//Quick Tests
+
+object Main extends App {
+  val parser = new UPLParser
+
+  val uplInput = """
+    module Basics001 {
+      type a = int
+      val c1: a = 0
+      c2 = 0
+    }
+  """
+
+ 
+  parser.parseAll(parser.module, uplInput) match {
+    case parser.Success(tptpAst, _) =>
+      println(tptpAst.toString)
+     
+      
+    case parser.NoSuccess(error, next) =>
+      println(s"Parsing Fehler bei Zeile ${next.pos.line}, Spalte ${next.pos.column}:")
+      println(error)
+  }
+
+  /*Ausgabe
+    thf(a_type,type,a : $tType).
+    thf(c1_type,type,c1 : a).
+    thf(c1_def,axiom,(c1 = 0)).
+    thf(c2_type,type,c2 : $i).
+    thf(c2_def,axiom,(c2 = 0)).
+  */
 }
