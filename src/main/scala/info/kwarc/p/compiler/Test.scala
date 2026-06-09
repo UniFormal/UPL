@@ -55,16 +55,17 @@ object Test {
             println(s"Failed to check $p: $e")
         }
       }
-    TMP_FILE.toJava.delete()
   }
 
   def compileAndRun(prog: Program): String = {
     LLVMCompiler.run(prog, TMP_FILE, printDebug = false)
-    Process(
+    val exitCode = Process(
       Seq(
         s"./${TMP_FILE.toString}"
       )
     ).!.toString
+    TMP_FILE.toJava.delete()
+    exitCode
   }
 
   def interpret(prog: Program): String = {

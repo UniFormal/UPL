@@ -8,26 +8,25 @@ object CoreFragmentChecker extends Traverser[CoreFragmentContext] {
 
   override def apply(exp: Expression)(implicit gc: GlobalContext, ctx: CoreFragmentContext): Expression = {
     val nCtx = ctx.copy(declared = false)
-    matchC(exp) { case Lambda(ins, body, mayReturn) => if (!ctx.declared) {
+    matchC(exp) { case _: Lambda => if (!ctx.declared) {
       throw fail(s"Anonymous lambda: '$exp'")
     }
-      body match {
-        case application: Application => if (ins.variables.size != application.args.size) {
-          throw fail(s"Closure lambda: '$exp'")
-        }
-        case _ =>
-      }
-
-      applyDefault(exp)(gc, nCtx)
+      applyDefault(exp)(gc, nCtx.copy(inLambda = true))
     case _: Instance => if (!ctx.declared) {
       throw fail(s"Anonymous theory: '$exp'")
+    }
+      applyDefault(exp)(gc, nCtx)
+    case _: ClosedRef => if (ctx.inModule) {
+      throw fail(s"Closed reference in module: '$exp'")
+    }
+      applyDefault(exp)(gc, nCtx)
+    case _: OpenRef => if (ctx.inLambda) {
+      throw fail(s"Open reference in lambda: '$exp'")
     }
       applyDefault(exp)(gc, nCtx)
     case _ => applyDefault(exp)(gc, nCtx)
     }
   }
-
-  private def fail(msg: String) = IError(s"Unsupported code fragment: $msg")
 
   override def apply(thy: Theory)(implicit gc: GlobalContext, ctx: CoreFragmentContext): Theory = {
     val nCtx = ctx.copy(declared = false)
@@ -37,14 +36,18 @@ object CoreFragmentChecker extends Traverser[CoreFragmentContext] {
     }
     case _ => List()
     }.toSet
-      decls.foreach { case ExprDecl(declName, _, _, _, _, _) => if (!includedNames.contains(declName))
-        throw fail(s"Extended theory. Introduces expression '$declName' that wasn't declared in any included theory: '$thy'")
+      decls.foreach { case ExprDecl(declName, _, _, _, _, _) => if (!includedNames.contains(declName)) {
+        throw fail(s"Extended theory. Introduces expression '$declName' that wasn't declared in any included " +
+          s"theory: '$thy'")
+      }
       case _ =>
       }
       applyDefault(thy)(gc, nCtx)
     case _ => applyDefault(thy)(gc, nCtx)
     }
   }
+
+  private def fail(msg: String) = IError(s"Unsupported code fragment: $msg")
 
   override def apply(tp: Type)(implicit gc: GlobalContext, ctx: CoreFragmentContext): Type = {
     val nCtx = ctx.copy(declared = false)
@@ -61,9 +64,16 @@ object CoreFragmentChecker extends Traverser[CoreFragmentContext] {
 
   override def apply(decl: Declaration)(implicit gc: GlobalContext, ctx: CoreFragmentContext): Declaration = {
     val nCtx = ctx.copy(declared = true)
-    matchC(decl) { case _ => applyDefault(decl)(gc, nCtx)
+    matchC(decl) { case _: Module => applyDefault(decl)(gc, nCtx.copy(inModule = true))
+    case ExprDecl(_, _, ClassType(theory1), Some(Instance(theory2)), _, _) =>
+      if (theory1 != theory2) {
+        throw fail(s"Type lowering from $theory2 to $theory1: '$decl'")
+      }
+      applyDefault(decl)(gc, nCtx)
+    case _ => applyDefault(decl)(gc, nCtx)
     }
   }
 }
 
-case class CoreFragmentContext(var declared: Boolean = false) {}
+case class CoreFragmentContext(var declared: Boolean = false, var inModule: Boolean = false, var inLambda: Boolean =
+false) {}

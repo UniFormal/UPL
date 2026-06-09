@@ -44,7 +44,7 @@ object LLVMCompiler {
   def compile(p: Program): String = {
     val ir = IRGenerator.run(p)
 
-    val fnctDecls = ir.declaredFunctions.map(f => f.render()).mkString("\n")
+    val fnctDecls = ir.declaredFunctions.map(f => f.renderDecl()).mkString("\n")
     val structs = ir.structs.map(s => s.renderStruct()).mkString("\n")
     val globals = ir.globals.map(g => g.renderGlobal()).mkString("\n")
     val fncts = ir.functions.map(f => f.renderFun()).mkString("\n\n")

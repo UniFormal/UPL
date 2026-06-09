@@ -9,18 +9,28 @@ case class IrStruct(name: String, fields: List[IrType]) extends IrType {
   override def render(): String = s"%$name"
 }
 
-case class IrDeclFun(name: String, retTp: IrType, paramsTp: List[IrType]) {
-  def render(): String =
-    s"""|declare ${retTp.render()} @$name(${
-      paramsTp.map { p => s"${p.render()}" }.mkString(", ")
+trait IrFunctionLike {
+  def name: String
+
+  def signature: IrFunType
+
+  def renderDecl(): String =
+    s"""|declare ${signature.ret.render()} @$name(${
+      signature.params.map(_.render()).mkString(", ")
     })""".stripMargin
 }
 
-case class IrFun(name: String, signature: IrFunType, params: List[IrArgument], blocks: List[IrBlock]) {
+case class IrDeclFun(name: String, signature: IrFunType) extends IrFunctionLike
+
+case class IrFun(name: String, signature: IrFunType, params: List[IrArgument], blocks: List[IrBlock]) extends
+  IrFunctionLike {
+
   def renderFun(): String =
-    s"""define ${signature.ret.render()} @$name(${params.map(_.renderWithType()).mkString(", ")}) {
-       |${blocks.map(_.render()).mkString("\n")}
-       |}""".stripMargin
+    s"""|define ${
+      signature.ret.render()
+    } @$name(${params.map(_.renderWithType()).mkString(", ")}) {
+        |${blocks.map(_.render()).mkString("\n")}
+        |}""".stripMargin
 }
 
 case class IrGlobal(name: String, tp2: IrType, init: Option[String] = None) extends IrGlobalValue {
@@ -69,9 +79,8 @@ object Condition {
 }
 
 case class IrBinOp(result: IrVar, op: Operation, left: IrValue, right: IrValue) extends IrInstr {
-  override def render(): String = s"${result.render()} = ${op.label} ${left.tp.render()} ${left.render()}, ${
-    right.render()
-  }"
+  override def render(): String = s"${result.render()} = ${op.label} ${left.tp.render()} ${left.render()}, ${right
+    .render()}"
 }
 
 sealed abstract class Operation(val label: String)
@@ -107,12 +116,18 @@ case class IrGetElement(result: IrVar, struct: IrStruct, ptr: IrValue, vals: Lis
   }, ${vals.map(v => s"i32 $v").mkString(", ")}"
 }
 
+case class IrComputeSize(result: IrVar, struct: IrStruct) extends IrInstr {
+  override def render(): String = s"${result.render()} = ptrtoint ${struct.render()}* getelementptr (${
+    struct.render()
+  }, ${struct.render()}* null, i32 1) to ${result.tp.render()}"
+}
+
 case class IrStore(op: IrValue, ptr: IrValue) extends IrInstr {
-  override def render: String = s"store ${op.tp.render()} ${op.render()}, ${ptr.renderWithType()}"
+  override def render(): String = s"store ${op.tp.render()} ${op.render()}, ${ptr.renderWithType()}"
 }
 
 case class IrLoad(result: IrVar, ptr: IrValue) extends IrInstr {
-  override def render: String = s"${result.render()} = load ${result.tp.render()}, ${ptr.renderWithType()}"
+  override def render(): String = s"${result.render()} = load ${result.tp.render()}, ${ptr.renderWithType()}"
 }
 
 case class IrCall(result: Option[IrVar], callee: IrValue, params: List[IrValue]) extends IrInstr {
@@ -125,9 +140,9 @@ case class IrCall(result: Option[IrVar], callee: IrValue, params: List[IrValue])
     }
     s"""${result.map(r => s"${r.render()} = ").getOrElse("")}call ${
       fnType.ret.render()
-    } ${callee.render()}(${
-      params.map(_.renderWithType()).mkString(", ")
-    })"""
+    } ${
+      callee.render()
+    }(${params.map(_.renderWithType()).mkString(", ")})"""
   }
 }
 
@@ -178,7 +193,7 @@ sealed trait IrConstant extends IrValue
 
 sealed trait IrGlobalValue extends IrConstant
 
-case class IrFunctionRef(fun: IrFun) extends IrGlobalValue {
+case class IrFunctionRef(fun: IrFunctionLike) extends IrGlobalValue {
 
   override def tp = IrPtrType(fun.signature)
 
