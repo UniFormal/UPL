@@ -35,9 +35,10 @@ module monoids {
     theory Powers {
         include .magmas.PowerAssociative
         include Unital
-        power: (univ, nat) -> univ
-        power_zero:--- power(x,0) == e
-        // power_succ:--- power(x, n+1) == power(x, n) ∘ x
+        include .Numbers.Nat
+        power: (univ, num) -> univ
+        power_zero:--- power(x, .Numbers.Nat.z) == e
+        power_succ:--- power(x, .Numbers.Nat.s(n)) == power(x, n) ∘ x
     }
 
     theory Monoid {

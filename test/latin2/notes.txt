@@ -22,7 +22,6 @@ algebra:
 
 magma.p line 25 should views look like this?
 
-monoids.p line 40 not working
 ringoids.p lie ring definition
 
 modules.p not sure if scalars works like that
