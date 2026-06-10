@@ -285,13 +285,13 @@ private class IRGenerator {
 
   private def loadOwnedExpr(o: OwnedExpr)(implicit gc: GlobalContext): IrValue = {
     o match {
-      case OwnedExpr(owner@OpenRef(_), ownerDom, ClosedRef(owned)) => val theoryPath = mainTheoryPath(ownerDom)
+      case OwnedExpr(owner, ownerDom, ClosedRef(owned)) => val theoryPath = mainTheoryPath(ownerDom)
         val module = gc.lookupGlobal(theoryPath).get.asInstanceOf[Module]
         val exprDecls = module.decls.collect { case d: ExprDecl => d }
         val fieldIndex = exprDecls.indexWhere(e => e.name == owned)
         val struct = IrStruct(theoryPath.toString, exprDecls.map { d => llvmType(d.tp) })
 
-        val structPtr = loadOpenRef(owner)
+        val structPtr = apply(owner)(gc)
         loadField(struct, structPtr, fieldIndex)
       case _ => ???
     }
