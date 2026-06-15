@@ -63,7 +63,7 @@ private class IRGenerator {
     case BoolValue(value) => IrConst(value) // Unit value is represented as a special constant to make it easy to
     //TODO figure out naming and optional \n
     case StringValue(value) =>
-      val v = IrGlobal("name", IrConstChar(value.length), Some(s"c\"$value\\0A\\00\""))
+      val v = IrGlobal(fresh("name"), IrConstChar(value.length), Some(s"c\"$value\\0A\\00\""))
       globals.append(v)
       v
     // spot when debugging
@@ -135,21 +135,11 @@ private class IRGenerator {
             op_result
           }
       }
-      case o: OpenRef => val fieldVar = loadOpenRef(o)
-
-        val result = fieldVar match {//Refactor: remove double ref
-          case g: IrGlobal => IrVar(fieldVar.tp.asInstanceOf[IrPtrType].to.asInstanceOf[IrPtrType].to.asInstanceOf[IrFunType].ret, fresh("result"))
-          case f: IrValue => IrVar(fieldVar.tp.asInstanceOf[IrFunType].ret, fresh("result"))
-        }
-        val option = result.tp match {
-          case IrVoidType => None
-          case _ => Some(result)
-        }
-        ctx.emit(IrCall(option, fieldVar, args.map(a => apply(a))))
-        result
+      case o: OpenRef => applyField(loadOpenRef(o), args)
       case o: ClosedRef => applyField(loadClosedRef(o), args)
       case o: OwnedExpr => applyField(loadOwnedExpr(o), args)
     }
+    case o: OpenRef => loadOpenRef(o)
     case r: ClosedRef => loadClosedRef(r)
     case o: OwnedExpr => loadOwnedExpr(o)
     case Lambda(ins, body, _) => val prevCtx = ctx
@@ -201,7 +191,12 @@ private class IRGenerator {
   def applyField(fieldVar: IrValue, args: List[Expression])(implicit gc: GlobalContext): IrVar = {
     val result = IrVar(fieldVar.tp.asInstanceOf[IrFunType].ret, fresh("result"))
 
-    ctx.emit(IrCall(Some(result), fieldVar, args.map(a => apply(a))))
+    val option = result.tp match {
+      case IrVoidType => None
+      case _ => Some(result)
+    }
+
+    ctx.emit(IrCall(option, fieldVar, args.map(a => apply(a))))
     result
   }
 
@@ -346,7 +341,7 @@ private class IRGenerator {
     if (module.name == "Uniformal"){
       val builtin = loadBuiltin(path.names(1))
       //builtin.signature
-      return IrGlobal(s"Builtin.${path.names(1)}", IrFunctionRef(builtin).tp)
+      return IrFunctionRef(builtin)
     }
 
     loadField(struct, structGlobal, fieldIndex)
@@ -358,7 +353,7 @@ private class IRGenerator {
 
     var function: IrFun = null
     //declare llvm builtin
-    if(!declaredFunctions.exists(x => x.name == name)) {
+    if(!functions.exists(x => x.name == s"Builtin.$name")) {
       val decl = IrDeclFun(definition.llvmBuiltin, IrFunType(definition.retType, definition.param))
       declaredFunctions.append(decl)
       var i = 0

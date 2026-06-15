@@ -213,7 +213,7 @@ case class IrConstChar(size: Int) extends IrType {
 
 case class IrFunctionRef(fun: IrFunctionLike) extends IrGlobalValue {
 
-  override def tp = IrPtrType(fun.signature)
+  override def tp = fun.signature
 
   override def render() = s"@${fun.name}"
 

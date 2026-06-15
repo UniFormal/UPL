@@ -20,10 +20,6 @@ object CoreFragmentChecker extends Traverser[CoreFragmentContext] {
       throw fail(s"Closed reference in lambda: '$exp'")
     }
       applyDefault(exp)(gc, nCtx)
-    case _: OpenRef => if (ctx.inLambda) {
-      //throw fail(s"Open reference in lambda: '$exp'")
-    }
-      applyDefault(exp)(gc, nCtx)
     case _ => applyDefault(exp)(gc, nCtx)
     }
   }
