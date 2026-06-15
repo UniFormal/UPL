@@ -23,7 +23,7 @@ object IRGenerator {
 
 private class IRGenerator {
   private val mallocFun = IrDeclFun("malloc", IrFunType(IrPtrType(IrIntType.I64), List(IrIntType.I64)))
-  private val declaredFunctions: List[IrDeclFun] = List(mallocFun)
+  private val declaredFunctions: mutable.ArrayBuffer[IrDeclFun] = mutable.ArrayBuffer(mallocFun)
 
   private val globals: mutable.ArrayBuffer[IrGlobal] = mutable.ArrayBuffer()
   private val structs: mutable.ArrayBuffer[IrStruct] = mutable.ArrayBuffer()
@@ -37,7 +37,12 @@ private class IRGenerator {
     val entry = ctx.newBlock("entry")
     ctx.insertBlock(entry)
     val value = apply(exp)(gc)
-    ctx.emit(IrReturn(value))
+    //not every code statement returns a value => behave like C; default to 0
+    val ret = value.tp match {
+      case IrVoidType => IrReturn(IrConst(IrIntType.I64, 0))
+      case _ => IrReturn(value)
+    }
+    ctx.emit(ret)
 
     // We currently assume that the main expression evaluates to a 64-bit integer.
     val mainFun = IrFun("main", IrFunType(IrIntType.I64, Nil), Nil, ctx.buildBlocks())
@@ -56,6 +61,11 @@ private class IRGenerator {
       case Rat(enu, deno) => IrConst(enu.toInt / deno.toInt)
     } // Booleans are represented using i1 integers.
     case BoolValue(value) => IrConst(value) // Unit value is represented as a special constant to make it easy to
+    //TODO figure out naming and optional \n
+    case StringValue(value) =>
+      val v = IrGlobal("name", IrConstChar(value.length), Some(s"c\"$value\\0A\\00\""))
+      globals.append(v)
+      v
     // spot when debugging
     case Unit.Value => IrConst(0xdeadbeef) // note that Unit.Value is defined
     case IfThenElse(cond, thn, Some(els)) => // Based on ideas from
@@ -125,11 +135,21 @@ private class IRGenerator {
             op_result
           }
       }
-      case o: OpenRef => applyField(loadOpenRef(o), args)
+      case o: OpenRef => val fieldVar = loadOpenRef(o)
+
+        val result = fieldVar match {//Refactor: remove double ref
+          case g: IrGlobal => IrVar(fieldVar.tp.asInstanceOf[IrPtrType].to.asInstanceOf[IrPtrType].to.asInstanceOf[IrFunType].ret, fresh("result"))
+          case f: IrValue => IrVar(fieldVar.tp.asInstanceOf[IrFunType].ret, fresh("result"))
+        }
+        val option = result.tp match {
+          case IrVoidType => None
+          case _ => Some(result)
+        }
+        ctx.emit(IrCall(option, fieldVar, args.map(a => apply(a))))
+        result
       case o: ClosedRef => applyField(loadClosedRef(o), args)
       case o: OwnedExpr => applyField(loadOwnedExpr(o), args)
     }
-    case o: OpenRef => loadOpenRef(o)
     case r: ClosedRef => loadClosedRef(r)
     case o: OwnedExpr => loadOwnedExpr(o)
     case Lambda(ins, body, _) => val prevCtx = ctx
@@ -146,6 +166,14 @@ private class IRGenerator {
       functions += lambdaFun
       ctx = prevCtx
       IrFunctionRef(lambdaFun)
+    case Block(exprs) =>
+      if (exprs.nonEmpty) {
+        exprs.dropRight(1).foreach { e => apply(e) }
+        apply(exprs.last)
+      } else {
+        // dummy value (Unit.Value)
+        IrConst(0xdeadbeef)
+      }
     case VarRef(n) => // TODO This should be reworked
       IrVar(llvmType(gc.lookupLocal(n).get.asInstanceOf[EVarDecl].tp), s"$n")
     case Instance(theory) => val theoryPath = mainTheoryPath(theory)
@@ -314,8 +342,45 @@ private class IRGenerator {
     val struct = IrStruct(moduleName, exprDecls.map { d => llvmType(d.tp) })
     val fieldIndex = exprDecls.indexOf(field)
     val structGlobal = IrGlobal(moduleName, struct)
+    //special case: generate IR for builtins
+    if (module.name == "Uniformal"){
+      val builtin = loadBuiltin(path.names(1))
+      //builtin.signature
+      return IrGlobal(s"Builtin.${path.names(1)}", IrFunctionRef(builtin).tp)
+    }
 
     loadField(struct, structGlobal, fieldIndex)
+  }
+
+  private def loadBuiltin(name: String): IrFun = {
+    val definition = builtins.Builtins.find(x => x.name == name)
+      .getOrElse(throw new NotImplementedError(s"builtin $name doesn't have a signature"))
+
+    var function: IrFun = null
+    //declare llvm builtin
+    if(!declaredFunctions.exists(x => x.name == name)) {
+      val decl = IrDeclFun(definition.llvmBuiltin, IrFunType(definition.retType, definition.param))
+      declaredFunctions.append(decl)
+      var i = 0
+      val params = definition.param.map(x => {
+
+        val arg = IrArgument(x, s"param$i")
+        i = i +1
+        arg
+      })
+
+      val ret = IrVar(definition.retType, "res")
+      val call = IrCall(Some(ret), new IrFunctionRef(decl), params)
+
+      function = IrFun(s"Builtin.$name", IrFunType(definition.retType, definition.param), params,
+        List(IrBlock("builtin", List(call, IrReturn(ret)))))
+      //add function itself
+      functions.append(function)
+
+      return function
+    }else{
+      functions.find(x => x.name == s"Builtin.$name").getOrElse(throw new NotImplementedError())
+    }
   }
 
   private def llvmType(tp: Type): IrType = {
@@ -324,6 +389,9 @@ private class IRGenerator {
       case _: NumberType => IrIntType.I64
       case FunType(ins, out) => IrFunType(llvmType(out), ins.variables.map(v => llvmType(v.tp)))
       case ClassType(dom) => IrPtrType(IrStruct(mainTheoryPath(dom).toString, Nil))
+      case EmptyType => IrVoidType
+      case UnknownType(_,_,_) => IrVoidType
+      case StringType => IrPtrType(IrConstChar(0))
       case _ => throw new IllegalArgumentException(s"Unsupported type: $tp")
     }
   }

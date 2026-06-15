@@ -46,6 +46,8 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
   // holds errors with unknown location
   val errors = new ErrorCollector
 
+  val stdLib: Option[ProjectEntry] = entries.find(x => x.source.container.endsWith("lib/Uniformal.p"))
+
   def get(so: SourceOrigin) = entries.find(_.source == so).getOrElse {
     val e = new ProjectEntry(so)
     entries = entries :+ e
@@ -273,7 +275,13 @@ object Project {
     val es = paths.map {p =>
       ProjectEntry(p)
     }
-    new Project(es,mainE)
+    val proj = new Project(es,mainE)
+    if(proj.stdLib.isEmpty){
+      Builtins.Builtins = null
+    }else{
+      proj.stdLib.get.parsed.decls.map(x=> x.label)
+    }
+    proj
   }
 
   def toIsabelleFiles(proj: Project): Unit = {

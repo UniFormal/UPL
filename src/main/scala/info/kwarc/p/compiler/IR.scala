@@ -1,6 +1,8 @@
 package info.kwarc.p.compiler
 
-case class IrProgram(declaredFunctions: List[IrDeclFun], structs: List[IrStruct], globals: List[IrGlobal],
+import scala.collection.mutable
+
+case class IrProgram(declaredFunctions: mutable.ArrayBuffer[IrDeclFun], structs: List[IrStruct], globals: List[IrGlobal],
   functions: List[IrFun])
 
 case class IrStruct(name: String, fields: List[IrType]) extends IrType {
@@ -136,6 +138,7 @@ case class IrCall(result: Option[IrVar], callee: IrValue, params: List[IrValue])
     val fnType = callee.tp match {
       case IrPtrType(f: IrFunType) => f
       case f: IrFunType => f
+      case IrPtrType(IrPtrType(f: IrFunType)) => f
       case other => throw new IllegalArgumentException(s"Cannot call non-function type: $other")
     }
     s"""${result.map(r => s"${r.render()} = ").getOrElse("")}call ${
@@ -156,9 +159,12 @@ case class IrIntType(bits: Int) extends IrType {
 
 object IrIntType {
   val I64 = IrIntType(64)
+  val I32 = IrIntType(32)
   val I1 = IrIntType(1)
 }
-
+case class IrFloat64() extends IrType {
+  override def render(): String = "double"
+}
 case class IrPtrType(to: IrType) extends IrType {
   override def render(): String = "ptr"
 }
@@ -169,6 +175,9 @@ case class IrFunType(ret: IrType, params: List[IrType]) extends IrType {
 
 object IrVoidType extends IrType {
   override def render(): String = "void"
+}
+object IrVariadicType extends IrType {
+  override def render(): String = "..."
 }
 
 sealed trait IrValue {
@@ -193,11 +202,24 @@ sealed trait IrConstant extends IrValue
 
 sealed trait IrGlobalValue extends IrConstant
 
+
+// const char* with fixed size
+case class IrConstChar(size: Int) extends IrType {
+
+//s"@$name = private unnamed_addr constant [${s.length+2} x i8] c\"$s\\0A\\00\", align 1"
+  //+2 to account for \n\0
+  override def render(): String = s"[${size+2} x i8]"
+}
+
 case class IrFunctionRef(fun: IrFunctionLike) extends IrGlobalValue {
 
   override def tp = IrPtrType(fun.signature)
 
   override def render() = s"@${fun.name}"
+
+  def this(irDeclFun: IrDeclFun)= {
+    this(IrFun(irDeclFun.name, IrFunType(irDeclFun.signature.ret, irDeclFun.signature.params), null, null))
+  }
 }
 
 case class IrConst(override val tp: IrType, value: Long) extends IrConstant {
@@ -208,4 +230,17 @@ object IrConst {
   def apply(value: Long) = new IrConst(IrIntType.I64, value)
 
   def apply(value: Boolean) = new IrConst(IrIntType.I1, if (value) 1 else 0)
+
+  //def apply(value: String) = new IrConst(IrConstChar, value)
 }
+
+//mapping certain builtins hav
+case class IrBuiltin(name: String, llvmBuiltin: String, retType: IrType, param: List[IrType])
+
+object builtins {
+  var Builtins: Seq[IrBuiltin] = Seq(
+    IrBuiltin("print", "printf", IrIntType.I32, List[IrType](IrPtrType(IrConstChar(0)))),
+    IrBuiltin("sin", "llvm.sin.f64",IrFloat64(), List[IrType]{IrFloat64()})
+  )
+}
+
