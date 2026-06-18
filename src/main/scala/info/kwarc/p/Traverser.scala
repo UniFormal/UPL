@@ -366,6 +366,9 @@ object Simplify extends StatelessTraverser {
         case _ => expR
       }
       case Application(bo: BaseOperator, args) => Operator.simplify(bo, args)
+      // TODO Steffi case Applicatin(OpenRef(upl.math)) => Math.sin(args(0))
+      // TODO Steffi Math lib func anwendungen auf Zahlen => App(OpenRef(Mathlib.sin, 1.0) => NumberValue(scala.math.sin(1.0))
+      // TODO Steffi besser mit Objekt MathLib --> sin(NumberValue x) -> NumberValue(scala.math.sin(x))
       case Projection(Tuple(es),i) => es(i-1)
       case ListElem(CollectionValue(es,k),IntValue(i)) => es(i.toInt)
       case Application(Lambda(vs,b,false), as) => Substituter(gc, vs.substitute(as), b)

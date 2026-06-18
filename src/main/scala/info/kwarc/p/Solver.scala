@@ -11,12 +11,15 @@ object Solver {
   var redundant: List[String] = Nil  // axioms/theorems that we have used and that should be removed from the theory
   var redundantP: List[Property] = Nil
 
+  var gc : GlobalContext = _
+
    /**
     * conservatively extends a theory, trying to reduce the abstract interface
     * e.g., by adding definitions for symbols that are determined by axioms
     */
    def solve(gc: GlobalContext, thy: Theory) = {
      implicit val cause = thy
+     this.gc = gc
      val thyE = Checker.evaluateTheory(gc, thy)
      val thyN = checker.Normalize(gc,thyE)
      // the state during solving
@@ -79,8 +82,8 @@ object Solver {
                // other forms
                // TODO umformungen
                case Some(_) | None => {
-                 val iso = findIsolatable(p.left, Occurrence.root.path)//.filter(n => n._1 == u.name)
-                 Console.println(iso)
+                 val iso = findIsolatable(p.left, Occurrence.root.path).filter(n => n._1 == u.name)
+                 //Console.println(iso)
                  //Console.println(InverseMethods.all.foreach(m => m.apply(p.left, p.right)))
                  iso match {
                    case Nil =>
@@ -116,8 +119,8 @@ object Solver {
      println("---------")
      printAsTheory("Unknowns", unknowns)
      printAsTheory("Knowns", knowns)
-     printAsTheory("Properties", props)
-     printAsTheory("Redundant", redundantP)
+     //printAsTheory("Properties", props)
+     //printAsTheory("Redundant", redundantP)
 
 
      // just for temporary testing: add one definition
@@ -160,7 +163,9 @@ object Solver {
           props ::= Property(pathifyExpression(l, pre, lpt, thy),pathifyExpression(r, pre, lpt, thy),pre)//Property(l,r,pre)//
         case ClassType(theo) =>
           // println(theo.decls.forall(d => d.defined))
-          theo.decls.foreach(dec => findFields(dec, pre/ed.name, thy, lpt+(ed.name -> theo))) // TODO besser mit map
+          val tV = Checker.evaluateTheory(gc, theo)
+          // TODO funktioniert noch nicht
+          tV.decls.foreach(dec => findFields(dec, pre/ed.name, thy, lpt+(ed.name -> theo))) // TODO besser mit map
           if (unknowns.exists(u => startsWith(u.name, pre/ed.name))) unknowns ::= Unknown(pre/ed.name, ed.tp, true)
           else knowns ::= Known(pre/ed.name, ed.dfO.get, false)
           // axiome --> beide Seiten OwnedExpr (owner = ClosedRef(ed.name), domain = theo, ownedExpr = left/right)
@@ -169,6 +174,7 @@ object Solver {
             unknowns ::= Unknown(pre/ed.name, ed.tp, false)
           else
             knowns ::= Known(pre/ed.name, ed.dfO.get, false)
+        // TODO case Tuple(es) =>
         case _ =>
           // nicht lösbar -> als Known hinzufügen
           // bool als return für flag für instanz, soll dann bei unknowns bleiben
@@ -365,11 +371,19 @@ object InverseMethods {
 
 object SolverTest {
   def main(args: Array[String]): Unit = {
+
+    //Math.sin(FloatValue(3.14))
+
     val path = File(args(0)).canonical
     val proj = Project.fromFile(path, None)
     val voc = proj.check(true)
     val gc = GlobalContext(voc)
-    val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "Test8")))
+    //val tS = Solver.solve(gc, OpenRef(Path("Demo", "OppositeLength")))
+    //val tS = Solver.solve(gc, OpenRef(Path("Demo", "TestOppositeLength")))
+    //val tS = Solver.solve(gc, OpenRef(Path("Demo", "TestInterceptTheorem2")))
+    val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "Slingshot_test")));
+    // OppositeLength
+    // TestOppositeLength
     println(tS)
   }
 }

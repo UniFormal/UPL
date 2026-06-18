@@ -47,7 +47,6 @@ module SolverTest {
     //   A-----------B  beta
     //  alpha  c
 
-
     a: float
     b: float
     c: float
@@ -167,6 +166,8 @@ module SolverTest {
 
     a = 5.0
     beta = Math.PI/6
+
+    //x: float
   }
 
   theory InterceptTheorem {
@@ -188,19 +189,9 @@ module SolverTest {
 
     t1 = Triangle{a=4.0, b=2.0, gamma=Math.PI/2.0, beta=???, alpha=???, c=???, sineLawBC=???, sineLawAC=???, sineLawAB=???, cosineLawGamma=???, cosineLawBeta=???, cosineLawAlpha=???, allAngles180=???}
     t2 = Triangle{a=20.0, b=???, gamma=Math.PI/2.0, beta=???, alpha=???, c=???, sineLawBC=???, sineLawAC=???, sineLawAB=???, cosineLawGamma=???, cosineLawBeta=???, cosineLawAlpha=???, allAngles180=???}
-    
-    //alphaEqual:|- t1.alpha == t2.alpha
-    //betaEqual:|- t1.beta == t2.beta
-    //gammaEqual:|- t1.gamma == t2.gamma
-
-    //ratioAB:|- t1.a/t1.b == t2.a/t2.b
-    //ratioAC:|- t1.a/t1.c == t2.a/t2.c
-    //ratioCB:|- t1.c/t1.b == t2.c/t2.b
   }
 
   theory TestInterceptTheorem2 {
-    //include InterceptTheorem
-
     t1 = Triangle{a=4.0, b=2.0, gamma=Math.PI/2.0, beta=???, alpha=???, c=???, sineLawBC=???, sineLawAC=???, sineLawAB=???, cosineLawGamma=???, cosineLawBeta=???, cosineLawAlpha=???, allAngles180=???}
     t2 = Triangle{a=20.0, b=???, gamma=Math.PI/2.0, beta=???, alpha=???, c=???, sineLawBC=???, sineLawAC=???, sineLawAB=???, cosineLawGamma=???, cosineLawBeta=???, cosineLawAlpha=???, allAngles180=???}
     
@@ -212,5 +203,74 @@ module SolverTest {
     ratioAC:|- t1.a/t1.c == t2.a/t2.c
     ratioCB:|- t1.c/t1.b == t2.c/t2.b
   }
+
+  theory A {
+    x : int
+    y : int
+  }
+  theory B {
+    a : A
+    ax :|- a.x == 2
+  }
+  theory C {
+    include B
+    a = A{x=???,y=3}
+  }
+
+  theory OppositeLength{
+    // Fields
+    a: float
+    beta: float
+    gamma: float
+    b: float
+    
+    // Axioms
+    //opp : |- b == a * Math.atan(beta)
+    tangent : |- Math.tan(beta) == b/a
+    rightAngle : |- gamma == Math.PI/2
+    
+    // Measurements
+    a = 5.0
+    beta = Math.PI/3.0
+    gamma = Math.PI/2.0
+
+  }
+
+  theory Slingshot_simple{
+  h_launch: float
+  v_z: float // vertical launch velocity (along the z-axis)
+  v_x: float // horizontal launch velocity (x- and y-axis are indiscernible)
+  v_launch: float
+  inclination_launch = 8/15
+  // about that inclination:
+  // $sqrt(x^2+(ax)^2) = sqrt((a^2+1) * x^2) = sqrt(a^2+1)*x$ (for x>0)
+  // we want $a$ s.t. $sqrt(a^2+1) = n/m$ rational, and  $(n/m)^2 +1 = (n^2/m^2) + (m^2/m^2) = (n^2+m^2)/m^2$ 
+  // so, we want $n^2+m^2 = k^2$, i.e. a [Pythagorean triple](https://en.wikipedia.org/wiki/Pythagorean_triple)
+  // looking through them, we find (8,15,17), which is nice, because 15/8 and 17/8 both have exact float representations.
+  // We chose v_z as basis, because it occurs more often. 
+  // (The inclination is defined v_z/v_x though, so *shrug*)
+  inclination_Ax: |- inclination_launch == (v_z / v_x)
+  // sqrt(x^2+(15/8x)^2) == sqrt((15^2+8^2)/(8^2) * x^2) == 17/8x = 2.125x, see above
+  v_launch_Ax: |- v_launch == 2.125 * v_z 
+
+  dist_target: float
+
+  grav_acc: float = 9.81 
+  // Just the quadratic formula for b = v_z, c = h_launch and a = -1/2*grav_acc
+  // the (-1/2) part is canceled implicitly
+  impact_time: float = (v_z + Math.sqrt((v_z*v_z) + 2*h_launch*grav_acc))/grav_acc
+  // There is no horizontal acceleration or offset (Yes, we ignore air-resistance)
+  // impact_distance: float = v_x * impact_time
+  // impact_distance_Ax: |- impact_distance == dist_target
+
+  // We don't actually care about the impact_distance, only that it is on target => just substitute it immediately
+  impact_at_target_Ax: |- v_x * impact_time == dist_target
+}
+
+theory Slingshot_test{
+  h_launch = 1.0
+  dist_target = 7.5
+  include Slingshot_simple
+}
 }
 
