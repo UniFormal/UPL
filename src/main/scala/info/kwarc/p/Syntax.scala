@@ -469,7 +469,7 @@ case class TheoryValue(override val decls: List[Declaration]) extends Theory wit
   override def toString = {
     this match {
       case PhysicalTheory(p, ds) => p.toString + (if (ds.isEmpty) "" else ds.mkString("{", ", ", "}"))
-      case _ => decls.mkString("{", ", ", "}")
+      case _ => s"{\n${decls.mkString("\n").indent(2)}}"
     }
   }
   def label = "theory"
