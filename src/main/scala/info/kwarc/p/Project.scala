@@ -1,5 +1,8 @@
 package info.kwarc.p
 
+import info.kwarc.p.compiler.LLVMCompiler
+import info.kwarc.p.isabelle.IsabelleCompiler
+
 
 /** A part in a project with mutable fields maintained by the projects */
 class ProjectEntry(val source: SourceOrigin) {
@@ -37,10 +40,13 @@ object ProjectEntry{
   * @param main the main call to run this project
   */
 class Project(protected var entries: List[ProjectEntry], var main: Option[Expression] = None) {
+
   override def toString: String = entries.map(_.source).mkString(", ") + ": " + main.getOrElse("(no main)")
 
   // holds errors with unknown location
   val errors = new ErrorCollector
+
+  val stdLib: Option[ProjectEntry] = entries.find(x => x.source.container.endsWith("lib/Uniformal.p"))
 
   def get(so: SourceOrigin) = entries.find(_.source == so).getOrElse {
     val e = new ProjectEntry(so)
@@ -48,7 +54,7 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     e
   }
   def hasErrors: Boolean = errors.hasErrors || entries.exists(_.errors.hasErrors)
-  def getErrors: List[SError] = errors.getErrors ::: entries.flatMap(_.errors.getErrors)
+  def getErrors: List[SError] = errors.getErrors :++ entries.flatMap(_.errors.getErrors)
   private def getErrorContainer(soO: Option[SourceOrigin]) = soO match {
     case None => errors
     case Some(o) => get(o).errors
@@ -73,7 +79,7 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
   /** all global entries concatenated */
   def makeGlobalContext() = {
     val ds = entries.filter(_.global).flatMap(_.getVocabulary.decls)
-    GlobalContext(ds)
+    GlobalContext(TheoryValue(ds))
   }
 
   def update(so: SourceOrigin, src: String) = {
@@ -133,6 +139,7 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     vocC
   }
 
+  /** checks all [[entries]] and prints errors */
   def checkErrors() = {
     if (hasErrors) {
       println(getErrors.mkString("\n"))
@@ -142,14 +149,19 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
   }
 
   /** initialize and run 'main' */
-  def run(): Option[Interpreter] = {
+  def run(programArgs: List[String]): Option[Interpreter] = {
     if (checkErrors()) return None
     val voc = check(false)
     if (checkErrors()) return None
-    val e = main.getOrElse(UnitValue)
+    val e = main.getOrElse(Unit.Value)
+    // Add program arguments into the scope of main
+    val argDecl = EVarDecl("args",
+      CollectionType(StringType, CollectionKind.List),
+      Some(CollectionValue(programArgs.map {a => StringValue(a)}, CollectionKind.List))
+    )
     val ch = new Checker(ErrorThrower)
     try {
-      val (eC, _) = ch.checkAndInferExpression(GlobalContext(voc), e)
+      val (eC, _) = ch.checkAndInferExpression(GlobalContext(voc), Block(List(argDecl, e)))
       val prog = Program(voc, eC)
       val (ip, r) = Interpreter.run(prog)
       println(r)
@@ -158,6 +170,23 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
       case e: PError =>
         println(e)
         None
+    }
+  }
+
+  /** compile this project to binary at path */
+  def compile(path: File): Unit = {
+    if (checkErrors()) return
+    val voc = check(false)
+    if (checkErrors()) return
+    val e = main.getOrElse(Unit.Value)
+    val ch = new Checker(ErrorThrower)
+    try {
+      val (eC, _) = ch.checkAndInferExpression(GlobalContext(voc), e)
+      val prog = Program(voc, eC)
+      LLVMCompiler.run(prog, path)
+    } catch {
+      case e: PError =>
+        println(e)
     }
   }
 
@@ -206,8 +235,8 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
 
   /** evaluates [[main]] and starts a REPL afterwards, returns true if so
     */
-  def runMaybeRepl(dropToRepl: Boolean): Unit = {
-    val ipO = run()
+  def runMaybeRepl(dropToRepl: Boolean, programArgs: List[String] = Nil): Unit = {
+    val ipO = run(programArgs)
     if (dropToRepl) ipO foreach {ip => repl(ip)}
   }
 
@@ -246,7 +275,13 @@ object Project {
     val es = paths.map {p =>
       ProjectEntry(p)
     }
-    new Project(es,mainE)
+    val proj = new Project(es,mainE)
+    if(proj.stdLib.isEmpty){
+      Builtins.Builtins = null
+    }else{
+      proj.stdLib.get.parsed.decls.map(x=> x.label)
+    }
+    proj
   }
 
   def toIsabelleFiles(proj: Project): Unit = {
@@ -261,7 +296,7 @@ object Project {
       proj.check(pe.source, false)
     }
     // create Isabelle file names using the UPL module names (Isabelle file and theory name must be the same)
-    val files: List[File] = proj.entries.map { pe =>
+    val files = proj.entries.map {pe =>
       val voc = pe.getVocabulary
       /** todo: implement support for multiple sequential (unnested) modules.
        * written to multiple separate files each containing an Isabelle theory corresponding to the module
@@ -274,7 +309,7 @@ object Project {
     }
     // render from checked vocabulary; compile the checked vocabulary (not the raw parsed AST)
     val gc: GlobalContext = proj.makeGlobalContext()
-    val isabelleStrings = proj.entries.map(pe => IsabelleCompiler.toIsabelleCode(pe.getVocabulary, gc))
+    val isabelleStrings = proj.entries.map(pe => isabelle.IsabelleCompiler.toIsabelleCode(pe.getVocabulary, gc))
     // write the strings to files
     (files zip isabelleStrings).foreach { case (f,s) => File.write(f,s) }
   }

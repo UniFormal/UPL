@@ -47,7 +47,7 @@ module Theories {
   theory Monoid  {
     include Semigroup
     e: univ
-    neutral: |- forall x. op(x,e) == x & op(e,x) == x
+    neutral: |- forall x. op(x,e) == x  &  op(e,x) == x
   }
   // Multiple includes of the same theories (diamonds) are identified.
   theory CommutativeMonoid {

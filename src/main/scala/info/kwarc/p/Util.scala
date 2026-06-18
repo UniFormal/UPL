@@ -1,6 +1,13 @@
 package info.kwarc.p
 
 object Util {
+  def mkString[A](l: Seq[A], before: String, sep: String, after: String,
+                            bracketNone: Boolean = false, bracketOne: Boolean = false) = {
+    if (l.isEmpty && !bracketNone) ""
+    else if (l.length == 1 && !bracketOne) l.head.toString
+    else l.mkString(before,sep,after)
+  }
+
   def noReps[A](l: List[A]): Boolean = {
     var left = l
     while (left.nonEmpty) {

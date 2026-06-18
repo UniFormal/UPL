@@ -1,7 +1,7 @@
-package info.kwarc.p
+package info.kwarc.p.isabelle
 
+import info.kwarc.p._
 import scala.annotation.tailrec
-
 
 /**
  * IsabelleCompiler translates the UPL internal representation into a surface-level syntax representation for Isabelle
@@ -125,7 +125,7 @@ object IsabelleCompiler {
       case ClassType(domain) => throw IError("ClassType not yet implemented. Zero test coverage.")
       case ExprsOver(scope, tp) => throw IError("ExprsOver not yet implemented. Zero test coverage.")
       case EmptyType => IsaEmptyType()
-      case UnitType => IsaUnitType()
+      case Unit.Type => IsaUnitType()
       case BoolType => IsaBoolType()
       case StringType => IsaStringType()
       case AnyType => IsaTypeVar("new_name")//throw IError("AnyType not yet implemented. Zero test coverage.")
@@ -209,6 +209,7 @@ object IsabelleCompiler {
         } else
           IsaLambda(compileExprs(ins.variables, gc), compileExpr(body, gc))
       case Application(fun, args) => IsaApplication(compileExpr(fun, gc), compileExprs(args, gc))
+      case Unit.Value => IsaUnit()
       case Tuple(comps) => IsaTuple(comps.map(compileExpr(_, gc)))
       case Projection(tuple, index) => IsaProjection(compileExpr(tuple, gc), index)
       case CollectionValue(elems, kind) => kind match {
@@ -222,12 +223,11 @@ object IsabelleCompiler {
       case Quantifier(univ, vars, body) => IsaQuantifier(univ, compileExprs(vars.variables, gc), compileExpr(body, gc))
       case Equality(positive, tp, left, right) => IsaEquality(positive, compileType(tp, gc), compileExpr(left, gc), compileExpr(right, gc))
       case Assert(test, tp, expected) => throw IError("Assert in compileeExpr not yet implemented. Zero test coverage.")
-      case UnitValue => IsaUnit()
       case BoolValue(b) => IsaBool(b)
       // todo: convert Real to BigInt & compile to IsaInt, IsaReal; delete IsaNumber
       case NumberValue(tp, re, im) => tp match {
-        case int => IsaNumber(re)
-        case float => IsaNumber(re)
+        case NumberType.Int => IsaNumber(re)
+        case NumberType.Float => IsaNumber(re)
       }
       // todo: test IntValue, possibly redundant to NumberValue
       case IntValue(i) => IsaInt(i)

@@ -32,14 +32,24 @@
 // //////////
 
 // theory B {
-//   x: int 
-//   val _circumfix_〈$_$〉 = (as: list[B]) -> {B{x=1}}
-//   val _circumfix_〈!_〉 = (as: list[A]) -> {B{x=1}}
+//   val _circumfix_〈 = (as: list[B]) -> {B{}}
+//   val _circumfix_〈$ = (as: list[B]) -> {B{}}
+//   val _circumfix_$〈 = (as: list[B]) -> {B{}}
 // }
-// b=B{x=1}
-// shouldErrorInDefinition = 〈!b,b〉.x
-// shouldWork = 〈$b,b$〉.x
-// unknown = 🗲〈a,a〉.Nothing
+// b = B{} 
+// works = 〈 b, B{} 〉
+// fails = ASSERT(〈 b, B{} 〉.x, 1)
+// alsoFails:B = 〈 B{},b 〉
+// t1 = $〈 b,b 〉$.x
+// val _circumfix_〈$ = (as: list[B]) -> {B{}}
+// t2 = 〈$ b,b $〉
+
+// //////////
+
+// theory T {
+//   x =
+//   val _infix_〈 = (as: list[B]) -> {B{}} 
+// }
 
 // //////////
 
@@ -207,3 +217,12 @@
 // val t = 1 match{n}
 
 //test = doesnt.exist{P = 1}
+
+//////////
+
+// theory HilbertSpace { 
+//     type univ = Numbers.Complex{type num = (re: rat, im: rat)}
+//     type num = (re: rat, im: rat) 
+//     type hvector = (nat, nat) -> num
+//     t: univ 
+// }

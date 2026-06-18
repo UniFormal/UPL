@@ -153,7 +153,7 @@ class Interpreter(vocInit: TheoryValue) {
     exp match {
       case _: BaseValue => exp
       case _: BaseOperator => exp
-      case AppliedRef(r,_) => interpretExpression(r) // type arguments can be ignored
+      case AppliedRef(r,_,_) => interpretExpression(r) // type arguments can be ignored; terms do not have term arguments
       case OpenRef(p) =>
         env.voc.lookupPath(p) match {
           case Some(sd: ExprDecl) => sd.dfO match {
@@ -186,7 +186,7 @@ class Interpreter(vocInit: TheoryValue) {
       case Assign(t,v) =>
         val vI = interpretExpression(v)
         assign(t,vI)(true, globalContext)
-        UnitValue
+        Unit.Value
       case ExprOver(v,q) =>
         val gc = GlobalContext("").push(v)
         val qI = EvalInterpreter(q)(gc,())
@@ -256,7 +256,7 @@ class Interpreter(vocInit: TheoryValue) {
         }
       case Block(es) =>
         frame.inNewBlock {
-          var ret: Expression = UnitValue
+          var ret: Expression = Unit.Value
           es.foreach {e =>
             ret = interpretExpression(e)
           }
@@ -276,7 +276,7 @@ class Interpreter(vocInit: TheoryValue) {
         }
         thenBranchResult.getOrElse {eO match {
           case Some(e) => interpretExpression(e)
-          case None => UnitValue
+          case None => Unit.Value
         }}
       case While(c,b) =>
         var break = false
@@ -287,7 +287,7 @@ class Interpreter(vocInit: TheoryValue) {
           }
           if (cI) interpretExpression(b) else break = true
         }
-        UnitValue
+        Unit.Value
       case For(vd,r,b) =>
         val rI = interpretExpression(r)
         rI match {
@@ -516,7 +516,6 @@ class Interpreter(vocInit: TheoryValue) {
     val tpI = TypeInterpreter(gc,tp)
     tpI match {
       case EmptyType => Iterator.empty
-      case UnitType => Iterator(UnitValue)
       case BoolType => Iterator(BoolValue(true), BoolValue(false))
       case NumberType.Nat => Enumeration.Naturals.map(i => IntValue(i))
       case NumberType.Int => Enumeration.Integers.map(i => IntValue(i))

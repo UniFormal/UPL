@@ -1,4 +1,5 @@
-package info.kwarc.p
+package info.kwarc.p.isabelle
+import info.kwarc.p._
 
 /** Covers some subset of the UPL AST.
  * The covered AST nodes are translated into a surface-level syntax representation for Isabelle.
@@ -348,7 +349,7 @@ case class IsaLambda(args: List[IsaExpr], body: IsaExpr, unparseAsFun: Boolean =
   // probably body: IsaBody
   override def toString = if (!unparseAsFun) {
     // todo: flatten multiple lambdas, i.e. \x.\y.xy = \x y.xy
-    "(\\<lambda>" + args.mkString(" ") + "." + " " + body.toString + ")"
+    "(\\<lambda>" + args.reverse.mkString(" ") + "." + " " + body.toString + ")"
   } else {
     body match {
       case IsaLambda(args2, body2, unparseAsFun2, nested2) => IsaLambda(args ::: args2, body2, unparseAsFun2, nested = true).toString

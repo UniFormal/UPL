@@ -133,7 +133,6 @@ object Compiler {
       case StringValue(s) => JString(s)
       case IntValue(i) => compileInt(i)
       case RatValue(e,d) => JBinOp("/",compileInt(e),compileInt(d)) // TODO
-      case UnitValue => JObject()
       case BoolValue(b) => JBool(b)
       case bo: BaseOperator => UPLField(bo.operator.symbol) // TODO
       case Lambda(ins,b, mr) =>

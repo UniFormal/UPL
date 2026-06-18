@@ -108,7 +108,7 @@ abstract class Traverser[A] {
         UnknownType(g,cont, subT)
       }
     case r: Ref => apply(r)
-    case AppliedRef(r, tps) => AppliedRef(apply(r), tps map apply)
+    case AppliedRef(r, tps, es) => AppliedRef(apply(r), tps map apply, es map apply)
     case OwnedType(e, d, o) => OwnedType(apply(e), apply(d), apply(o)(gc.push(d,Some(e)),a))
     case b: BaseType => b
     case ExceptionType => tp
@@ -128,7 +128,7 @@ abstract class Traverser[A] {
     case null => null
     case _: BaseValue => exp
     case r: Ref => apply(r)
-    case AppliedRef(r, tps) => AppliedRef(apply(r), tps map apply)
+    case AppliedRef(r, tps, es) => AppliedRef(apply(r), tps map apply, es map apply)
     case This(l) => This(l)
     case OwnedExpr(o, d, e) => OwnedExpr(apply(o), apply(d), apply(e)(gc.push(d,Some(o)),a))
     case BaseOperator(o,tp) => BaseOperator(o, apply(tp))
@@ -179,6 +179,7 @@ abstract class Traverser[A] {
       Quantifier(q, vsT, apply(b)(gc.append(vs),aT))
     case Assert(t,tp,e) => Assert(apply(t), apply(tp), apply(e))
     case UndefinedValue(tp) => UndefinedValue(apply(tp))
+    case Builtin(name, param, ret)  => Builtin(name, param.map(x => apply(x)), apply(ret))
   }
 }
 

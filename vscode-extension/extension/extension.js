@@ -5,7 +5,7 @@ const upl = require('./src/main.js');
 function activate(context) {
   console.log('Activating UPL');
 
-  // subscribed disposables are automatically cleaned up when the extension is deactivated
+  // subscribed disposables are automatically cleaned up when the extension is deactivated
   function push(disposable) { context.subscriptions.push(disposable); }
 
   const uplDiagnostics = vscode.languages.createDiagnosticCollection('upl');
@@ -30,6 +30,10 @@ function activate(context) {
       return UPL.complete(doc, pos);
     }
   }, '.'));
+
+  // for completing latex commands into Unicode, use snippets,
+  // e.g., by downloading the snippets file at and using it as a global snippets file https://github.com/LucasAschenbach/vscode-unicode-math/tree/main
+
   // outline
   push(vscode.languages.registerDocumentSymbolProvider('upl', {
     provideDocumentSymbols(doc, canceltoken) {

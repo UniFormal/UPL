@@ -1,0 +1,43 @@
+Questions:
+
+------------------------------------------------------
+
+fundamentals:
+
+equality.p line 28 how to do "as"? 
+need "⊦ x∶A" as a type => is adding type dedT(p: prop) the right way? (concepts.p line 9)
+same problem in:
+subtyping.p line 37
+type_equality.p line 15
+universes.p line 39 "Pi_legal U V" needs to be a judgement AND a type
+fol.p line 129 - 153
+dependent_pl.p (simplest example, show this)
+
+"is this correct?" list:
+subtyping.p line 22
+
+------------------------------------------------------
+
+algebra:
+
+magma.p line 25 should views look like this?
+
+ringoids.p lie ring definition
+
+modules.p not sure if scalars works like that
+(for example does scalars.univ in line 8 use the scalars from line 3)
+
+------------------------------------------------------
+
+logic:
+
+How to do the include in Lindenbaum (line 40 in pl.p | line 55 in pl.mmt)?
+
+pl.p line 46 can I do "true: prop" here?
+
+pl.p line 192 is this correct? (why equalityRel? Not in PartOrder)
+
+How to do ProofIrrelevance (line 207 in pl.p | line 221 in pl.mmt)?
+
+
+------------------------------------------------------

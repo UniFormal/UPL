@@ -17,7 +17,7 @@ module Q {
   // representation rule (analogue of eta): Q |- e == N{`e`}
   // computation rule (analogue of beta):   N |- `N{t}` == t 
 
-  zero:_ = N{z}
+  zero:N{n} = N{z}
   one = N{s(z)}
   two = N{s(`one`)}
   succ: _ = (x:N{n}) -> N{s(`x`)}
