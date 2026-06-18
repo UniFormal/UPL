@@ -226,3 +226,11 @@
 //     type hvector = (nat, nat) -> num
 //     t: univ 
 // }
+
+//////////
+
+// theory T{
+//   x: = 0.75
+//   x_Ax: |- x == 0.75
+//   y = x+2 
+// }

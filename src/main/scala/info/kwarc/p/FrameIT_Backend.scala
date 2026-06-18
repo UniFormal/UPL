@@ -18,7 +18,13 @@ object FrameIT_Backend {
   var proj = FrameITProject("", "")
 
   def main(args: Array[String]): Unit = {
-    gameplayTest()
+    val path = File("Test/temp.pp").canonical
+    val proj = Project.fromFile(path, None)
+    val voc = proj.check(true)
+    val gc = GlobalContext(voc)
+    val tS = Solver.solve(gc, OpenRef(Path("slingshot_example", "Slingshot_test")))
+    println(tS)
+    //gameplayTest()
   }
 
   /** private, so scala.js doesn't need to see [[File]] */
@@ -46,7 +52,7 @@ object FrameIT_Backend {
   }
 
   // ToDO: Make a useful JS Object
-  def makeJSReadable(declaration: Declaration) = declaration.toString
+  // def makeJSReadable(declaration: Declaration) = declaration.toString
 
   def showSiTh: String = proj.SiTh.toString
 

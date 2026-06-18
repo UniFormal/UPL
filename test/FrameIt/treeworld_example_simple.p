@@ -64,7 +64,7 @@ theory S3{
     //         /|
     //        / |
     //       B--C
-    // A,B,C are already instanciated
+    // A,B,C are already instantiated
     // _A: point
     // _B: point
     // _C: point

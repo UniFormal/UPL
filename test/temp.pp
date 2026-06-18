@@ -1,1 +1,1 @@
-source: FrameIT/gameplay_example.p
+source:solver/math.p FrameIT/slingshot_example.p
