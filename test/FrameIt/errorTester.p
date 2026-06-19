@@ -14,7 +14,7 @@
 //   }
 // }
 
-// //////////
+// ////////
 
 // theory t{ a: int }
 // p: t -> bool
@@ -23,13 +23,13 @@
 //   crash : |- p(t{a=i})
 // } 
 
-// //////////
+// ////////
 
 // type fact = (a:_, b:_, |- a==b)
 // fact1: (a: _, b: _) -> (a:_, b:_, |- a==b) 
 // fact1 = (a, b) -> (a, b, ???)
 
-// //////////
+// ////////
 
 // theory B {
 //   val _circumfix_〈 = (as: list[B]) -> {B{}}
@@ -44,14 +44,14 @@
 // val _circumfix_〈$ = (as: list[B]) -> {B{}}
 // t2 = 〈$ b,b $〉
 
-// //////////
+// ////////
 
 // theory T {
 //   x =
 //   val _infix_〈 = (as: list[B]) -> {B{}} 
 // }
 
-// //////////
+// ////////
 
 // theory ZmodP {
 //   p: int
@@ -65,14 +65,14 @@
 // z2 = ZmodP{p=3, raw=2}
 // test = (z1++z2).raw == 1
 
-//////////
+// ////////
 
 // theory t { 
 //   f: int
 // }
 // i = t.f
 
-//////////
+// ////////
 
 // theory outer{
 //   theory inner{
@@ -90,7 +90,7 @@
 //   v3 = t3.get
 // }
 
-//////////
+// ////////
 
 // module does{
 //     theory exist{}
@@ -104,16 +104,16 @@
 //     }
 // } 
 
-//////////
+// ////////
 
 // theory n {}
 // _ = n.u.ll
 
-//////////
+// ////////
 
 // t: (int, int) = (1,2,3)
 
-//////////
+// ////////
 
 // theory _point { 
 //   type univ 
@@ -128,7 +128,7 @@
 //   E: |- P == Q 
 // }
 
-//////////
+// ////////
 
 // a : (n:int, |- n==0)
 // b : (n:int, |- n==0)
@@ -136,11 +136,11 @@
 // c : (m:int, |- m==0)
 // a=c
 
-//////////
+// ////////
 
 // f = (|- true ) -> 1
 
-//////////
+// ////////
 
 // theory t1 {
 //     f = true
@@ -149,7 +149,7 @@
 //     }
 // }
 
-/////////
+// ////////
 
 // theory A{
 //   a: (n:int, |- n==0)
@@ -168,7 +168,7 @@
 // a = (a(1), a(2))
 // b = b
 
-//////////
+// ////////
 
 // theory Outer{
 //   i: int
@@ -197,18 +197,18 @@
 //   R2 = inst{b=B}.r
 // } 
 
-////////////
+// /////////
 
 // h = doesn{t=???}.exist
 
-///////////
+// ////////
 
 // theory t{
-//   include doesnt
-//   include exist 
+//   include doesnt // alone is fine
+//   include exist  // Maximum call stack size exceeded
 // } 
 
-//////////
+// ////////
 
 // val m = {1 match {
 //   [] -> "hi" 
@@ -216,21 +216,17 @@
 // }}
 // val t = 1 match{n}
 
-//test = doesnt.exist{P = 1}
+// test = doesnt.exist{P = 1}
 
-//////////
+// //////
 
 // theory HilbertSpace { 
-//     type univ = Numbers.Complex{type num = (re: rat, im: rat)}
-//     type num = (re: rat, im: rat) 
-//     type hvector = (nat, nat) -> num
-//     t: univ 
+//   type univ = Numbers.Complex{type num = (re: rat, im: rat)}
+//   type num = (re: rat, im: rat) 
+//   type hvector = (nat, nat) -> num
+//   t: univ 
 // }
 
-//////////
+// ////////
 
-// theory T{
-//   x: = 0.75
-//   x_Ax: |- x == 0.75
-//   y = x+2 
-// }
+// v = doesnt.exist { }}

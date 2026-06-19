@@ -101,6 +101,6 @@ module slingshot_example{
   theory Slingshot_test{
     h_launch = 1.0
     dist_target = 7.5
-    include Slingshot_simple
+    include Slingshot_fixed_angle
   }
 }
