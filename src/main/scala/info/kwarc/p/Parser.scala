@@ -227,8 +227,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   def reportError(msg: String, sf: SyntaxFragment): Unit = reportError(msg, sf.loc.from, sf.loc.to)
   def reportError(msg: String, from: Int, to: Int = index): Unit = {
     if (trialRun) throw TrialRunFailed()
-    val fromPlus = from+20
-    val toDisplay = if (to <= fromPlus) to else if (fromPlus > inputLength) inputLength else fromPlus
+    val toDisplay: Int = List(to, inputLength, from+20).min
     val found = input.substring(from,toDisplay)
     val e = Error(Location(origin, from, to), msg + "; found " + found)
     eh(e)
