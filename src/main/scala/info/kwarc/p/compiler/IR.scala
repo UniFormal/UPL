@@ -206,9 +206,8 @@ sealed trait IrGlobalValue extends IrConstant
 // const char* with fixed size
 case class IrConstChar(size: Int) extends IrType {
 
-//s"@$name = private unnamed_addr constant [${s.length+2} x i8] c\"$s\\0A\\00\", align 1"
-  //+2 to account for \n\0
-  override def render(): String = s"[${size+2} x i8]"
+  //+1 to account for \0
+  override def render(): String = s"[${size+1} x i8]"
 }
 
 case class IrFunctionRef(fun: IrFunctionLike) extends IrGlobalValue {
@@ -239,7 +238,7 @@ case class IrBuiltin(name: String, llvmBuiltin: String, retType: IrType, param: 
 
 object builtins {
   var Builtins: Seq[IrBuiltin] = Seq(
-    IrBuiltin("print", "printf", IrIntType.I32, List[IrType](IrPtrType(IrConstChar(0)))),
+    IrBuiltin("print", "puts", IrIntType.I32, List[IrType](IrPtrType(IrConstChar(0)))),
     IrBuiltin("sin", "llvm.sin.f64",IrFloat64(), List[IrType]{IrFloat64()})
   )
 }

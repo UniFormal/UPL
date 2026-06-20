@@ -61,9 +61,8 @@ private class IRGenerator {
       case Rat(enu, deno) => IrConst(enu.toInt / deno.toInt)
     } // Booleans are represented using i1 integers.
     case BoolValue(value) => IrConst(value) // Unit value is represented as a special constant to make it easy to
-    //TODO figure out naming and optional \n
     case StringValue(value) =>
-      val v = IrGlobal(fresh("name"), IrConstChar(value.length), Some(s"c\"$value\\0A\\00\""))
+      val v = IrGlobal(fresh("name"), IrConstChar(value.length), Some(s"c\"$value\\00\""))
       globals.append(v)
       v
     // spot when debugging
