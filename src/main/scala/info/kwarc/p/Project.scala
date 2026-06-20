@@ -277,7 +277,7 @@ object Project {
     }
     val proj = new Project(es,mainE)
     if(proj.stdLib.isEmpty){
-      Builtins.Builtins = null
+      Builtins.Applications = null
     }else{
       proj.stdLib.get.parsed.decls.map(x=> x.label)
     }

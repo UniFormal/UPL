@@ -179,7 +179,6 @@ abstract class Traverser[A] {
       Quantifier(q, vsT, apply(b)(gc.append(vs),aT))
     case Assert(t,tp,e) => Assert(apply(t), apply(tp), apply(e))
     case UndefinedValue(tp) => UndefinedValue(apply(tp))
-    case Builtin(name, param, ret)  => Builtin(name, param.map(x => apply(x)), apply(ret))
   }
 }
 

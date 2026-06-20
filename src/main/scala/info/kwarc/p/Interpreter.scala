@@ -160,6 +160,8 @@ class Interpreter(vocInit: TheoryValue) {
             case None => exp // allow this as an abstract declaration in a module; all elimination forms below must remain uninterpreted
             case Some(v) => interpretExpression(v) //TODO this re-evaluates the definiens
           }
+          case Some(v :BuiltinDeclaration) =>
+              Builtins.Applications.find(x => x.name == v.name).getOrElse(fail(s"application for builtin ${v.name} not found"))
           case _ => fail("not an expression")
         }
       case ClosedRef(n) => env.lookupRegional(n)
@@ -364,6 +366,7 @@ class Interpreter(vocInit: TheoryValue) {
             }
             r
           case r: OpenRef => Application(r, asI)
+          case b: BuiltinApplication => b.callback(as)
           case _ => fail("not a function")(f)
         }
       case Tuple(es) =>
