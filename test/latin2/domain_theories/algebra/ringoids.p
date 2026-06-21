@@ -128,6 +128,10 @@ module ringoids {
         alternating:--- ⟨x, x⟩ == add.e
         jacobi:--- add.op(⟨x, ⟨y, z⟩⟩, add.op(⟨y, ⟨z, x⟩⟩, ⟨z, ⟨x, y⟩⟩)) == add.e
 
+        // realize LieRing
+        // add = add
+        // bracket
+
         // not homogen (for homogen mult needs to be commutative, but then we have ⟨x, y⟩ == add.e, which makes the Lie ring trivial)
     }
 

@@ -43,7 +43,7 @@ module pl {
 
     theory Truth {
         include .concepts.Propositions
-        verum : prop 
+        verum : prop # nullfix 
     }
 
     theory TruthND {
@@ -155,7 +155,7 @@ module pl {
         include ImplicationNDI
         include ImplicationNDE
 
-        impl_preorder: .relations.Preorder {
+        impl_preorder =  .relations.Preorder  {
             type univ = prop
             rel = (x,y) -> ⊦(x ⇒ y)
             refl = ???
@@ -189,7 +189,6 @@ module pl {
         not_or_right:--- ⊦(¬(F ∨ G)) => ⊦(¬G)
         nntnd:--- ⊦(¬(¬(F ∨ ¬F)))
 
-        // is this correct?
         impl_order : .relations.PartialOrder = impl_preorder {
             equalityRel = equiv_equivalence
             antisym = ???
@@ -203,10 +202,7 @@ module pl {
 
     theory ProofIrrelevance {
         include .concepts.Logic
-        
-        // don't know how to do this
-        // In MMT:
-        // rule rules?TermIrrelevanceRule ded
+        proofirrelev:--- forall x,y::ded(F). x == y
     }
 
     theory PL {
