@@ -8,20 +8,19 @@ module subtyping {
     theory SubtypingPreorder {
         include Subtyping
         sub: .relations.Preorder {
-            type univ = tp, 
-            rel = (A, B) -> ⊦(A ⪽ B)
+            type carrier = tp, 
+            rel = (A, B) -> ⊦A⪽B
         }
     }
 
     theory SoftSubtyping {
         include .concepts.SoftTypedTerms
         include Subtyping
-        subtypeI:--- (forall X. ⊦of(X,A) => ⊦of(X,B)) => ⊦(A ⪽ B)
-        subtypeE:--- ⊦(A ⪽ B) => forall X. ⊦of(X,A) => ⊦of(X,B)
+        subtypeI:--- (forall x. ⊦x∶A => ⊦x∶B) => ⊦A⪽B
+        subtypeE:--- ⊦A⪽B => forall x. ⊦x∶A => ⊦x∶B
 
-        // is this correct?
         realize SubtypingPreorder
-        subReal = sub {
+        subreal = sub {
             refl = ???
             trans = ???
         }
@@ -34,10 +33,9 @@ module subtyping {
         include Subtyping
         include SubtypingPreorder
 
-        // don't know how to do this
-        inject: ???
-        inject_irrelevant: ???
-        inject_refl: ???
-        inject_trans: ???
+        inject: (A, B, dedT A⪽B, tm A) -> tm B
+        inject_irrelevant:--- tequal(B, inject(A, B, p, x), x) 
+        inject_refl:--- tequal(A, inject(A, B, sub.refl, x), x) 
+        inject_trans:--- tequal(C, inject(B, C, Q, inject(A, B, P, x)), inject(A, C, P, x)) 
     }
 }

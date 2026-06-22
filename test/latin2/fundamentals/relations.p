@@ -1,28 +1,28 @@
 module relations {
-    theory Carrier {
-        type univ
+    theory OneTyped {
+        type carrier
     }
 
     theory Relation {
-        include Carrier
-        rel: (univ,univ) -> bool # infix %
+        include OneTyped
+        rel: (carrier,carrier) -> bool # infix $
     }
 
     theory Reflexivity {
         include Relation
-        refl:--- x % x
+        refl:--- x$x
     }
 
     theory Symmetry {
         include Relation
-        sym:--- x % y => y % x
+        sym:--- x$y => y$x
     }
 
     theory Transitivity {
         include Relation
-        trans:--- (x % y) => (y % z) => (x % z)
-        trans3:--- (x % y) => (y % z) => (z % w) => (x % w)
-        trans4:--- (x % y) => (y % z) => (z % w) => (w % v) => (x % v)
+        trans:--- x$y => y$z => x$z
+        trans3:--- x$y => y$z => z$w => x$w
+        trans4:--- x$y => y$z => z$w => w$v => x$v
     }
 
     theory Preorder {
@@ -36,9 +36,9 @@ module relations {
     }
 
     theory SubCarrier {
-        include Carrier
-        per: PER {type univ = ..univ}
-        perapply # infix % = per.rel
+        include OneTyped
+        per: PER {type carrier = ..carrier}
+        perapply # infix $ = per.rel
     }
 
     theory EquivalenceRelation {
@@ -48,7 +48,7 @@ module relations {
 
     theory Congruence {
         include Relation
-        congT:--- (x % y) => forall T. (T(x) % T(y))
+        congT:--- x$y => forall T. T x $ T y
     }
 
     theory EquivalenceCongruence {
@@ -56,20 +56,26 @@ module relations {
         include Congruence
     }
 
-    theory SemanticEquivality {
+    // Equality is an equivalence-congruence.
+    // But semantic equality is even stronger: it allows substitution in objects of any type so that equal objects can never be distinguished.
+    // This is different from the syntactic equality used inside a logic, where equal objets cannot be distinguished by logical formulas but might be distinguishable by other judgments.
+    theory SemanticEquality {
         include EquivalenceRelation
-        cong:--- (x % y) => forall A. (A(x) => A(y))
+        cong:--- x$y => forall A:(carrier -> bool). A x => A y
+        // realizes Congruence
+        congT:--- x$y => forall T:(carrier -> carrier). T x $ T y
     }
 
     theory EqualityType {
-        include Carrier
-        equalityRel: EquivalenceRelation {type univ = ..univ}
+        include OneTyped
+        equalityRel: EquivalenceRelation {type carrier = ..carrier}
+        relapply # infix $ = equalityRel.rel
     }
 
     theory AntiSymmetry {
         include EqualityType
         include Relation
-        antisym:--- (x % y) => (y % x) => equalityRel.rel(x,y)
+        antisym:--- x$y => y$x => equalityRel.rel(x, y)
     }
 
     theory PartialOrder {
@@ -79,7 +85,7 @@ module relations {
 
     theory Totality {
         include Relation
-        total:--- (x % y) | (y % x)
+        total:--- x$y | y$x
     }
 
     theory TotalOrder {

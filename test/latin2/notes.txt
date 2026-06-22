@@ -1,21 +1,25 @@
 Questions:
 
+general:
+
+!!! how to do function notation with three or more args and implicit args?
+for example requal (3 args) and tequal (A is implicit). (equality.p line 31 and line 50)
+
 ------------------------------------------------------
 
 fundamentals:
 
-equality.p line 28 how to do "as"? 
-need "⊦ x∶A" as a type => is adding type dedT(p: prop) the right way? (concepts.p line 9)
-same problem in:
-subtyping.p line 37
-type_equality.p line 15
-universes.p line 39 "Pi_legal U V" needs to be a judgement AND a type
-fol.p line 129 - 153
-dependent_pl.p (simplest example, show this)
+!!! concepts.p line 18. proofs as types like this? 
+!!! subtyping.p line 36 inject def and axioms like this?
 
-"is this correct?" list: x
-subtyping.p line 22
-x
+same problem in:
+equality.p line 28 as
+type_equality.p line 21 transport
+universes.p line 8 univTm
+universes.p line 45-52 Pi_legal
+fol.p line 129 - 153
+dependent_pl.p
+
 ------------------------------------------------------
 
 algebra:
