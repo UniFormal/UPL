@@ -59,7 +59,7 @@ object CoreFragmentChecker extends Traverser[CoreFragmentContext] {
   }
 
   override def apply(decl: Declaration)(implicit gc: GlobalContext, ctx: CoreFragmentContext): Declaration = {
-    val nCtx = ctx.copy(declared = true)
+    val nCtx = ctx.copy(declared = true, inLambda = false)
     matchC(decl) { case _: Module => applyDefault(decl)(gc, nCtx.copy(inModule = true))
     case ExprDecl(_, _, ClassType(theory1), Some(Instance(theory2)), _, _) =>
       if (theory1 != theory2) {
@@ -69,6 +69,9 @@ object CoreFragmentChecker extends Traverser[CoreFragmentContext] {
     case _ => applyDefault(decl)(gc, nCtx)
     }
   }
+
+  override def applyEVarDecl(vd: EVarDecl)(implicit gc: GlobalContext, a: CoreFragmentContext): (EVarDecl, CoreFragmentContext) =
+    super.applyEVarDecl(vd)(gc, a.copy(declared = true, inLambda = false))
 }
 
 case class CoreFragmentContext(var declared: Boolean = false, var inModule: Boolean = false, var inLambda: Boolean =

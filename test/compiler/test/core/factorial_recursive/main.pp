@@ -1,0 +1,1 @@
+main: factorial(5)

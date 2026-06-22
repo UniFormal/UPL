@@ -1,7 +1,7 @@
 package info.kwarc.p.compiler
 
 import info.kwarc.p._
-import info.kwarc.p.compiler.Condition.{EQUAL, NOT_EQUAL}
+import info.kwarc.p.compiler.Condition.{EQUAL, NOT_EQUAL, SIGNED_GREATER_EQUAL, SIGNED_GREATER_THAN, SIGNED_LESS_EQUAL, SIGNED_LESS_THAN}
 import info.kwarc.p.compiler.IRGenerator.TOP_LEVEL_STRUCT_NAME
 import info.kwarc.p.compiler.Operation.{IADD, IDIV, IMUL, ISUB}
 
@@ -21,6 +21,9 @@ object IRGenerator {
   }
 }
 
+case class Variable(name: String, irValue: IrVar)
+case class VariableScope(var variables: List[Variable] = List())
+
 private class IRGenerator {
   private val mallocFun = IrDeclFun("malloc", IrFunType(IrPtrType(IrIntType.I64), List(IrIntType.I64)))
   private val declaredFunctions: mutable.ArrayBuffer[IrDeclFun] = mutable.ArrayBuffer(mallocFun)
@@ -29,7 +32,10 @@ private class IRGenerator {
   private val structs: mutable.ArrayBuffer[IrStruct] = mutable.ArrayBuffer()
   private val functions: mutable.ArrayBuffer[IrFun] = mutable.ArrayBuffer()
   private val nameCount: mutable.Map[String, Int] = mutable.Map().withDefaultValue(0)
+  private var scopes: List[VariableScope] = List(VariableScope(List()))
   private var ctx: FunctionContext = _
+
+  private def getAllocatedVariable(n: String): IrVar = scopes.find(_.variables.exists(_.name == n)).map(_.variables.find(_.name == n).get).getOrElse(throw new RuntimeException(s"Variable $n not found")).irValue
 
   def compileMain(exp: Expression)(implicit gc: GlobalContext): Unit = {
     ctx = new FunctionContext
@@ -80,20 +86,60 @@ private class IRGenerator {
 
       ctx.insertBlock(thenB)
       val thnO = apply(thn)
+      val allocResult = IrVar(IrPtrType(thnO.tp), fresh("alloc_result"))
+      ctx.emit(IrStore(thnO, allocResult))
       ctx.emit(IRBranch(endB.label))
       thenB = ctx.currentBlock
 
       ctx.insertBlock(elseB)
       val elsO = apply(els)
+      ctx.emit(IrStore(elsO, allocResult))
       ctx.emit(IRBranch(endB.label))
       elseB = ctx.currentBlock
 
       ctx.insertBlock(endB)
 
+      ctx.emitFirst(IrAlloca(allocResult))
+
       val result = IrVar(thnO.tp, fresh("result"))
-      ctx.emit(IrPhi(result, List((thnO, thenB.label), (elsO, elseB.label))))
+      ctx.emit(IrLoad(result, allocResult))
 
       result
+    case IfThenElse(cond, thn, _) =>
+      var thenB = ctx.newBlock("then")
+      val endB = ctx.newBlock("end")
+
+      ctx.emit(IrCondBranch(apply(cond), thenB.label, endB.label))
+
+      ctx.insertBlock(thenB)
+      val thnO = apply(thn)
+      val allocResult = IrVar(IrPtrType(thnO.tp), fresh("alloc_result"))
+      ctx.emit(IrStore(thnO, allocResult))
+      ctx.emit(IRBranch(endB.label))
+      thenB = ctx.currentBlock
+
+      ctx.insertBlock(endB)
+
+      ctx.emitFirst(IrAlloca(allocResult))
+
+      val result = IrVar(thnO.tp, fresh("result"))
+      ctx.emit(IrLoad(result, allocResult))
+
+      result
+    case While(cond, body) =>
+      val bodyB = ctx.newBlock("body")
+      val loopB = ctx.newBlock("loop")
+      val endB = ctx.newBlock("end")
+
+      ctx.emit(IRBranch(loopB.label))
+      ctx.insertBlock(bodyB)
+      apply(body)
+      ctx.emit(IRBranch(loopB.label))
+      ctx.insertBlock(loopB)
+      ctx.emit(IrCondBranch(apply(cond), bodyB.label, endB.label))
+      ctx.insertBlock(endB)
+
+      apply(Unit.Value)
     case Equality(positive, tp, left, right) => val lO = apply(left)
       val rO = apply(right)
       val cmpResult = IrVar(IrIntType.I1, fresh("cmp_result")) // We only support comparisons of boolean, numbers
@@ -105,6 +151,17 @@ private class IRGenerator {
       cmpResult
     case Application(f, args) => f match {
       case bo@BaseOperator(operator, tp) => operator match {
+        case inf: Comparison =>
+          val irCond = inf match {
+            case Greater => SIGNED_GREATER_THAN
+            case GreaterEq => SIGNED_GREATER_EQUAL
+            case Less => SIGNED_LESS_THAN
+            case LessEq => SIGNED_LESS_EQUAL
+            case _ => ???
+          }
+          val cmpResult = IrVar(IrIntType.I1, fresh("cmp_result"))
+          ctx.emit(IrICmp(cmpResult, irCond, apply(args(0)), apply(args(1))))
+          cmpResult
         case inf: InfixOperator => val numArgs = args.length
           if (numArgs == 0) {
             apply(inf.neutral.get)
@@ -144,27 +201,65 @@ private class IRGenerator {
     case Lambda(ins, body, _) => val prevCtx = ctx
       ctx = new FunctionContext
       ctx.insertBlock(ctx.newBlock("entry"))
+      val params = ins.variables.reverse
+      val arguments = params.map(v => IrArgument(llvmType(v.tp), v.name))
+
+      scopes ::= VariableScope(Nil)
+      arguments.foreach { a =>
+        val allocatedVar = IrVar(IrPtrType(a.tp), fresh(s"alloc_arg_${a.name}"))
+        ctx.emitFirst(IrAlloca(allocatedVar))
+
+        scopes.head.variables ::= Variable(a.name, allocatedVar)
+        ctx.emit(IrStore(a, allocatedVar))
+      }
 
       val result = apply(body)(gc.append(ins))
+      scopes = scopes.tail
+
       ctx.emit(IrReturn(result))
 
-      val params = ins.variables.reverse
-
-      val lambdaFun = IrFun(fresh("lambda"), IrFunType(result.tp, params.map(v => llvmType(v.tp))), params.map(v =>
-        IrArgument(llvmType(v.tp), v.name)), ctx.buildBlocks())
+      val lambdaFun = IrFun(fresh("lambda"), IrFunType(result.tp, params.map(v => llvmType(v.tp))), arguments, ctx.buildBlocks())
       functions += lambdaFun
       ctx = prevCtx
       IrFunctionRef(lambdaFun)
     case Block(exprs) =>
-      if (exprs.nonEmpty) {
+      scopes ::= VariableScope(Nil)
+      val result = if (exprs.nonEmpty) {
         exprs.dropRight(1).foreach { e => apply(e) }
         apply(exprs.last)
       } else {
         // dummy value (Unit.Value)
-        IrConst(0xdeadbeef)
+        apply(Unit.Value)
       }
-    case VarRef(n) => // TODO This should be reworked
-      IrVar(llvmType(gc.lookupLocal(n).get.asInstanceOf[EVarDecl].tp), s"$n")
+      scopes = scopes.tail
+      result
+    case VarRef(n) =>
+      val allocatedVariable = getAllocatedVariable(n)
+      allocatedVariable.tp match {
+        case tp: IrPtrType => val result = IrVar(tp.to, fresh(n))
+          ctx.emit(IrLoad(result, allocatedVariable))
+          result
+        case _ => ???
+      }
+    case Return(exp, false) =>
+      val value = apply(exp)
+      ctx.emit(value.tp match {
+        case IrVoidType => IrReturnVoid
+        case _ => IrReturn(value)
+      })
+      apply(Unit.Value)
+    case EVarDecl(name, tp, Some(e), _, _) =>
+      val res = apply(e)
+      val allocatedVar = IrVar(IrPtrType(llvmType(tp)), fresh(s"alloc_$name"))
+      ctx.emitFirst(IrAlloca(allocatedVar))
+
+      scopes.head.variables ::= Variable(name, allocatedVar)
+      ctx.emit(IrStore(res, allocatedVar))
+      allocatedVar
+    case Assign(VarRef(n), value) =>
+      val allocatedVariable = getAllocatedVariable(n)
+      ctx.emit(IrStore(apply(value), allocatedVariable))
+      apply(Unit.Value)
     case Instance(theory) => val theoryPath = mainTheoryPath(theory)
       val module = gc.lookupGlobal(theoryPath).get.asInstanceOf[Module]
       val exprDecls = module.decls.collect { case d: ExprDecl => d }
@@ -187,7 +282,7 @@ private class IRGenerator {
       structPtr
   }
 
-  def applyField(fieldVar: IrValue, args: List[Expression])(implicit gc: GlobalContext): IrVar = {
+  private def applyField(fieldVar: IrValue, args: List[Expression])(implicit gc: GlobalContext): IrVar = {
     val result = IrVar(fieldVar.tp.asInstanceOf[IrFunType].ret, fresh("result"))
 
     val option = result.tp match {
@@ -384,7 +479,7 @@ private class IRGenerator {
       case FunType(ins, out) => IrFunType(llvmType(out), ins.variables.map(v => llvmType(v.tp)))
       case ClassType(dom) => IrPtrType(IrStruct(mainTheoryPath(dom).toString, Nil))
       case EmptyType => IrVoidType
-      case UnknownType(_,_,_) => IrVoidType
+      case UnknownType(_,c,_) => llvmType(c.tp)
       case StringType => IrPtrType(IrConstChar(0))
       case _ => throw new IllegalArgumentException(s"Unsupported type: $tp")
     }
@@ -396,6 +491,8 @@ private class IRGenerator {
   }
 
   private case class BlockBuilder(label: String, instructions: mutable.ArrayBuffer[IrInstr] = mutable.ArrayBuffer()) {
+    def addFirst(i: IrInstr): Unit = instructions.prepend(i)
+
     def add(i: IrInstr): Unit = instructions += i
 
     def build() = IrBlock(label, instructions.toList)
@@ -412,6 +509,10 @@ private class IRGenerator {
     def insertBlock(b: BlockBuilder): Unit = {
       blocks += b
       currentBlock = b
+    }
+
+    def emitFirst(instr: IrInstr): Unit = {
+      blocks(0).addFirst(instr)
     }
 
     def emit(instr: IrInstr): Unit = {

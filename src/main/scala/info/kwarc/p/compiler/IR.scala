@@ -124,6 +124,10 @@ case class IrComputeSize(result: IrVar, struct: IrStruct) extends IrInstr {
   }, ${struct.render()}* null, i32 1) to ${result.tp.render()}"
 }
 
+case class IrAlloca(result: IrVar) extends IrInstr {
+  override def render(): String = s"${result.render()} = alloca ${result.tp.render()}"
+}
+
 case class IrStore(op: IrValue, ptr: IrValue) extends IrInstr {
   override def render(): String = s"store ${op.tp.render()} ${op.render()}, ${ptr.renderWithType()}"
 }
