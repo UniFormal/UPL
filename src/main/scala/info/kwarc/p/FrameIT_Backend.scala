@@ -13,23 +13,8 @@ import js.annotation._
 @JSExportTopLevel("FrameIT")
 @JSExportAll
 object FrameIT_Backend {
-  import Gameplay._
   implicit val debug: Boolean = false
   var proj = FrameITProject("","")
-
-  def main(args: Array[String]): Unit = {
-    gameplayTest()
-  }
-
-  /** private, so scala.js doesn't need to see [[File]] */
-  private def gameplayTest() = {
-    //proj = FrameITProject(File("test/FrameIt/Gameplay_Example/gameplay.pp"))
-    newLevel(bg,schema)
-    add(s1)
-    proj applySchema("_SimilarTriangles", assignments, SeqMap(("__CD","height"),("__CD_P","height_P"))) // ("height_P","__CD_P") doesn't work right now
-    println(proj.tryEval("SiTh{}.height"))
-    //debugPrintVerbose()
-  }
 
   // ToDO: Make a useful JS Object
   def makeJSReadable(declaration: Declaration) = declaration.toString
@@ -75,7 +60,33 @@ object FrameIT_Backend {
   def debugPrintVerbose() = proj.debugPrintVerbose()
 }
 
-object Gameplay{
+object BackendTests {
+  import FrameIT_Backend._
+  def main(args: Array[String]): Unit = {
+//    val err = new ErrorCollector
+//    Parser.text(SourceOrigin.anonymous, "    _helper_minmax : (x:float,ns:[float],min:bool) -> float\n    _helper_minmax = (x:float,ns:[float],min:bool) -> {\n       ns match {\n           [] -> x\n           hd -: r -> if ((hd<x)==min) _helper_minmax(hd,r,min) else _helper_minmax(x,r,min)\n       }\n    }", err)
+//    println(err.getErrors)
+    val path = File(args(0)).canonical
+    proj = FrameITProject(path)
+    val voc = proj.check(true)
+    val gc = GlobalContext(voc)
+    val tS = Solver.solve(gc, OpenRef(Path("slingshot_example", "Slingshot_test")))
+    Solver.printAsTheory("Result", tS.decls)
+    add(tS.decls.mkString("\n"))
+    proj.checkErrors()
+    add("i:int=0")
+    println(showSiTh)
+  }
+
+  /** private, so scala.js doesn't need to see [[File]] */
+  private def gameplayTest() = {
+    //proj = FrameITProject(File("test/FrameIt/Gameplay_Example/gameplay.pp"))
+    newLevel(bg,schema)
+    add(s1)
+    proj applySchema("_SimilarTriangles", assignments, SeqMap(("__CD","height"),("__CD_P","height_P"))) // ("height_P","__CD_P") doesn't work right now
+    println(proj.tryEval("SiTh{}.height"))
+    //debugPrintVerbose()
+  }
   /** The Background
     *
     * FrameIT.newLevel("type point type triangle = (point,point,point) dist: point -> point -> float similar: triangle -> triangle -> bool", "theory _SimilarTriangles{ _A: point   _B: point  _C: point  _D: point  _E: point _AB: float  _AB_P:  |- dist(_A)(_B) == _AB _AC: float  _AC_P:  |- dist(_A)(_C) == _AC _BE: float  _BE_P: |- dist(_B)(_E) == _BE _are_similar: |- similar((_D,_A,_C))((_E,_A,_B)) __CD = _AC * _BE / _AB  __CD_P: |- dist(_C)(_D) == __CD = ???}")
