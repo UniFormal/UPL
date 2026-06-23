@@ -370,7 +370,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   /** check if input left after parsing */
   def parseAll[A](parse: => A) = {
     val a = parse
-    if (!atEnd) reportError("expected end of input", from)
+    if (!atEnd) reportError("expected end of input", index, inputLength)
     a
   }
 
