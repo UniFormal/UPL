@@ -21,8 +21,8 @@ module relations {
     theory Transitivity {
         include Relation
         trans:--- x$y => y$z => x$z
-        trans3:--- x$y => y$z => z$w => x$w
-        trans4:--- x$y => y$z => z$w => w$v => x$v
+        // trans3:--- x$y => y$z => z$w => x$w
+        // trans4:--- x$y => y$z => z$w => w$v => x$v
     }
 
     theory Preorder {
@@ -35,7 +35,7 @@ module relations {
         include Transitivity
     }
 
-    theory SubCarrier {
+    theory SubOneTyped {
         include OneTyped
         per: PER {type carrier = ..carrier}
         perapply # infix $ = per.rel

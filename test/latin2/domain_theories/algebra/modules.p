@@ -5,18 +5,18 @@ module modules {
 
     theory RingScalars {
         include Scalars
-        scalars: .ringoids.Ring {type univ = scalars.univ}
+        scalars: .ringoids.Ring
     }
 
     theory SkewFieldScalars {
         include Scalars
-        scalars: .ringoids.SkewField {type univ = scalars.univ}
+        scalars: .ringoids.SkewField 
 
     }
 
     theory FieldScalars {
         include Scalars
-        scalars: .ringoids.Field {type univ = scalars.univ}
+        scalars: .ringoids.Field 
     }
 
     theory LeftModule {

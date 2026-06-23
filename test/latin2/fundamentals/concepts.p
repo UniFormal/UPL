@@ -15,7 +15,7 @@ module concepts {
         
         // which one?
         lemma:--- ⊦F => (⊦F => ⊦G) => ⊦G
-        // lemma: F -> G -> dedT(F) -> (dedT(F) -> dedT(G)) -> dedT(G)
+        // lemma: F -> G -> dedT F -> (dedT F -> dedT G) -> dedT G
     }
 
     // base theory for any logic with a judgment for disprovable propositions

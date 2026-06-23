@@ -5,6 +5,11 @@ general:
 !!! how to do function notation with three or more args and implicit args?
 for example requal (3 args) and tequal (A is implicit). (equality.p line 31 and line 50)
 
+!!! typechecker slow / not working. especially for structs
+in pl.p: show impl_order with defs missing (comment line 197-200)
+show in axiom that variable type is not shown when too much loaded
+(do proofirrelev line 212, should work if everything else is commented)
+
 ------------------------------------------------------
 
 fundamentals:
@@ -17,37 +22,31 @@ equality.p line 28 as
 type_equality.p line 21 transport
 universes.p line 8 univTm
 universes.p line 45-52 Pi_legal
-fol.p line 129 - 153
-dependent_pl.p
+dependent_pl.p everything
+fol.p line 128 - 153 
+
+------------------------------------------------------
+
+logic:
+
+!!! pl.p line 50 can I do "true: prop" here?
+!!! nullfix doesn't work
+
+!!! fol.p line 4. does ∀ᵘ work as notation? 
+(type checker doesn't complain if ∀ᵘ is replaced with something else in axiom)
+
+!!! fol.p line 183. view like this ok?
+(opposite direction)
 
 ------------------------------------------------------
 
 algebra:
 
-magma.p line 25 should views look like this?
-x
-extend views OppositeSemigroup
+!!! using SFOL without notation is really really ugly
+(see magmas.p line 11. texists)
 
-ringoids.p lie ring definition
+todo:
+-extend views OppositeSemigroup
+-change axioms to using SFOL
 
-modules.p not sure if scalars works like that
-(for example does scalars.univ in line 8 use the scalars from line 3)
-scalars.univ not needed
-------------------------------------------------------
-
-logic:
-
-How to do the include in Lindenbaum (line 40 in pl.p | line 55 in pl.mmt)?
-x
-pl.p line 46 can I do "true: prop" here?
-nullfix
-
-pl.p line 192 is this correct? (why equalityRel? Not in PartOrder)
-x
-
-
-How to do ProofIrrelevance (line 207 in pl.p | line 221 in pl.mmt)?
-x
-
-change metalogic
 ------------------------------------------------------

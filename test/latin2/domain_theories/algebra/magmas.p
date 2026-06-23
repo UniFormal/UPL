@@ -1,20 +1,29 @@
 module magmas {
+    include .sfol.SFOLEQND
+    
     theory Magma {
-        include .relations.Carrier
-        op: (univ,univ) -> univ # infix ∘
+        include .sets.Set
+        op: (U, U) -> U # infix ∘
+
+        P = y -> 
+        divisibility: .relations.Relation {
+            type carrier = U
+            rel = (x, z) -> texist universe (y -> tequal(universe, x∘y, z))
+        }
     }
 
     theory MagmaHom {
-        M : Magma
-        N : Magma
-        univ : M -> N
-        op:--- univ(x∘y) == univ(x)∘univ(y)
+        include .sets.SetHom
+        domain : Magma
+        codomain : Magma
+
+        op:--- tequal(codomain.U, U domain.op(x, y), codomain.op(U x, U y))
     }
 
     theory SubMagma {
-        include .relations.SubCarrier
-        include Magma
-        op_rel:--- (x1 % y1) & (x2 % y2) => (x1∘y1) % (x2∘y2)
+        include .sets.SubSet
+        parent: Magma
+        op: ???
     }
 
     theory Commutative {
@@ -23,7 +32,7 @@ module magmas {
     }
 
     OppositeMagma: Magma -> Magma = m -> Magma {
-        type univ = m.univ,
+        type U = m.U,
         op = (x, y) -> m.op(y,x)
     }
 
@@ -65,12 +74,12 @@ module magmas {
 
     theory Pointed {
         include Magma
-        point: univ
+        point: carrier
     }
 
     theory AbsorbingElement {
         include Magma
-        abs : univ
+        abs : carrier
         realize Pointed
         point = abs
     }

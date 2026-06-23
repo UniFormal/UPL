@@ -1,17 +1,17 @@
 module fol {
     theory UniversalQuantification {
         include .base_languages.UntypedLogic
-        uforall: (term -> prop) -> prop     # bindfix ∀
+        uforall: (term -> prop) -> prop # bindfix ∀ᵘ
     }
 
     theory UniversalQuantificationNDI {
         include UniversalQuantification
-        uforallI:--- (forall X. ⊦P(X)) => ⊦ ∀x. P(x)
+        uforallI:--- (forall x. ⊦(P x)) => ⊦ (∀ᵘx. P x) 
     }
 
     theory UniversalQuantificationNDE {
         include UniversalQuantification
-        uforallE:--- ⊦ (∀x. P(x)) => (forall X. ⊦P(X))
+        uforallE:--- ⊦(∀ᵘx. P x) => ⊦(P X)
     }
 
     theory UniversalQuantificationND {
@@ -21,17 +21,17 @@ module fol {
 
     theory ExistentialQuantification {
         include .base_languages.UntypedLogic
-        uexists: (term -> prop) -> prop    # bindfix ∃
+        uexists: (term -> prop) -> prop # bindfix ∃ᵘ
     }
 
     theory ExistentialQuantificationNDI {
         include ExistentialQuantification
-        uexistsI:--- ⊦P(X) => ⊦ ∃x. P(x)
+        uexistsI:--- ⊦(P X) => ⊦ ∃ᵘx. P x
     }
 
     theory ExistentialQuantificationNDE {
-        include ExistentialQuantification
-        uexistsE:--- ⊦ (∃x. P(x)) => (forall X. ⊦P(X) => ⊦C) => ⊦C 
+        include ExistentialQuantification 
+        uexistsE:--- ⊦ (∃ᵘx. P x) => (forall x. ⊦(P x) => ⊦C) => ⊦C 
     }
 
     theory ExistentialQuantificationND {
@@ -88,27 +88,29 @@ module fol {
     theory RelativizedUniversalQuantification {
         include .concepts.SoftTypedTerms
         include FOLEQ
-        rforall: (tp, (term -> prop)) -> prop = (A, P) -> ∀x. of(x, A) ⇒ P(x)
+        rforall: (tp, (term -> prop)) -> prop 
+        rforall = (A, P) -> ∀x. x∶A ⇒ P x
     }
 
     theory RelativizedUniversalQuantificationND {
         include RelativizedUniversalQuantification
         include FOLEQND
-        rforallI:--- (forall X. ⊦of(X,A) => ⊦F(X)) => ⊦rforall(A, F)
-        rforallE:--- ⊦rforall(A, F) => forall X. ⊦of(X,A) => ⊦F(X)
+        rforallI:--- (forall x. ⊦x∶A => ⊦(F x)) => ⊦rforall(A, F)
+        rforallE:--- ⊦rforall(A, F) => forall x. ⊦x∶A => ⊦(F x)
     }
 
     theory RelativizedExistentialQuantification {
         include .concepts.SoftTypedTerms
         include .FOLEQ
-        rexists: (tp, (term -> prop)) -> prop = (A, P) -> ∃X. of(X, A) ∧ P(X)
+        rexists: (tp, (term -> prop)) -> prop 
+        rexsits = (A, P) -> ∃x. x∶A ∧ P x
     }
 
     theory RelativizedExistentialQuantificationND {
         include RelativizedExistentialQuantification
         include FOLEQND
-        rexistsI:--- forall X. ⊦of(X,A) => ⊦F(X) => ⊦rexists(A, F)
-        rexistsE:--- ⊦rexists(A, F) => (forall X. ⊦of(X,A) => ⊦F(X) => ⊦C) => ⊦C
+        rexistsI:--- forall x. ⊦x∶A => ⊦(F x) => ⊦rexists(A, F)
+        rexistsE:--- ⊦rexists(A, F) => (forall x. ⊦x∶A => ⊦(F x) => ⊦C) => ⊦C
     }
 
     theory UniqueExistentialQuantification {
@@ -119,8 +121,8 @@ module fol {
 
     theory UniqueExistentialQuantificationND {
         include UniqueExistentialQuantification
-        uexistsUniqueI:--- ⊦P(X) => (forall Y. ⊦P(Y) => ⊦(X ≐ Y)) => ⊦uexistsUnique(P)
-        uexistsUniqueE:--- ⊦uexistsUnique(P) => (forall X. ⊦P(X) => (forall Y. ⊦P(Y) => ⊦(X ≐ Y)) => ⊦C) => ⊦C
+        uexistsUniqueI:--- ⊦(P x) => (forall y. ⊦(P y) => ⊦x≐y) => ⊦uexistsUnique(P)
+        uexistsUniqueE:--- ⊦uexistsUnique(P) => (forall x. ⊦(P x) => (forall Y. ⊦(P y) => ⊦x≐y) => ⊦C) => ⊦C
     }
 
     theory Description {
@@ -145,7 +147,7 @@ module fol {
         include .equality.UntypedEquality
         anyTC: (term -> prop) -> term
         any_ax:--- ⊦(∃x. P x) => ⊦(P (anyTC p))
-        any_eq:--- (⊦(P x) => ⊦(Q x)) => (⊦(Q x) => ⊦(P x)) => ⊦(anyTC P ≐ anyTC Q)
+        any_eq:--- (⊦(P x) => ⊦(Q x)) => (⊦(Q x) => ⊦(P x)) => ⊦(anyTC P)≐(anyTC Q)
 
         realize Choice
         some = ???
@@ -176,5 +178,14 @@ module fol {
         include .dependent_pl.DependentConjunctionND
         include .dependent_pl.DependentDisjunctionND
         include .dependent_pl.DependentImplicationND
+    }
+
+    TotalChoiceYieldsNonempty: TotalChoice -> .nonempty.UniverseNonEmpty = t -> .nonempty.UniverseNonEmpty {
+        univ_nonempty = (C, P) -> P (t.anyTC (x -> x≐x))
+    }
+
+    ChoiceYieldsDescription: (Choice, UniqueExistentialQuantificationND) -> Description = (c, u) -> Description {
+        the = ???
+        the_ax = ???
     }
 }
