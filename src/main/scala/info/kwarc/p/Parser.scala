@@ -224,7 +224,11 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   private case class TrialRunFailed() extends Exception
   private var trialRun = false
 
+  /** report an error at the [[Location]] of `sf` to the [[ErrorHandler]], and continue  */
   def reportError(msg: String, sf: SyntaxFragment): Unit = reportError(msg, sf.loc.from, sf.loc.to)
+  /** report an error between `from` and `to` the [[ErrorHandler]], and continue
+    * @param to defaults to the current [[index]]
+    */
   def reportError(msg: String, from: Int, to: Int = index): Unit = {
     if (trialRun) throw TrialRunFailed()
     val toDisplay: Int = List(to, inputLength, from+20).min
@@ -232,6 +236,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     val e = Error(Location(origin, from, to), msg + "; found " + found)
     eh(e)
   }
+  /** report an error between `at` and [[index]] the [[ErrorHandler]], and then throw [[Abort]] */
   def fail(msg: String, at: Int = index) = {
     reportError(msg, at)
     throw Abort()
@@ -246,11 +251,13 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     finally {trialRun = trialRunBefore}
   }
 
+  /** Generate a [[Location]] between `from` and `toD` whithout whitespace */
   def makeRef(from: Int, toD: Int = index) = {
     var to = toD // the end of the source region (exclusive)
     while (to > 0 && input(to-1).isWhitespace) to -= 1 // remove trailing whitespace from source region
     Location(origin, from, to)
   }
+  /** Parse a [[SyntaxFragment]], and assign its [[Location]] */
   def addRef[A<:SyntaxFragment](sf: => A): A = {
     trim
     val from = index
@@ -263,9 +270,9 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     sf
   }
 
-  // all input has been parsed
+  /** all input has been parsed */
   def atEnd = {index == inputLength}
-  // whitespace until end of line or end of input
+  /** whitespace until end of line or end of input */
   def atEndOfLine: Boolean = {
     var i = index
     while (!atEnd) {
@@ -277,17 +284,20 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     true
   }
 
-  // next character to parse, possibly consisting of 2 chars in input
+  /** next character to parse, possibly consisting of 2 chars in input */
   def next = input.codePointAt(index)
+  /** next character to parse is `c` */
   def nextIs(c: Unicode.UChar) = !atEnd && next == c
 
-  // take the next character
+  /** take the next character */
   def parseNext = {val c = next; index += Character.charCount(c); Character.toString(c)}
-  // n character lookahead
+  /** n character lookahead */
   def nextAfter(n: Int) = if (index+n < inputLength) Some(input.codePointAt(index+n)) else None
 
-  // string s occurs at the current index in the input
-  // if s is only letters/symbols, we additionally check that no name char/symbol follows
+  /** string s occurs at the current index in the input
+    * if s is only letters/symbols, we additionally check that no name char/symbol follows
+    * Only tests, does not change [[index]]
+    */
   def startsWith(s: String, andSomethingElse: Boolean = true): Boolean = {
     if (s.isEmpty) return true
     val b = index+s.length <= input.length && input.substring(index, index+s.length) == s
@@ -346,7 +356,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     index != 0 && Character.isWhitespace(input(index-1))
   }
 
-  // parses the string s and throws it away
+  /** parses the string s and throws it away */
   def skip(s: String) = {
     if (!startsWith(s, false)) {
       reportError("expected " + s, index, index+1)
@@ -354,21 +364,36 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       index += s.length
     }
   }
+  /** [[skip]] s and all following whitespace (i.e. [[trim]] afterwards)*/
   def skipT(s: String) = {skip(s); trim}
 
-  // check if input left after parsing
+  /** check if input left after parsing */
   def parseAll[A](parse: => A) = {
-    val from = index
     val a = parse
     if (!atEnd) reportError("expected end of input", from)
     a
   }
 
-  // list with separator
+  /** Parse a sequence of the form {{{a_1 sep ... sep a_n term}}} by applying [[parse]] to all items.
+    */
   def parseList[A](parse: => A, sep: String, term: String): List[A] = parseList(parse, Some(sep), Some(term))
 
-  // a1 sep ... sep an | term
-  // sep and term may not both be empty
+  /** Parse a sequence of the form
+    * {{{a_1 sep ... sep a_n term}}}
+    * by applying `parse` to all items.
+    *
+    * @param parse The function used to parse all items
+    * @param sep The item separator.
+    *            If [[None]], parsing will continue until the terminator is found.
+    * @param term The list terminator.
+    *             If [[None]] or [[Some("")]], parsing will continue until no more separator is found
+    *
+    * ==WARNING:==
+    * If [[sep]] == [[Some("")]] parsing will continue indefinitely
+    *
+    * @note If [[sep]] and [[term]] are both [[None]], [[parse]] will be called exactly once
+    * @note If [[sep]] == [[term]] the parsed sequence cannot be well-formed
+    */
   private def parseList[A](parse: => A, sep: Option[String], term: Option[String]): List[A] = {
     trim
     if (term.exists(t => startsWith(t))) return Nil
@@ -394,7 +419,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     as.reverse
   }
 
-  // taking Unicode characters (= Int), which correspoind 1 or 2 Java chars in the input
+  // taking Unicode characters (= Int), which correspond 1 or 2 Java chars in the input
   def parseWhile(p: Unicode.UChar => Boolean) = {
     val start = index
     var continue = true
@@ -410,6 +435,11 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   def isNameChar(c: Unicode.UChar) = Character.isLetterOrDigit(c) || isNameConnector(c)
   @inline def isNameConnector(c: Unicode.UChar) = c == '_'
 
+  /** Parse a name.
+    *
+    * Names are alphanumeric, but may not start with a digit.
+    * Underscores ("_") are allowed at any position as well.
+    */
   def parseName = {
     trim
     if (atEnd || !isNameStart(next)) "" else {
@@ -418,6 +448,10 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       parseWhile(c => isNameChar(c) && (!Character.isLetter(c) || Unicode.scriptOf(c) == script))
     }
   }
+  /** Parse an extended name.
+    * Extended names may switch to non-alphanumeric (and back) after an underscore ("_")
+    * @todo Extended names are allowed to start with a digit. Is this intentional?
+    */
   def parseNameExtended = {
     trim
     var allowNameChars = true
@@ -429,7 +463,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       good
     }
   }
-
+  /** parse a dot (".") separated sequence of names */
   def parsePath: Path = addRef {
     val ns = parseList(parseName, Some("."), None)
     Path(ns)
@@ -804,7 +838,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           OpenRef(parsePath)
         } else {
           // . is this, .. is parent and so on
-          var l = 1
+          var l = 1 // starting a 1, because we skipped a dot already
           while (nextIs('.')) {l += 1; skip(".")}
           // .a is this.a, ..a is parent.a, and so on; thus: if .id follows, we keep the last .
           if (!atEnd && isNameChar(next)) index-=1

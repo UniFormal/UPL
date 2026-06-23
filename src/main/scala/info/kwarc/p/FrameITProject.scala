@@ -38,7 +38,7 @@ class FrameITProject private extends Project(Nil,None){
   case object SiTh extends ProjectEntry(SiThOrigin) {
     private val proj = FrameITProject.this
 
-    /** Set the SiTh to the combination of all [[Declaration]]s of all SiThFragments */
+    /** Set the [[SiTh]] to the combination of all [[Declaration Declarations]] of all [[Stage Stages]] */
     def update(): TheoryValue = update(s"theory SiTh{include ${Stage.current}}")
 
     /** @throws NoSuchElementException if no SiTh can be found or created.
@@ -62,14 +62,15 @@ class FrameITProject private extends Project(Nil,None){
 
   /** Intermediate Stages of the Situation
     *
-    * There might be a point in having the Stages encapsulated in their own "Project", the Frame */
+    * There might be a point in having the Stages encapsulated in their own "Project", the Frame
+    */
   case class Stage(num: Int = Stage.counter) extends ProjectEntry(Stage.Origin(num))
   object Stage {
     var counter = 0
     def current: String = makeName(counter)
     def previous: String = makeName(counter - 1)
     private def makeName(num: Int) = s"Stage$num"
-    /** Extractor, because SourceOrigin is a case class and cannot be extended */
+    /** Extractor, because [[SourceOrigin]] is a case class and cannot be extended */
     object Origin {
       def apply(num: Int): SourceOrigin = SourceOrigin(makeName(num))
 
@@ -81,7 +82,7 @@ class FrameITProject private extends Project(Nil,None){
 
     def add(decls_String: String): Boolean = {
       counter += 1
-      val stageString = s"theory $current{include $previous $decls_String}"
+      val stageString = s"theory $current{include $previous\n$decls_String}"
       updateAndCheck(Origin(counter), stageString)
       SiTh.update()
       if (debug) println(check(SiThOrigin, false))
@@ -128,16 +129,16 @@ class FrameITProject private extends Project(Nil,None){
     }
   }
 
-  /** Apply [[schema]] to deduce the [[resultingFacts]] from the [[requiredFacts]].
+  /** Apply [[Schema]] to deduce the resulting Facts from the required ones.
     *
     * @param schema the name of the schema to apply
     * @param requiredFactsAssignment
     * @param resultingFactsAssignment
     * @return `true` if the Schema application was successful
     * @note We use [[collection.Map]] because
-    *       - the order of [[requiredFactsAssignment]] doesn't matter if we `realize $schema` only afterwards, and
-    *       - [[scalajs.js.Dictionary]] is implicitly convertible to [[mutable.Map]], but
-    *       - mutability is not actually needed
+    *       - the order of requiredFactsAssignment doesn't matter if we `realize $schema` only afterwards, and
+    *       - [[scalajs.js.Dictionary]] is implicitly convertible to [[mutable.Map]].
+    *       - the mutability is not used
     */
   def applySchema(schema: String,
                   requiredFactsAssignment: collection.Map[String, String],
