@@ -232,7 +232,10 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   def reportError(msg: String, from: Int, to: Int = index): Unit = {
     if (trialRun) throw TrialRunFailed()
     val toDisplay: Int = List(to, inputLength, from+20).min
-    val found = input.substring(from,toDisplay)
+    var found = input.substring(from,toDisplay)
+    if(toDisplay == inputLength) found += "[End of Input]"
+    if(found.isEmpty) found = "[Nothing]"
+    if (found.head.isWhitespace || found.last.isWhitespace) found = s"\"${found}\""
     val e = Error(Location(origin, from, to), msg + "; found " + found)
     eh(e)
   }
