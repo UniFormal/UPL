@@ -275,13 +275,7 @@ object Project {
     val es = paths.map {p =>
       ProjectEntry(p)
     }
-    val proj = new Project(es,mainE)
-    if(proj.stdLib.isEmpty){
-      Builtins.Applications = null
-    }else{
-      proj.stdLib.get.parsed.decls.map(x=> x.label)
-    }
-    proj
+    new Project(es,mainE)
   }
 
   def toIsabelleFiles(proj: Project): Unit = {

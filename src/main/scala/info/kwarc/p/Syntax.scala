@@ -343,6 +343,12 @@ case class VarRef(name: String) extends Ref {
   override def toString = name
 }
 
+object BuiltinRef {
+  val uniformal = Path("Uniformal")
+  def apply(p: Path) = OpenRef(uniformal/p)
+  def unapply(r: OpenRef): Option[Path] = if (r.path.head == uniformal.head) Some(r.path.tail) else None
+}
+
 /** reference to an open/closed symbol with its type arguments */
 case class AppliedRef(ref: Ref, tpargs: List[Type], args: List[Expression]) extends Expression with Type {
   override def skipUnknown = this
@@ -521,7 +527,6 @@ case class TheoryValue(override val decls: List[Declaration]) extends Theory wit
   }
 
   def lookupPath(path: Path): Option[NamedDeclaration] = lookupO(path.head).flatMap {
-    case nd: NamedDeclaration if path.names.head == "Uniformal" => Some(BuiltinDeclaration(path.names(1)))
     case nd: NamedDeclaration if path.isToplevel => Some(nd)
     case m: Module => m.lookupPath(path.tail)
     case _ => throw IError("unexpected path")
@@ -1150,23 +1155,6 @@ case class Assert(test: Expression, tp: Type, expected: Expression) extends Expr
   override def toString = s"ASSERT($test, $tp, $expected)"
   def label = "assert"
   def children = List(test,tp,expected)
-}
-
-/**node which represents predefined Builtin function*/
-case class BuiltinDeclaration(name: String) extends NamedDeclaration {
-
-  //override  def toString = s"$label: $returnType${parameters.mkString("(", ", ", ")")}"
-  override def label: String = name
-  override def modifiers: Modifiers = ???
-  override def kind: String = ???
-  override def dfO: Option[Object] = ???
-  override def children: List[SyntaxFragment] = ???
-}
-
-case class BuiltinApplication(name: String, callback: List[Expression] => Expression) extends Expression {
-
-  override def label: String = s"$name()"
-  override def children: List[SyntaxFragment] = null
 }
 
 /*

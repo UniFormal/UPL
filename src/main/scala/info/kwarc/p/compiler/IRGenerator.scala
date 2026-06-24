@@ -479,7 +479,7 @@ private class IRGenerator {
       case FunType(ins, out) => IrFunType(llvmType(out), ins.variables.map(v => llvmType(v.tp)))
       case ClassType(dom) => IrPtrType(IrStruct(mainTheoryPath(dom).toString, Nil))
       case EmptyType => IrVoidType
-      case UnknownType(_,c,_) => llvmType(c.tp)
+      case u: UnknownType if u.known => llvmType(u.skipUnknown)
       case StringType => IrPtrType(IrConstChar(0))
       case _ => throw new IllegalArgumentException(s"Unsupported type: $tp")
     }
