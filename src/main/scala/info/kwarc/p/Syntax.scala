@@ -819,7 +819,9 @@ object IntervalType {
 /** dependent functions
  */
 case class FunType(ins: ExprContext, out: Type) extends Type {
-  override def toString = ProdType(ins).toString + " -> " + out
+  override def toString = {
+    "(" + ProdType(ins).toString + " -> " + out + ")"
+  }
   def label = "->"
   def children = ins.children ::: List(out)
   override def childrenInContext =

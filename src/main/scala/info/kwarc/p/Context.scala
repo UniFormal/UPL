@@ -378,26 +378,27 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     case (MaybeAppliedRef(r,_,_),MaybeAppliedRef(s,_,_)) => r == s
     case (CollectionType(a,k),CollectionType(b,l)) => similar(a,b) && k == l
     case (PlainFunType(aI,aO), PlainFunType(bI,bO)) =>
-      aI.length == bI.length && (aI zip bI).forall {case ((_,a),(_,b)) => similar(a,b)}
+      aI.length == bI.length && (aI zip bI).forall {case ((_,a),(_,b)) => similar(a,b)} && similar(aO,bO)
+    case (ProdType(as), ProdType(bs)) =>
+      as.length == bs.length && (as.decls zip bs.decls).forall {case (ad,bd) => similar(ad.tp,bd.tp)}
+    case (ProofType(_), ProofType(_)) => true
+    case (OwnedType(_,_,ao), b) => similar(ao,b)
     case _ => a == b
   }
-
-  // TODO: code compiles, but elaboration of pseudo-operators has issues after lookupRegionalByNotation was rewritten
-
-
 
   /** looks up a symbol in the current region by notation and types */
   def lookupRegionalByNotation(pop: PseudoOperator, tpsIn: List[Type], tpOut: Type): Option[ExprDecl] = {
     val tv = getCurrentTheoryValue
     tv.decls.foreach {
       case ed: ExprDecl => ed.ntO foreach {nt =>
-        if (nt.symbol == pop.symbol && nt.fixity.getClass == pop.fixity.getClass) {
+        if (nt.symbol == pop.symbol && nt.fixity.similar(pop.fixity)) {
           val neededType = nt.fixity.neededTargetType(tpsIn, tpOut)
           if (similar(ed.tp, neededType)) return Some(ed)
         }
       }
       case _ =>
     }
+    //lookupRegionalByNotation(pop, tpsIn, tpOut) // just for debugging
     None
   }
 

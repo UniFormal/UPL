@@ -27,6 +27,7 @@ case class Notation(fixity: Fixity, symbol: String) {
   * They only matter in [Notation]s.
   */
 abstract class Fixity {
+  def similar(f: Fixity) = this.getClass == f.getClass
   /** to be used in error messages when the target's type doesn't match a notation */
   def expectedTargetAsString: String
   /** receives the target type and
@@ -67,7 +68,7 @@ object Fixity {
       case "applyfix-flex" => Applyfix(true)
       case "applyfix" => Applyfix(false)
       case "bindfix-assoc" => Bindfix(true)
-      case "bindfix" => Applyfix(false)
+      case "bindfix" => Bindfix(false)
       case _ => null
     }
     Option(f)
@@ -76,7 +77,7 @@ object Fixity {
 
 case object Nullfix extends Fixity {
   def expectedTargetAsString = "plain type without arguments"
-  def matchTargetType(tp: Type) = Some(Nil)
+  def matchTargetType(tp: Type) = Some(List(tp))
   def neededTargetType(ins: List[Type], out: Type): Type = out
   def arity(n: Int) = n == 0
   def elaborate(target: Expression, args: List[Expression]) = target

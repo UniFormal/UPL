@@ -57,7 +57,7 @@
       }
     },
     {
-      "match": "\\b(prefix|infix|circumfix|postfix|applyfix|bindfix)\\s+(\\S+)",
+      "match": "\\b(prefix|postfix|infix|infix-assoc|infix-left|infix-right|circumfix|circumfix-flex|applyfix|applyfix-flex|bindfix|bindfix-assoc)\\s+(\\S+)",
       "captures": {
         "1": {"name": "keyword.other.fixity.upl"},
         "2": {"name": "entity.name.function.operator.upl"}

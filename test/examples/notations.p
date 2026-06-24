@@ -66,17 +66,17 @@ module Operators {
     type univ
     zero: univ                  # nullfix ⊥
     successor: univ -> univ     # prefix $
-    add: (univ,univ) -> univ    # infix ⊕
+    add: (univ,univ) -> univ    # infix-left ⊕
     factorial: univ -> univ     # postfix !
-    all: (univ -> bool) -> bool # bindfix ∀
-    sum: [univ] -> univ         # circumfix ⟨
+    all: (univ -> bool) -> bool # bindfix-assoc ∀
+    sum: [univ] -> univ         # circumfix-flex ⟨
     
     test = x -> ∀n. $n ⊕ x! == ⟨x,⊥,n⟩
     expandsTo = x -> all(n -> add(successor(n), factorial(x)) == sum([x,zero,n]))
   }
 
   // Notations are also available from the outside if the type i.a is encountered where i:T is an instance of T and a is declared in T.
-  testNotation1 = (c: Notations, x: c.univ) -> x⊕⊥ // theory for ⊕ found via type of x
+  testNotation1 = (c: Notations, x: c.univ) -> x⊕(⊥) // theory for ⊕ found via type of x
   testNotation2: (c: Notations) -> (_,_) -> c.univ = c -> (x,y) -> x⊕x // theory found from expected type
   // Here ".univ" is redundant because it is inserted by the magic conversion of instances to types.  
 }

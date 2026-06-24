@@ -1365,7 +1365,18 @@ class Checker(errorHandler: ErrorHandler) {
                   elaboratePseudo(gc, po, args, etp)
                 }
             }
-            return inferOrCheckExpression(gc, expElab.copyFrom(exp), expectedTpN)
+            return inferOrCheckExpression(gc, expElab.copyFrom(exp), etp)
+        }
+
+      case (bo @ BaseOperator(po: PseudoOperator,_), etp) =>
+        po.fixity match {
+          case Nullfix =>
+            // only nullfix occurs unapplied
+            val expElab = elaboratePseudo(gc, po, Nil, etp)
+            return inferOrCheckExpression(gc, expElab.copyFrom(exp), etp)
+          case _ =>
+            reportError("operator must be applied")
+            (bo,bo.tp)
         }
 
       case (BaseOperator(op: KnownOperator, opTp),_) =>
@@ -1762,7 +1773,7 @@ class Checker(errorHandler: ErrorHandler) {
         gcI.lookupRegionalByNotation(pop, args.map(_ => null), a) match {
           case Some(ed) =>
             val popE = FlatOwnedObject.makeExpr(owners, ed.toRef).withLocation(popLoc)
-            return pop.fixity.elaborate(popE,args)
+            return ed.ntO.get.fixity.elaborate(popE,args) // pop.fixity is similar but might not have the right flags
           case None =>
         }
       case _ =>
@@ -1801,7 +1812,7 @@ class Checker(errorHandler: ErrorHandler) {
         gcI.lookupRegionalByNotation(pop, a::args.tail.map(_ => null), null) match {
           case Some(ed) =>
             val popE = FlatOwnedObject.makeExpr(owners, ed.toRef).withLocation(popLoc)
-            pop.fixity.elaborate(popE, args)
+            ed.ntO.get.fixity.elaborate(popE, args)
           case None =>
             fail("no constant with appropriate notation found: " + pop.symbol)
         }
@@ -1809,7 +1820,7 @@ class Checker(errorHandler: ErrorHandler) {
         gc.lookupRegionalByNotation(pop, aI::args.tail.map(_ => null), null) match {
           case Some(ed) =>
             val popE = ed.toRef.withLocation(popLoc)
-            pop.fixity.elaborate(popE, args)
+            ed.ntO.get.fixity.elaborate(popE, args)
           case None =>
             fail("no constant with appropriate notation found: " + pop.symbol)
         }
