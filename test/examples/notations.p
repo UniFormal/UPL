@@ -1,17 +1,17 @@
 // UPL provides a number of operators that are parsed as unresolved and disambiguated during type-checking.
 
 // Possible operators and their concrete syntax are
+// - nullfix o     o
 // - infix o       t o y
 // - prefix o      o t
 // - postfix o     t o
 // - circumfix b   b ts b'
 // - applyfix b    t b ys b'
-// - bindfix q     q vars . y 
-// where 
+// - bindfix o     o vars . y 
+// where
 // - t:T, or ts: list[T] allow for resoving the operator
 // - y, ys match the expected type(s),
-// o, b and q are symbolic strings with the following properties
-// - q (quantifier/binder): contains a unicode symbol described as "N-ary" or "quantifier"
+// o and b are symbolic strings with the following properties
 // - b (opening bracket): contains a unicode symbol for starting punctuation; in that case b' is like b but with all those symbols mirrored
 // - o: not a binder or bracket
 // and vars is a comma separated list of variable declarations (like in a function signature)
@@ -19,8 +19,9 @@
 // There are two ways to direct type-checking how to elaborate these operators: magic functions and notations. 
 
 module Operators {
-  // Magic functions are functions of special names that are declared in a theory.
+  // Magic functions are functions with special names that are declared in a theory.
   // They are used to resolve operators when an instance of the theory is the first argument.
+  // This is not applicable to nullfix and bindfix, which do not take instance arguments.
   theory Magic {
     x: int
     // magic prefix operator: $a becomes a._prefix_$(); here: add 1 to x
@@ -58,18 +59,24 @@ module Operators {
 
 
   // Notations are ascribed to constants using #.
-  // They are used when the expected type or the argument types can be used to find a theory T in which a matching notation is found.
+  // They are used when the current context, the expected type, or the argument types can be used to find a theory T in which a matching notation is found.
+  // To match, a notation must be for the same operator and fixity.
 
   theory Notations {
     type univ
-    // a binary infix operation
-    op: (univ,univ) -> univ # infix ∘
-    // T is the current theory if an atomic type is encountered that is declared in T.
-    comm: |- forall x,y. x∘y == y∘x
+    zero: univ                  # nullfix ⊥
+    successor: univ -> univ     # prefix $
+    add: (univ,univ) -> univ    # infix ⊕
+    factorial: univ -> univ     # postfix !
+    all: (univ -> bool) -> bool # bindfix ∀
+    sum: [univ] -> univ         # circumfix ⟨
+    
+    test = x -> ∀n. $n ⊕ x! == ⟨x,⊥,n⟩
+    expandsTo = x -> all(n -> add(successor(n), factorial(x)) == sum([x,zero,n]))
   }
 
   // Notations are also available from the outside if the type i.a is encountered where i:T is an instance of T and a is declared in T.
-  testNotation1 = (c: Notations, x: c.univ) -> x∘x
-  testNotation2: (c: Notations) -> (_,_) -> c.univ = c -> (x,y) -> x∘x
+  testNotation1 = (c: Notations, x: c.univ) -> x⊕⊥ // theory for ⊕ found via type of x
+  testNotation2: (c: Notations) -> (_,_) -> c.univ = c -> (x,y) -> x⊕x // theory found from expected type
   // Here ".univ" is redundant because it is inserted by the magic conversion of instances to types.  
 }

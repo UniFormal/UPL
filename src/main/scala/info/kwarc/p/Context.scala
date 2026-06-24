@@ -371,33 +371,34 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     foundAbstract
   }
 
-  private def similar(a: Type, b: Type) = (a,b) match {
+  /** true if b has the same shape as a; b may be ill-typed and contain null as wildcard */
+  private def similar(a: Type, b: Type): Boolean = (a,b) match {
+    case (_,_:UnknownType) => true
+    case (_,null) => true
     case (MaybeAppliedRef(r,_,_),MaybeAppliedRef(s,_,_)) => r == s
-    case (CollectionType(_,k),CollectionType(_,l)) => k == l
+    case (CollectionType(a,k),CollectionType(b,l)) => similar(a,b) && k == l
+    case (PlainFunType(aI,aO), PlainFunType(bI,bO)) =>
+      aI.length == bI.length && (aI zip bI).forall {case ((_,a),(_,b)) => similar(a,b)}
     case _ => a == b
   }
+
+  // TODO: code compiles, but elaboration of pseudo-operators has issues after lookupRegionalByNotation was rewritten
+
+
+
   /** looks up a symbol in the current region by notation and types */
-  def lookupRegionalByNotation(pop: PseudoOperator, tpIn1: Option[Type], tpOut: Option[Type]): Option[ExprDecl] = {
+  def lookupRegionalByNotation(pop: PseudoOperator, tpsIn: List[Type], tpOut: Type): Option[ExprDecl] = {
     val tv = getCurrentTheoryValue
-    var candidates: List[ExprDecl] = Nil
     tv.decls.foreach {
-      case ed: ExprDecl =>
-        if (ed.ntO.exists(nt => nt.fixity == pop.fixity && nt.symbol == pop.symbol)) {
-          candidates ::= ed
-          ed.tp match {
-            case ft:FunType =>
-              val matches = tpIn1.forall(similar(_,ft.inDecls.last.tp)) && tpOut.forall(similar(_,ft.out))
-              if (matches) return Some(ed)
-            case _ =>
-          }
+      case ed: ExprDecl => ed.ntO foreach {nt =>
+        if (nt.symbol == pop.symbol && nt.fixity.getClass == pop.fixity.getClass) {
+          val neededType = nt.fixity.neededTargetType(tpsIn, tpOut)
+          if (similar(ed.tp, neededType)) return Some(ed)
         }
+      }
       case _ =>
     }
-    // if only 1 declaration for the fixity exists, use it even if the types don't match
-    if (candidates.sizeIs == 1)
-      candidates.headOption
-    else
-      None
+    None
   }
 
   def lookupGlobal(p: Path) = {

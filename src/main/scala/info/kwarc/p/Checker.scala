@@ -91,13 +91,17 @@ class Checker(errorHandler: ErrorHandler) {
         // TODO move this check till later when all types are infered
         sdC match {
           case ed: ExprDecl => ed.ntO foreach {nt =>
-            ed.tp match {
-              case FlatOwnedObject(_,ft:FunType) => (ft.inDecls.last.tp,ft.out) match {
-                case (MaybeAppliedRef(ClosedRef(_),_,_),_) =>
-                case (_,MaybeAppliedRef(ClosedRef(_),_,_)) =>
-                case _ => reportError("notations can only be inferred if the input or output type is declared in the same theory")
-              }
-              case _ => reportError("notations only allowed for constants of function type")
+            val FlatOwnedObject(_,targetType:Type) = ed.tp
+            val f = nt.fixity
+            f.matchTargetType(targetType) match {
+              case None =>
+                reportError(f.toString + " constant must have type of the form " + f.expectedTargetAsString)
+              case Some(tps) =>
+                val good = tps exists {
+                  case MaybeAppliedRef(ClosedRef(_),_,_) => true
+                  case _ => false
+                }
+                if (!good) reportError("notation can only be inferred if some input/output/binding type is declared in the theory")
             }
           }
           case _ =>
@@ -1354,11 +1358,11 @@ class Checker(errorHandler: ErrorHandler) {
               case Some(ko) =>
                 Application(op.copy(operator = ko).copyFrom(op), args)
               case None =>
-                if ((po.symbol == "==" || po.symbol == "!=") && po.fixity == Infix) {
+                if ((po.symbol == "==" || po.symbol == "!=") && po.fixity.isInstanceOf[Infix]) {
                   if (args.length != 2) fail("unexpected number of arguments")
                   Equality(po.symbol == "==", Type.unknown(gc), args(0), args(1))
                 } else {
-                  elaboratePseudo(gc, po, op.loc, args, etp)
+                  elaboratePseudo(gc, po, args, etp)
                 }
             }
             return inferOrCheckExpression(gc, expElab.copyFrom(exp), expectedTpN)
@@ -1748,16 +1752,17 @@ class Checker(errorHandler: ErrorHandler) {
     }
   }
 
-  def elaboratePseudo(gc: GlobalContext, pop: PseudoOperator, loc: Location, args: List[Expression], etp: Option[Type])(implicit cause: SyntaxFragment): Expression = {
+  def elaboratePseudo(gc: GlobalContext, pop: PseudoOperator, args: List[Expression], etp: Option[Type])(implicit cause: SyntaxFragment): Expression = {
+    val popLoc = pop.unfixed.loc
     // first try via the expected type, no failure
     // only chance to disambiguate nullfix
     etp match {
-      case Some(FlatOwnedObject(owners, a:Type)) if isMatchableForElaboration(a) =>
+      case Some(FlatOwnedObject(owners, a:Type)) =>
         val gcI = gc.push(owners)
-        gcI.lookupRegionalByNotation(pop, None, Some(a)) match {
+        gcI.lookupRegionalByNotation(pop, args.map(_ => null), a) match {
           case Some(ed) =>
-            val popE = FlatOwnedObject.makeExpr(owners, ed.toRef).withLocation(loc)
-            return pop.interpret(popE,args)
+            val popE = FlatOwnedObject.makeExpr(owners, ed.toRef).withLocation(popLoc)
+            return pop.fixity.elaborate(popE,args)
           case None =>
         }
       case _ =>
@@ -1774,16 +1779,16 @@ class Checker(errorHandler: ErrorHandler) {
           case popMagic(dom, _) =>
             val otherArgsM = pop.fixity match {
               case Prefix | Postfix =>
-                if (args.length != 1) reportError("one argument expected")
+                if (args.length != 1) reportError("1 argument expected")
                 otherArgs
-              case Infix =>
-                if (args.length != 2) reportError("two arguments expected")
+              case _:Infix =>
+                if (args.length != 2) reportError("2 arguments expected")
                 otherArgs
-              case Circumfix =>
+              case _:Circumfix =>
                 List(CollectionKind.List(otherArgs))
-              case Applyfix =>
+              case _:Applyfix =>
                 List(CollectionKind.List(otherArgs))
-              case Bindfix =>
+              case _:Bindfix =>
                 fail("cannot elaborate bindfix operator")
               case Nullfix =>
                 fail("cannot elaborate nullfix operator")
@@ -1791,32 +1796,28 @@ class Checker(errorHandler: ErrorHandler) {
             popMagic.insert(dom, primaryArg, otherArgsM)
           case _ => fail(s"magic function ${popMagic.name} not found in $aI")
         }
-      case FlatOwnedObject(owners, a:Type) if isMatchableForElaboration(a) =>
+      case FlatOwnedObject(owners, a:Type) =>
         val gcI = gc.push(owners)
-        gcI.lookupRegionalByNotation(pop, Some(a), None) match {
+        gcI.lookupRegionalByNotation(pop, a::args.tail.map(_ => null), null) match {
           case Some(ed) =>
-            val popE = FlatOwnedObject.makeExpr(owners, ed.toRef).withLocation(loc)
-            pop.interpret(popE, args)
+            val popE = FlatOwnedObject.makeExpr(owners, ed.toRef).withLocation(popLoc)
+            pop.fixity.elaborate(popE, args)
           case None =>
-            fail("no constant with appropriate notation found in type: " + pop.symbol)
+            fail("no constant with appropriate notation found: " + pop.symbol)
         }
       case _: UnknownType =>
-        gc.lookupRegionalByNotation(pop, Some(aI), None) match {
+        gc.lookupRegionalByNotation(pop, aI::args.tail.map(_ => null), null) match {
           case Some(ed) =>
-            val popE = ed.toRef.withLocation(loc)
-            pop.interpret(popE, args)
+            val popE = ed.toRef.withLocation(popLoc)
+            pop.fixity.elaborate(popE, args)
           case None =>
             fail("no constant with appropriate notation found: " + pop.symbol)
         }
       case _ => fail("cannot elaborate notation: " + pop.symbol)
     }
   }
-  def isMatchableForElaboration(tp: Type) = tp match {
-    case _:ClosedRef | _:AppliedRef | _:BaseType | _: CollectionType => true
-    case _ => false
-  }
 
-    /** checks a Boolean that may export bindings to sibling expressions
+ /** checks a Boolean that may export bindings to sibling expressions
    * parents that want to move bindings from one child to another call this instead of the normal check function
    */
   def checkDynamicBoolean(gc: GlobalContext, b: Expression)(implicit alsoCheck: Boolean): (Expression, LocalContext) = recoverWith((b,LocalContext.empty)) {

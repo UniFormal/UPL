@@ -774,23 +774,11 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
 
   def parseNotation = {
-    val fix = if (startsWithS(Keywords.nullfix)) {
-      Nullfix
-    } else if (startsWithS(infix)) {
-      Infix
-    } else if (startsWithS(prefix)) {
-      Prefix
-    } else if (startsWithS(postfix)) {
-      Postfix
-    } else if (startsWithS(circumfix)) {
-      Circumfix
-    } else if (startsWithS(applyfix)) {
-      Applyfix
-    } else if (startsWithS(bindfix)) {
-      Bindfix
-    } else {
+    val fixS = parseWhile(! Character.isWhitespace(_))
+    val fix = Fixity.parse(fixS).getOrElse {
       fail("fixity expected")
     }
+    trim
     val sym = parseWhile(! Character.isWhitespace(_))
     Notation(fix, sym)
   }
@@ -1046,7 +1034,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
             // initial operator
             if (op.opening) {
               val es = parseExpressions("", Symbols.makeClosingBracket(op.symbol))
-              val oes = op.toApplication(Circumfix, es)
+              val oes = op.toApplication(Circumfix(), es)
               if (startsWithUnbracketedArgument) {
                 // a circumfix can take one extra argument without whitespace
                 setRef(oes, op.loc.from)
@@ -1063,7 +1051,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
                 val e = parseExpression(lazily)
                 op.toApplication(Prefix, List(e))
               }
-              @inline def bindfix() = parseBinding(op.withFixity(Bindfix).toExpression)
+              @inline def bindfix() = parseBinding(op.withFixity(Bindfix()).toExpression)
               if (atEndOfLine || startsWithTerminator) {
                 nullfix()
               } else if (startsWithBinding) {
@@ -1167,7 +1155,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
                | _: Block | _: OwnedExpr => true
           case Application(BaseOperator(pop: PseudoOperator,_), _) =>
               val f = pop.fixity
-              f != Infix && f != Prefix
+              !f.isInstanceOf[Infix] && f != Prefix
           case _: Application => true
           case _ => false
         }
@@ -1371,12 +1359,12 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
               // the special cases ([{ are reparsed above
               if (ob.symbol != "(" && ob.symbol != "[" && ob.symbol != "{") {
                 val es = parseExpressions("", Symbols.makeClosingBracket(ob.symbol))
-                modifyExp(ob.toApplication(Applyfix, exp :: es))
+                modifyExp(ob.toApplication(Applyfix(), exp :: es))
               }
             }
             infixO.foreach {ifo =>
               index = ifo.loc.to
-              shift(ifo.withFixity(Infix))
+              shift(ifo.withFixity(Infix()))
             }
             // remaining operators will be parsed again, usually as prefixes
           } else {
@@ -1606,13 +1594,5 @@ object Keywords {
   val closedDecl = "closed"
   val modifiers = List(openDecl,closedDecl)
   val allDeclKeywords = List(openModule,closedModule,include,totalInclude,mutableExprDecl,typeDecl):::modifiers
-  val infix = "infix"
-  val prefix = "prefix"
-  val postfix = "postfix"
-  val circumfix = "circumfix"
-  val applyfix = "applyfix"
-  val bindfix = "bindfix"
-  val nullfix = "nullfix"
-  val fixities = List(nullfix, infix, prefix, circumfix, applyfix, bindfix)
 }
 

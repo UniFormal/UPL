@@ -3,7 +3,10 @@ package info.kwarc.p
 import scala.scalajs.js.|
 
 /**
- * abstract over JVM's internal representation of Char as UTF-16, where Unicode above FFFF is represented as 2 characters
+ * a few helper functions to work with Unicode
+ * Generally, we use the JVM API that represents characters as integers (code points).
+ * That way every character is on Int even though codepoints > 0xFFFF are represented as two characters in a Java string.
+ * The java.lang.Character methods must be used for code points.
  */
 object Unicode {
   type UChar = Int
@@ -16,7 +19,9 @@ object Unicode {
   val modifierCategories = List(MODIFIER_LETTER, MODIFIER_SYMBOL)
 
   /** binder symbols cannot be defined based on Unicode classes
-   * we take all symbols called "N-Ary" in their Unicode name plus the quantifiers */
+   * We allow every symbol as a binder.
+   * But it's worth remembering this list of symbols that are naturally binders.
+   */
   val bindChars: List[UChar] = {
     // n-ary
     List(0x2140, 0x220F, 0x2210, 0x2211, 0x22C0, 0x22C1, 0x22C2, 0x22C3, 0x2A00, 0x2A01, 0x2A02, 0x2A03, 0x2A04, 0x2A05, 0x2A06, 0x2A09, 0x2AFF) :::
@@ -51,10 +56,13 @@ object Unicode {
     else Some(c-1)
   }
 
+  /**
+   * roughly divides letters into groups based on their script.
+   * This should simply be UnicodeScript.of(c) but that is not supported by Scala.js.
+   * In any case, Unicode script doesn't support the block of Mathematical Alphanumeric Symbols (see below).
+   * So we need a native implementation anyway.
+   */
   def scriptOf(c: UChar) = {
-    // This should simply be UnicodeScript.of(c), but that is not supported by Scala.js.
-    // In any case, Unicode script doesn't support the block of Mathematical Alphanumeric Symbols (see below).
-    // So we need a native implementation anyway.
     if (!Character.isLetter(c)) -1
     else if (c >= 0x0041 && c <= 0x02E4) 1   // LATIN
     else if (c >= 0x0370 && c <= 0x03FF) 100 // GREEK and COPTIC
@@ -80,7 +88,7 @@ object Unicode {
         else if (c <= 0x1D66F) 13  // sans-serif, italic, bold
         else if (c <= 0x1D6A3) 14  // monospace
         else if (c <= 0x1D6A5)  3  // italic, dotless variants
-        else if (c <= 0x1D6E1) 101 // greek bold (here and below: including a few variants at the end)
+        else if (c <= 0x1D6E1) 101 // greek, bold (here and below: including a few variants at the end)
         else if (c <= 0x1D71B) 102 // greek, italic
         else if (c <= 0x1D755) 103 // greek, bold, italic
         else if (c <= 0x1D78F) 104 // greek, sans-serif, bold

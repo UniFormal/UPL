@@ -239,7 +239,10 @@ case class ExprDecl(name: String, params: LocalContext, tp: Type, dfO: Option[Ex
 // ***************** Objects **************************************
 
 /** parent of all anonymous objects like types, expressions, formulas, etc. */
-sealed abstract class Object extends SyntaxFragment
+sealed abstract class Object extends SyntaxFragment {
+  def known: Boolean = true
+  def skipUnknown: Object
+}
 
 /** theories */
 sealed trait Theory extends Object {
@@ -251,6 +254,7 @@ sealed trait Theory extends Object {
   /* TODO: Refs to primitive modules should initially be QuasiFlat */
   private[p] var flatness: Theory.Flatness = Theory.NotFlat
   def isFlat = flatness != Theory.NotFlat
+  def skipUnknown: Theory = this
 }
 object Theory {
   def empty = TheoryValue(Nil)
@@ -280,8 +284,7 @@ object Theory {
 
 /** types */
 sealed trait Type extends Object {
-  def known = true
-  def skipUnknown = this
+  def skipUnknown: Type = this
   // needs a different name than its counter part for expressions because Ref inherits both with different return types
   def substituteInType(sub: Substitution) = Substituter(GlobalContext(""), sub, this)
   def <--(ins: Type*) = SimpleFunType(ins.toList, this)
@@ -293,10 +296,8 @@ sealed trait Type extends Object {
   def power(n: Int) = ProdType.simple(Range(1, n).toList.map(_ => this))
 }
 object Type {
-  private var unknownCounter = -1
   def unknown(gc: GlobalContext = null) = {
-    unknownCounter += 1
-    val cont = new UnknownTypeContainer(unknownCounter, null)
+    val cont = new UnknownContainer
     UnknownType(gc, cont, if (gc == null) null else gc.visibleLocals.identity)
   }
 
@@ -308,6 +309,7 @@ object Type {
 
 /** typed expressions */
 sealed trait Expression extends Object {
+  def skipUnknown: Expression = this
   def field(dom: Theory, f: String) = OwnedExpr(this, dom, ClosedRef(f))
   def substitute(sub: Substitution) = Substituter(GlobalContext(""), sub, this)
   /** true if this expression binds all free variables in its children */
@@ -320,6 +322,7 @@ sealed trait Expression extends Object {
 
 /** reference to a name */
 sealed trait Ref extends Expression with Type with Theory {
+  override def skipUnknown: Ref = this
   def children = Nil
   def finite = false
   def label = toString
@@ -342,6 +345,7 @@ case class VarRef(name: String) extends Ref {
 
 /** reference to an open/closed symbol with its type arguments */
 case class AppliedRef(ref: Ref, tpargs: List[Type], args: List[Expression]) extends Expression with Type {
+  override def skipUnknown = this
   override def toString = ref.toString +
     (if (tpargs.nonEmpty) "@" else "") + Util.mkString(tpargs,"(", ", ", ")") +
     Util.mkString(args, "(", ", ", ")", bracketOne = true)
@@ -547,67 +551,84 @@ object TheoryAsValue {
   }
 }
 
-// ***************** Types **************************************
+// ***************** Unknowns *************************************
 
-/** an omitted type that is to be filled in during type inference */
-class UnknownTypeContainer(private var id: Int, private[p] var tp: Type) {
+/** mutable memore loccation that holds an omitted object that is to be filled in during type inference */
+class UnknownContainer {
+  private[p] var obj: Object = null
+  private val id = UnknownContainer.next
+  def known = obj != null && obj.known
+
   def label = "???" + id
-  override def toString = if (known) tp.toString else label
-  def known = tp != null && tp.known
+  override def toString = if (known) obj.toString else label
 }
 
-/** an unknown type that is to be solved during inference
-  * see [[Type.unknown]] for its creation
-  *
-  * All local variables that were visible when the type was created can be free in the solution.
-  * This class can be seen as a redex that abstracts over them and is then applied to some arguments.
-  * @param originalContext the free variables, initially context in which this type occurred
-  * @param container the mutable container of the solved type, initially empty
-  * @param sub the argument corresponding to the free variables, initially the identity
-  */
-case class UnknownType(originalContext: GlobalContext, container: UnknownTypeContainer, sub: Substitution) extends Type {
+object UnknownContainer {
+  private var unknownCounter = -1
+  private def next = {unknownCounter += 1; unknownCounter}
+}
+
+/** an unknown object that is to be solved during inference
+ * see [[Type.unknown]] and [[Expression.unknown]] for creation
+ *
+ * All local variables that were visible when the type was created can be free in the solution.
+ * This class can be seen as a redex that abstracts over them and is then applied to some arguments.
+ * @param originalContext the free variables, initially context in which this type occurred
+ * @param container the mutable container of the solved object, initially empty
+ * @param sub the argument corresponding to the free variables, initially the identity
+ */
+sealed trait UnknownObject extends Object {
+  def originalContext: GlobalContext
+  def container: UnknownContainer
+  def sub: Substitution
+
+  override def toString = container.toString + (if (sub != null && !sub.isIdentity) "[" + sub + "]" else "")
+  def label = container.label
+  def children = if (sub == null) Nil else sub.children
+
   // overriding to avoid extremely slow recursion into the global context
   override def hashCode() = container.hashCode() + sub.hashCode()
   override def equals(that: Any) = {
     that match {
-      case that: UnknownType =>
-        this.container == that.container && this.sub == that.sub
+      case that: UnknownObject => this.container == that.container && this.sub == that.sub
       case _ => false
     }
   }
-  override def toString = container.toString + (if (sub != null && !sub.isIdentity) "[" + sub + "]"  else "")
-  def label = container.label
-  def children = if (sub == null) Nil else sub.children
+
   override def known = container.known
-  override def skipUnknown = if (!known) this else {
-    val sk = container.tp.skipUnknown
-    if (sub == null)
-      sk // only happens if unchecked content is reused after checking has solved a type
-    else
-      sk.substituteInType(sub)
-  }
-
-  /** solves the unknown type
-    * pre: if not null, t is relative to u.gc
+  /** solves the unknown object
+    * pre: if not null, o is relative to u.gc
     */
-  private[p] def set(t: Type): Unit = {
-    if (known)
-      throw IError("type already inferred")
-    if (container.tp == null) {
-      // println(s"solving $this as $t")
-      container.tp = t.skipUnknown
-    } else
-      container.tp match {
-        case u: UnknownType =>
-          u.set(t)
-        case _ => throw IError("impossible case")
-      }
+  private[p] def set(o: Object): Unit = {
+    if (known) throw IError("object already inferred")
+    if (container.obj == null) {
+      container.obj = o.skipUnknown
+    } else container.obj match {
+      case u: UnknownObject => u.set(o)
+      case _ => throw IError("impossible case")
+    }
   }
-
   /** pattern fragment: sub is a renaming of the free variables */
   def isSolvable = !known && sub.inverse.isDefined
-  def finite = if (known) skipUnknown.finite else false
 }
+
+case class UnknownType(originalContext: GlobalContext, container: UnknownContainer, sub: Substitution) extends Type with UnknownObject {
+  def finite = if (known) skipUnknown.finite else false
+  override def skipUnknown = if (!known) this else {
+    val sk = container.obj.skipUnknown.asInstanceOf[Type]
+    if (sub == null) sk // only happens if unchecked content is reused after solving
+    else sk.substituteInType(sub)
+  }
+}
+case class UnknownExpr(originalContext: GlobalContext, container: UnknownContainer, sub: Substitution) extends Expression with UnknownObject {
+  override def skipUnknown = if (!known) this else {
+    val sk = container.obj.skipUnknown.asInstanceOf[Expression]
+    if (sub == null) sk
+    else sk.substitute(sub)
+  }
+}
+
+// ***************** Types **************************************
 
 /** the type of instances of a theory */
 case class ClassType(domain: Theory) extends Type {
@@ -817,6 +838,24 @@ object SimpleFunType {
   }
 }
 
+/** easier syntax for working with function types; distinguishes () -> A and A */
+object PlainFunType {
+  /** argument name (if named) and type */
+  type Arg = (Option[String],Type)
+  def apply(ins: List[Arg], out: Type) = {
+    val vds = ins.map {case (nO,a) => nO.map(n => EVarDecl(n,a)).getOrElse(EVarDecl.anonymous(a))}
+    FunType(ExprContext.make(vds), out)
+  }
+  def unapply(tp: Type): Option[(List[Arg],Type)] = tp match {
+    case FunType(ins, out) =>
+      val args = Util.reverseMap(ins.variables) {in =>
+        val nO = if (in.anonymous) None else Some(in.name)
+        (nO, in.tp)
+      }
+      Some((args,out))
+    case _ => None
+  }
+}
 /** dependent sums/tuples
  */
 case class ProdType(comps: ExprContext) extends Type {
@@ -1007,6 +1046,7 @@ case class Lambda(ins: ExprContext, body: Expression, mayReturn: Boolean) extend
 }
 
 object Lambda {
+  def apply(vd: EVarDecl, bd: Expression): Lambda = Lambda(ExprContext(List(vd)), bd, false)
   /** makes a Lambda returnable */
   def allowReturn(e: Expression) = e match {
     case l:Lambda if !l.mayReturn => l.copy(mayReturn = true).copyFrom(l)
@@ -1021,12 +1061,12 @@ case class Application(fun: Expression, args: List[Expression]) extends Expressi
   override def toString = {
     fun match {
       case BaseOperator(o,_) => o.fixity match {
-        case Infix => args.mkString("(", " " + o.symbol + " ", ")")
+        case _:Infix => args.mkString("(", " " + o.symbol + " ", ")")
         case Prefix => o.symbol + args.mkString
         case Postfix => args.mkString + o.symbol
-        case Applyfix => args.head.toString + args.tail.mkString(o.symbol, ",", o.close)
-        case Circumfix => args.mkString(o.symbol, ",", o.close)
-        case Bindfix => args.head.toString + args(1).toString
+        case _:Applyfix => args.head.toString + args.tail.mkString(o.symbol, ",", o.close)
+        case _:Circumfix => args.mkString(o.symbol, ",", o.close)
+        case _:Bindfix => o.symbol + args.mkString("(",",",")")
         case Nullfix => fun.toString // args.isEmpty
       }
       case _ => fun.toString + args.mkString("(", ", ", ")")
@@ -1337,7 +1377,7 @@ case class BaseOperator(operator: Operator, tp: Type) extends Expression {
   * executing this is an error; but it type-checks against every type
   */
 case class UndefinedValue(tp: Type) extends Expression {
-  override def toString = "???"
+  override def toString = "???" + "[" + tp + "]"
   def label = "???"
   def children = List(tp)
 }
@@ -1530,32 +1570,12 @@ case class PseudoOperator(unfixed: UnfixedOperator, fixity: Fixity) extends Oper
   val symbol = unfixed.symbol
   def magicName: String = "_" + fixity.toString.toLowerCase + "_" + symbol
   def precedence = unfixed.precedence
-
   def toExpression = BaseOperator(this, Type.unknown()).withLocation(unfixed.loc)
-
-  def interpret(meaning: Expression, args: List[Expression]): Expression = {
-    fixity match {
-      case Bindfix =>
-        args match {
-          case List(l@Lambda(vd -: rest, bd, mr)) if !rest.empty =>
-            // curry multiple bindings into single ones
-            // TODO support non-associative binders like exists-unique
-            val bdI = interpret(meaning, List(Lambda(rest, bd, false)))
-            val lI = Lambda(ExprContext(List(vd)), bdI, mr).withLocationFromTo(vd, bd)
-            Application(meaning, List(lI))
-          case e => Application(meaning, args)
-        }
-      case Nullfix =>
-        if (args.nonEmpty) throw IError("nullfix with arguments")
-        meaning
-      case _ => Application(meaning, args)
-    }
-  }
 }
 
 /** built-in operator, may occur in checked syntax */
 sealed abstract class KnownOperator extends Operator {
-  def is(po: PseudoOperator) = po.symbol == symbol && po.fixity == fixity
+  def is(po: PseudoOperator) = po.symbol == symbol && po.fixity.getClass == fixity.getClass
   /** if the operator is ad hoc polymorphic, this should be overridden to infer the operator type
    * @param ins the argument types
    * @param cbs: a callback to compute the union of some types
@@ -1579,7 +1599,7 @@ sealed class InfixOperator(val symbol: String, val assoc: Associativity = NotAss
   def invertible = false
 
   override def arity = if (flexary) None else Some(2)
-  def fixity = Infix
+  def fixity = Infix(assoc)
   def flexary = assoc != NotAssociative
   def associative = assoc match {
     case Semigroup | Monoid(_) => true
