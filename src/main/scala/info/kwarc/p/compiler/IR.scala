@@ -180,6 +180,11 @@ case class IrFunType(ret: IrType, params: List[IrType]) extends IrType {
 object IrVoidType extends IrType {
   override def render(): String = "void"
 }
+
+object IrUnknownType extends IrType {
+  override def render(): String = ???
+}
+
 object IrVariadicType extends IrType {
   override def render(): String = "..."
 }

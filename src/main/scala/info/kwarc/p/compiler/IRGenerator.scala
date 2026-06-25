@@ -31,8 +31,11 @@ private class IRGenerator {
   private val globals: mutable.ArrayBuffer[IrGlobal] = mutable.ArrayBuffer()
   private val structs: mutable.ArrayBuffer[IrStruct] = mutable.ArrayBuffer()
   private val functions: mutable.ArrayBuffer[IrFun] = mutable.ArrayBuffer()
+
   private val nameCount: mutable.Map[String, Int] = mutable.Map().withDefaultValue(0)
+  private val prodStructName: mutable.Map[List[IrType], String] = mutable.Map()
   private var scopes: List[VariableScope] = List(VariableScope(List()))
+
   private var ctx: FunctionContext = _
 
   private def getAllocatedVariable(n: String): IrVar = scopes.find(_.variables.exists(_.name == n)).map(_.variables.find(_.name == n).get).getOrElse(throw new RuntimeException(s"Variable $n not found")).irValue
@@ -275,11 +278,30 @@ private class IRGenerator {
       // Initializes the expression declared by this instance
       theory.decls.foreach { case ExprDecl(name, _, _, Some(exp), _, _) => val fieldIndex = exprDecls.indexWhere(_
         .name == name)
-        storeField(struct, structPtr, exp, fieldIndex)
+        storeField(struct, structPtr, apply(exp), fieldIndex)
       case _ =>
       }
 
       structPtr
+    case Tuple(comps) =>
+      val values = comps.map(apply)
+      val struct = findProdStruct(values.map(a => a.tp))
+      val size = IrVar(IrIntType.I64, fresh("size"))
+      ctx.emit(IrComputeSize(size, struct))
+
+      val structPtr = IrVar(IrPtrType(struct), fresh("struct_ptr"))
+      ctx.emit(IrCall(Some(structPtr), IrFunctionRef(mallocFun), List(size)))
+
+      // Initializes the tuple values
+      values.zipWithIndex.foreach { case (vl, fieldIndex) => storeField(struct, structPtr, vl, fieldIndex)}
+      structPtr
+    case Projection(tuple, index) =>
+      val structPtr = apply(tuple)
+      val struct = structPtr.tp match {
+        case IrPtrType(s: IrStruct) => s
+      }
+      // Projection indices start at 1, but llvm struct fields are 0 indexed
+      loadField(struct, structPtr, index - 1)
   }
 
   private def applyField(fieldVar: IrValue, args: List[Expression])(implicit gc: GlobalContext): IrVar = {
@@ -308,11 +330,10 @@ private class IRGenerator {
     s"${name}_$c"
   }
 
-  private def storeField(struct: IrStruct, structPtr: IrValue, exp: Expression, fieldIndex: Int)(implicit
-    gc: GlobalContext): Unit = {
+  private def storeField(struct: IrStruct, structPtr: IrValue, op: IrValue, fieldIndex: Int): Unit = {
     val fieldPtr = IrVar(IrPtrType(struct), fresh(s"field_${fieldIndex}_ptr"))
     ctx.emit(IrGetElement(fieldPtr, struct, structPtr, List(0, fieldIndex)))
-    ctx.emit(IrStore(apply(exp)(gc), fieldPtr))
+    ctx.emit(IrStore(op, fieldPtr))
   }
 
   private def loadField(struct: IrStruct, structPtr: IrValue, fieldIndex: Int): IrVar = {
@@ -342,7 +363,7 @@ private class IRGenerator {
       ctx.insertBlock(ctx.newBlock("entry"))
 
       df.decls.foreach { case e@ExprDecl(_, _, _, Some(exp), _, _) => val fieldIndex = exprDecls.indexOf(e)
-        storeField(struct, structArg, exp, fieldIndex)(gcI)
+        storeField(struct, structArg, apply(exp)(gcI), fieldIndex)
       case _ =>
       }
       ctx.emit(IrReturnVoid)
@@ -362,7 +383,7 @@ private class IRGenerator {
       ctx.insertBlock(ctx.newBlock("entry"))
 
       df.decls.foreach { case e@ExprDecl(_, _, _, Some(exp), _, _) => val fieldIndex = exprDecls.indexOf(e)
-        storeField(struct, structGlobal, exp, fieldIndex)(gcI)
+        storeField(struct, structGlobal, apply(exp)(gcI), fieldIndex)
       case _ =>
       }
       ctx.emit(IrReturnVoid)
@@ -478,11 +499,33 @@ private class IRGenerator {
       case _: NumberType => IrIntType.I64
       case FunType(ins, out) => IrFunType(llvmType(out), ins.variables.map(v => llvmType(v.tp)))
       case ClassType(dom) => IrPtrType(IrStruct(mainTheoryPath(dom).toString, Nil))
-      case EmptyType => IrVoidType
+      case ProdType(ExprContext(Nil)) => IrVoidType
       case u: UnknownType if u.known => llvmType(u.skipUnknown)
       case StringType => IrPtrType(IrConstChar(0))
+      case ProdType(c) => IrPtrType(findProdStruct(c.variables.reverse.map(v => llvmType(v.tp))))
       case _ => throw new IllegalArgumentException(s"Unsupported type: $tp")
     }
+  }
+
+  private def reduceTypeInfo(tp: IrType) = tp match {
+    case _: IrPtrType => IrPtrType(IrUnknownType)
+    case _: IrFunType => IrPtrType(IrUnknownType)
+    case _ => tp
+  }
+
+  private def findProdStruct(types: List[IrType]): IrStruct = {
+    // We reduce the type pointer type information to treat all pointers the same.
+    // We don't need to create different structs for them.
+    val reduced = types.map(reduceTypeInfo)
+
+    val name = prodStructName.getOrElseUpdate(reduced, {
+      val freshName = fresh("__prod_type")
+      structs += IrStruct(freshName, reduced)
+      freshName
+    })
+
+    // The struct we return should use the original types, because this type info is still useful during IR generation.
+    IrStruct(name, types)
   }
 
   private def mainTheoryPath(theory: Theory): Path = { // The first include of a theory should always be the 'class
