@@ -2,7 +2,8 @@ package info.kwarc.p.compiler
 
 import info.kwarc.p._
 
-import scala.sys.process.Process
+import java.io.{ByteArrayOutputStream, PrintStream}
+import scala.sys.process.{Process, ProcessLogger}
 
 /** A simple test framework to check that the compiler and interpreter produce the same output.
   * It currently checks the toString result of the Interpreter against the output code from executing the binary
@@ -33,15 +34,17 @@ object Test {
           val prog = Program(voc, eC)
 
           try {
-            val compilerResult = compileAndRun(prog)
-            val interpreterResult = interpret(prog)
+            val (compilerResult, compilerStdout) = compileAndRun(prog)
+            val (interpreterResult, interpreterStdout) = interpret(prog)
 
             if (compilerResult != interpreterResult) {
-              System.err.println(
-                s"$p failed (compiler and interpreter output differ):"
-              )
-              System.err.println(s"Compiler output: $compilerResult")
-              System.err.println(s"Interpreter output: $interpreterResult")
+              System.err.println(s"$p failed (compiler and interpreter result differ):")
+              System.err.println(s"Compiler result: $compilerResult")
+              System.err.println(s"Interpreter result: $interpreterResult")
+            } else if (compilerStdout != interpreterStdout) {
+              System.err.println(s"$p failed (compiler and interpreter output differ):")
+              System.err.println(s"Compiler output: \"$compilerStdout\"")
+              System.err.println(s"Interpreter output: \"$interpreterStdout\"")
             } else {
               println(s"$p passed successfully.")
             }
@@ -57,19 +60,28 @@ object Test {
       }
   }
 
-  def compileAndRun(prog: Program): String = {
+  def compileAndRun(prog: Program): (String, String) = {
     LLVMCompiler.run(prog, TMP_FILE, printDebug = false)
-    val exitCode = Process(
-      Seq(
-        s"./${TMP_FILE.toString}"
-      )
-    ).!.toString
+    val stdout = new StringBuilder
+
+    val logger = ProcessLogger(
+      (out: String) => stdout.append(out).append("\n"),
+      (err: String) => System.err.println(err)
+    )
+
+    val exitCode = Process(Seq(s"./${TMP_FILE.toString}")).!(logger).toString
     TMP_FILE.toJava.delete()
-    exitCode
+    (exitCode, stdout.toString)
   }
 
-  def interpret(prog: Program): String = {
-    val (_, r) = Interpreter.run(prog)
-    r.toString
+  def interpret(prog: Program): (String, String) = {
+    val stdout = new ByteArrayOutputStream()
+    val ps = new PrintStream(stdout)
+
+    Console.withOut(ps) {
+      val (_, r) = Interpreter.run(prog)
+      ps.flush()
+      (r.toString, stdout.toString)
+    }
   }
 }

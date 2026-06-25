@@ -1,3 +1,3 @@
 source: ./../../../../../lib/
 source: .
-main: builtincall.callPrint()
+main: callPrint()
