@@ -8,14 +8,7 @@ object CoreFragmentChecker extends Traverser[CoreFragmentContext] {
 
   override def apply(exp: Expression)(implicit gc: GlobalContext, ctx: CoreFragmentContext): Expression = {
     val nCtx = ctx.copy(declared = false)
-    matchC(exp) { case _: Lambda => if (!ctx.declared) {
-      throw fail(s"Anonymous lambda: '$exp'")
-    }
-      applyDefault(exp)(gc, nCtx.copy(inLambda = true))
-    case _: Instance => if (!ctx.declared) {
-      throw fail(s"Anonymous theory: '$exp'")
-    }
-      applyDefault(exp)(gc, nCtx)
+    matchC(exp) { case _: Lambda => applyDefault(exp)(gc, nCtx.copy(inLambda = true))
     case _: ClosedRef => if (ctx.inLambda) {
       throw fail(s"Closed reference in lambda: '$exp'")
     }

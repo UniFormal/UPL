@@ -22,7 +22,7 @@ object IRGenerator {
 }
 
 case class Variable(name: String, irValue: IrVar)
-case class VariableScope(var variables: List[Variable] = List())
+case class VariableScope(var variables: List[Variable] = Nil)
 
 private class IRGenerator {
   private val mallocFun = IrDeclFun("malloc", IrFunType(IrPtrType(IrIntType.I64), List(IrIntType.I64)))
@@ -194,20 +194,22 @@ private class IRGenerator {
             op_result
           }
       }
-      case o: OpenRef => applyField(loadOpenRef(o), args)
-      case o: ClosedRef => applyField(loadClosedRef(o), args)
-      case o: OwnedExpr => applyField(loadOwnedExpr(o), args)
+      case o: OpenRef => applyField(apply(o), args)
+      case o: ClosedRef => applyField(apply(o), args)
+      case o: OwnedExpr => applyField(apply(o), args)
+      case o: VarRef => applyField(apply(o), args)
     }
     case o: OpenRef => loadOpenRef(o)
     case r: ClosedRef => loadClosedRef(r)
     case o: OwnedExpr => loadOwnedExpr(o)
+    case o: VarRef => loadVarRef(o)
     case Lambda(ins, body, _) => val prevCtx = ctx
       ctx = new FunctionContext
       ctx.insertBlock(ctx.newBlock("entry"))
       val params = ins.variables.reverse
       val arguments = params.map(v => IrArgument(llvmType(v.tp), v.name))
 
-      scopes ::= VariableScope(Nil)
+      scopes ::= VariableScope()
       arguments.foreach { a =>
         val allocatedVar = IrVar(IrPtrType(a.tp), fresh(s"alloc_arg_${a.name}"))
         ctx.emitFirst(IrAlloca(allocatedVar))
@@ -226,7 +228,7 @@ private class IRGenerator {
       ctx = prevCtx
       IrFunctionRef(lambdaFun)
     case Block(exprs) =>
-      scopes ::= VariableScope(Nil)
+      scopes ::= VariableScope()
       val result = if (exprs.nonEmpty) {
         exprs.dropRight(1).foreach { e => apply(e) }
         apply(exprs.last)
@@ -236,14 +238,6 @@ private class IRGenerator {
       }
       scopes = scopes.tail
       result
-    case VarRef(n) =>
-      val allocatedVariable = getAllocatedVariable(n)
-      allocatedVariable.tp match {
-        case tp: IrPtrType => val result = IrVar(tp.to, fresh(n))
-          ctx.emit(IrLoad(result, allocatedVariable))
-          result
-        case _ => ???
-      }
     case Return(exp, false) =>
       val value = apply(exp)
       ctx.emit(value.tp match {
@@ -462,6 +456,16 @@ private class IRGenerator {
     loadField(struct, structGlobal, fieldIndex)
   }
 
+  private def loadVarRef(o: VarRef)(implicit gc: GlobalContext): IrValue = {
+    val allocatedVariable = getAllocatedVariable(o.name)
+    allocatedVariable.tp match {
+      case tp: IrPtrType => val result = IrVar(tp.to, fresh(o.name))
+        ctx.emit(IrLoad(result, allocatedVariable))
+        result
+      case _ => ???
+    }
+  }
+
   private def loadBuiltin(name: String): IrFun = {
     val definition = builtins.Builtins.find(x => x.name == name)
       .getOrElse(throw new NotImplementedError(s"builtin $name doesn't have a signature"))
@@ -503,6 +507,7 @@ private class IRGenerator {
       case u: UnknownType if u.known => llvmType(u.skipUnknown)
       case StringType => IrPtrType(IrConstChar(0))
       case ProdType(c) => IrPtrType(findProdStruct(c.variables.reverse.map(v => llvmType(v.tp))))
+      case OwnedType(_, _, owned) => llvmType(owned)
       case _ => throw new IllegalArgumentException(s"Unsupported type: $tp")
     }
   }
