@@ -2,13 +2,12 @@ Questions:
 
 general:
 
-!!! how to do function notation with three or more args and implicit args?
-for example requal (3 args) and tequal (A is implicit). (equality.p line 31 and line 50)
+!!! what to do with mmt files that use ur?xxx or diagram?
+(see fundamentals/informal.mmt for ur?xxx
+and base_language_translations.mmt for diagram)
 
-!!! typechecker slow / not working. especially for structs
-in pl.p: show impl_order with defs missing (comment line 197-200)
-show in axiom that variable type is not shown when too much loaded
-(do proofirrelev line 212, should work if everything else is commented)
+todo: 
+change notation once implicit args are possible
 
 ------------------------------------------------------
 
@@ -29,7 +28,7 @@ fol.p line 128 - 153
 
 logic:
 
-!!! pl.p line 50 can I do "true: prop" here?
+!!! pl.p line 50 can I do "true: prop" here? no
 !!! nullfix doesn't work
 
 !!! fol.p line 4. does ∀ᵘ work as notation? 
