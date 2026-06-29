@@ -70,12 +70,12 @@ object BackendTests {
     proj = FrameITProject(path)
     val voc = proj.check(true)
     val gc = GlobalContext(voc)
-    val tS = Solver.solve(gc, OpenRef(Path("slingshot_example", "Slingshot_test")))
-    Solver.printAsTheory("Result", tS.decls)
-    add(tS.decls.mkString("\n"))
-    proj.checkErrors()
-    add("i:int=0")
-    println(showSiTh)
+    val tS = Solver.solve(gc, OpenRef(Path("Slingshot", "Slingshot_test")))
+//    Solver.printAsTheory("Result", tS.decls)
+//    add(tS.decls.mkString("\n"))
+//    proj.checkErrors()
+//    add("i:int=0")
+//    println(showSiTh)
   }
 
   /** private, so scala.js doesn't need to see [[File]] */
