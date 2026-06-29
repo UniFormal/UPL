@@ -760,7 +760,7 @@ class Checker(errorHandler: ErrorHandler) {
           case (rC: Ref, m: Module) if !hasArgs =>
             // module ref, interpret as class type
             if (!m.closed) reportError("open module not a type")
-            checkType(gc, ClassType(rC))
+            checkType(gc, ClassType(rC).copyFrom(rC))
           case _ => fail("not a type")
         }
       case oo: OwnedObject =>
@@ -1814,7 +1814,7 @@ class Checker(errorHandler: ErrorHandler) {
             val popE = FlatOwnedObject.makeExpr(owners, ed.toRef).withLocation(popLoc)
             ed.ntO.get.fixity.elaborate(popE, args)
           case None =>
-            fail("no constant with appropriate notation found: " + pop.symbol)
+            fail(s"no constant with appropriate notation found for ${pop.fixity} operator: " + pop.symbol)
         }
       case _: UnknownType =>
         gc.lookupRegionalByNotation(pop, aI::args.tail.map(_ => null), null) match {
@@ -2027,16 +2027,16 @@ class Checker(errorHandler: ErrorHandler) {
   def inferOperator(gc: GlobalContext,op: KnownOperator, ins: List[Type], out: Option[Type])(implicit cause: Expression): FunType = {
     op.arity.foreach {a =>
       if (ins.length != a)
-        fail(s"Wrong number of arguments for operator ${op.symbol}")
+        fail(s"wrong number of arguments for ${op.symbol}")
     }
     val insS = ins.map(_.skipUnknown)
     val outS = out.map(_.skipUnknown).getOrElse(Type.unknown(gc))
     val cbs = new infCBs(gc)
     val ft = op.typeFor(insS, outS, cbs).getOrElse {
-      fail(s"No matching type for operator ${op.symbol}")
+      fail(s"no matching type for ${op.symbol}")
     }
     val assignments = matchTypes(SimpleFunType(insS,outS), ft, BiContext(Nil))(gc, Some(false)).value.getOrElse {
-      fail(s"Ill-typed operator. Expected ${SimpleFunType(insS,outS)}, but ${op.symbol} has type ${ft}")
+      fail(s"ill-typed operator (the context indicates ${SimpleFunType(insS,outS)}; operator inference returned ${ft})")
     }
     assignAsMatched(gc,assignments)
     ft

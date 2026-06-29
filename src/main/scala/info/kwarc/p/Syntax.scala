@@ -174,17 +174,18 @@ sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
   def tpSep: String // ":", "<", ...
   override def toString = {
     var paramsS = ""
-    var inTpVars: Option[Boolean] = None
+    var inVars: Option[Boolean] = None
     params.variables.reverse.foreach {
       case td: TVarDecl =>
-        val sep = if (inTpVars.contains(true)) "," else if (inTpVars.contains(false)) ")@(" else "@("
+        val sep = if (inVars.contains(true)) "," else if (inVars.contains(false)) ")@(" else "@("
         paramsS += sep + td.name
-        inTpVars = Some(true)
+        inVars = Some(true)
       case ed: EVarDecl =>
-        val sep = if (inTpVars.contains(true)) ")(" else if (inTpVars.contains(false)) "," else "("
+        val sep = if (inVars.contains(true)) ")(" else if (inVars.contains(false)) "," else "("
         paramsS += sep + ed.toString
-        inTpVars = Some(false)
+        inVars = Some(false)
     }
+    if (inVars.isDefined) paramsS += ")"
     val tpS = if (tp == null || tp == AnyType) "" else " " + tpSep + " " + tp.toString
     val dfOS = dfO match {
       case Some(t) => " = " + t
@@ -783,17 +784,13 @@ object NumberType {
 }
 
 /** interval of integers, unbounded if bounds absent, including lower and upper bound if present */
-case class IntervalType(lower: Option[Expression], upper: Option[Expression])
-  extends Type {
-  private def boundString(e: Option[Expression]) =
-    e.map(_.toString).getOrElse("")
+case class IntervalType(lower: Option[Expression], upper: Option[Expression]) extends Type {
+  private def boundString(e: Option[Expression]) = e.map(_.toString).getOrElse("")
   override def toString = s"int[${boundString(lower)};${boundString(upper)}]"
   def label = "int"
   def children = lower.toList ::: upper.toList
   def finite = lower.isDefined && upper.isDefined
-  def concrete = lower.forall(_.isInstanceOf[NumberValue]) && upper.forall(
-    _.isInstanceOf[NumberValue]
-  )
+  def concrete = lower.forall(_.isInstanceOf[NumberValue]) && upper.forall(_.isInstanceOf[NumberValue])
 }
 
 object IntervalType {
@@ -1380,7 +1377,7 @@ case class UndefinedValue(tp: Type) extends Expression {
   *               unnamed output variables are the target of return statements
   */
 case class EVarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean, output: Boolean) extends Expression with VarDecl with TypedDeclaration {
-  def keyword = if (mutable) Keywords.mutableVarDecl else Keywords.varDecl
+  def keyword = if (mutable) Keywords.mutableVarDecl + " " else ""
   override def toString = {
     val sep = if (output) "#" else ":"
     val tpS = if (tp == null) "???" else tp.toString
@@ -1388,7 +1385,7 @@ case class EVarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Bo
       case Some(v) => " = " + v.toString
       case None    => ""
     }
-    s"$keyword $name$sep $tpS$vlS"
+    s"$keyword$name$sep $tpS$vlS"
   }
   def children = tp :: dfO.toList
   def toSub = EVarDecl.sub(name, toRef)
@@ -1726,7 +1723,7 @@ case object Power extends InfixOperator("^", RightAssociative) {
       case _ => N
     }
     var ret = baseType
-    if ((baseType.negative && expType.fractional) || baseType.imaginary || expType.imaginary) ret = ret.copy(imaginary = true)
+    if (baseType.negative && expType.fractional) ret = ret.copy(imaginary = true)
     if (expType.negative) ret = ret.copy(fractional = true)
     if (expType.fractional) ret = ret.copy(approximate = true)
     Some(SimpleFunType(List(baseType, expType), ret))

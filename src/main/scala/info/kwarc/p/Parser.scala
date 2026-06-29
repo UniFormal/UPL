@@ -254,22 +254,20 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     finally {trialRun = trialRunBefore}
   }
 
-  /** Generate a [[Location]] between `from` and `toD` without whitespace */
-  def makeRef(from: Int, toD: Int = index) = {
-    var to = toD // the end of the source region (exclusive)
-    while (to > 0 && input(to-1).isWhitespace) to -= 1 // remove trailing whitespace from source region
-    Location(origin, from, to)
-  }
-  /** Parse a [[SyntaxFragment]], and assign its [[Location]] */
+  /** generate a [[Location]] */
+  def makeRef(from: Int, to: Int) = Location(origin, from, to)
+
+  /** parse a [[SyntaxFragment]], and set [[Location]] */
   def addRef[A<:SyntaxFragment](sf: => A): A = {
     trim
     val from = index
     val a = sf
     setRef(a, from)
-    a
   }
+
   def setRef(sf: SyntaxFragment, from: Int): sf.type = {
-    sf.loc = makeRef(from)
+    val to = trimLeft(index, from)
+    sf.loc = makeRef(from,to)
     sf
   }
 
@@ -336,6 +334,37 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       }
     }
     newlineSeen
+  }
+
+  // first character of preceding comment on the same line, if any
+  private def commentStartBetween(from: Int, to: Int): Option[Int] = {
+     var i = to
+     while (i > from) {
+       if (input.codePointAt(i) == '\n') return None
+       if (input.codePointAt(i) == '/' && i>from && input.codePointAt(i-1) == '/') {
+         i -= 1
+         while (i>from && input.codePointAt(i) == '/') i -= 1
+         return Some(i+1)
+       }
+       i -= 1
+     }
+     None
+  }
+
+  // reduce to skip all whitespace and comments
+  def trimLeft(currently: Int, atMostTo: Int = 0): Int = {
+     if (currently == atMostTo) return currently
+     var i = currently-1 // currently is exclusive
+     while (i>atMostTo) {
+       if (Character.isWhitespace(input.codePointAt(i))) i -= 1
+       else {
+         commentStartBetween(atMostTo,i) match {
+           case None => return i+1
+           case Some(c) => if (c == 0) i = 0 else i = c-1
+         }
+       }
+     }
+     i+1 // make exclusive again
   }
 
   /** the whitespace before the current index contains a newline */
@@ -806,7 +835,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   }
   // needed because addRef does not work with return-statements
   private def parseExpressionInner(implicit ctxs: PContext): Expression = {
-    // val upcoming = input.substring(index,Math.min(index+10,inputLength)) // for debugging
+    //val upcoming = println(input.substring(index,Math.min(index+10,inputLength))) // only for debugging
     val veryEagerly = ctxs.copy(eager = Some(true))
     val eagerly = ctxs.copy(eager = None)
     val lazily = ctxs.copy(eager = Some(false))
@@ -1144,7 +1173,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         stopPostops()
       }
       // non-bracket postops that can still be applied after a postifx operator and therefore prevent infix operators
-      val weakBindingPostops = List("catch", "match", "->", ".")
+      val weakBindingPostops = List("catch", "match", "->")
       while (takePostops) {
         trim
         // properties of exp that are used to determine whether certain postifes are available
@@ -1252,7 +1281,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           reduceInfixes()
           // if the LHS of -> had been bracketed, this would already have been parsed above
           if (ctxs.inType) {
-            val lhs = expressionToType(exp).getOrElse(UnivType(exp,null))
+            val lhs = expressionToType(exp).getOrElse(univType(exp))
             val ins = ExprContext.make(List(EVarDecl.anonymous(lhs))).copyFrom(lhs)
             val rhs = parseType
             val ftp = UndefinedValue(FunType(ins, rhs))
@@ -1269,7 +1298,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
             modifyExp(expM)
           }
         } else if (ctxs.inType && startsWithS("?")) {
-          val tp = expressionToType(exp).getOrElse(UnivType(exp,null))
+          val tp = expressionToType(exp).getOrElse(univType(exp))
           val tpM = UndefinedValue(CollectionKind.Option(tp))
           modifyExp(tpM)
         } else if (!ctxs.inType && startsWithAny("match","catch")) {
@@ -1306,7 +1335,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           val beforeOps = index
           while (parseOps) {
             trim
-            if (endOfTermPassed || startsWithTerminator || startsWithAny(weakBindingPostops:_*)) {
+            // e!.a --> ! is postfix, . is deref; e! .a --> ! is infix, . is root
+            if (endOfTermPassed || startsWithTerminator || startsWithAny(weakBindingPostops:_*) || (!whitespaceBefore && next == '.')) {
               parseOps = false; termEnds = true
             }
             else parseOperator match {
@@ -1500,8 +1530,9 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       rest = rest.tail
     }
     // before (a1 o) ... (an o) | after   ---> before (args e o) | after
-    @inline def reduce(o: PseudoOperator, e: Expression) = {
+    @inline def reduce(e: Expression) = {
       var args = List(e)
+      val o = shifted.head._2
       while (shifted.nonEmpty && shifted.head._2.symbol == o.symbol) {
         args ::= shifted.head._1
         shifted = shifted.tail
@@ -1512,8 +1543,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
       rest match {
         case Nil =>
           // reduce on the right
-          val (_,o) = shifted.head
-          last = reduce(o,last)
+          last = reduce(last)
         case (e2,o2) :: tl =>
           if (shifted.isEmpty) {
             shift
@@ -1526,9 +1556,8 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
               shift
             } else if (p1 <= p2) {
               // o1 binds at least as tightly as o2: reduce o1 first
-              val o1Applied = reduce(o1,e2)
-              shifted ::= (o1Applied,o2)
-              rest = tl
+              val o1Applied = reduce(e2)
+              rest = (o1Applied,o2) :: tl
             } else {
               // o2 binds more tightly: shift
               shift
@@ -1546,38 +1575,42 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
   // The expression parser uses UndefinedValue(tp) to represent a type and handles all type parsing along the way.
   def parseType(implicit ctxs: PContext): Type = {
     val exp = parseExpression(ctxs.copy(inType = true))
-    val tp = expressionToType(exp).getOrElse {
+    expressionToType(exp).getOrElse {
       reportError("type expected", from = exp.loc.from)
-      AnyType
+      AnyType.copyFrom(exp)
     }
-    tp.copyFrom(exp)
   }
-  private def expressionToType(exp: Expression): Option[Type] = exp match {
-    case UndefinedValue(t) => Some(t)
-    case exp: ClosedRef =>
-      val t = exp.name match {
-        case "nat" => NumberType.Nat
-        case "int" => NumberType.Int
-        case "rat" => NumberType.Rat
-        case "comp" => NumberType.RatComp
-        case "float" => NumberType.Float
-        case "string" => StringType
-        case "bool" => BoolType
-        case "empty" => EmptyType
-        case "exn" => ExceptionType
-        case "any" => AnyType
-        case _ => exp
-      }
-      Some(t)
-    case r: Ref => Some(r)
-    case r: AppliedRef => Some(r)
-    case Application(MaybeAppliedRef(r,tpargs,Nil), es) => Some(MaybeAppliedRef(r,tpargs,es))
-    // Any other expression, we coerce into a type.
-    // This coercion should happen during type-checking (and it does for Refs and OwnedType(_,_,Ref)),
-    // but because it changes Scala-type, we have to do it here already.
-    case _: Application | _: Projection | _: ListElem => Some(UnivType(exp, null))
-    case _ => None
+  private def expressionToType(exp: Expression): Option[Type] = {
+    val tpO = exp match {
+      case UndefinedValue(t) => Some(t)
+      case exp: ClosedRef =>
+        val t = exp.name match {
+          case "nat" => NumberType.Nat
+          case "int" => NumberType.Int
+          case "rat" => NumberType.Rat
+          case "comp" => NumberType.RatComp
+          case "float" => NumberType.Float
+          case "string" => StringType
+          case "bool" => BoolType
+          case "empty" => EmptyType
+          case "exn" => ExceptionType
+          case "any" => AnyType
+          case _ => exp
+        }
+        Some(t)
+      case r: Ref => Some(r)
+      case r: AppliedRef => Some(r)
+      case Application(MaybeAppliedRef(r,tpargs,Nil), es) => Some(MaybeAppliedRef(r,tpargs,es))
+      // Any other expression, we coerce into a type.
+      // This coercion should happen during type-checking (and it does for Refs and OwnedType(_,_,Ref)),
+      // but because it changes Scala-type, we have to do it here already.
+      case _: Application | _: Projection | _: ListElem => Some(univType(exp))
+      case _ => None
+    }
+    tpO.foreach(_.copyFrom(exp))
+    tpO
   }
+  private def univType(e: Expression) = UnivType(e,null).copyFrom(e)
 }
 
 object Keywords {
