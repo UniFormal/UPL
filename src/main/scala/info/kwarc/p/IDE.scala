@@ -211,7 +211,7 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
     val (gc,sf) = proj.fragmentAt(loc).getOrElse(return null)
     // return new Hover("line: " + pos.line + "; character: " + pos.character + "\n" + sf.toStringShort + " " + sf.loc)
     val hov = sf match {
-      case r: Ref => gc.lookupRef(r).getOrElse(return null) match {
+      case r: Ref => gc.lookupRef(r).getOrElse(return new Hover("???")) match {
         case sd: SymbolDeclaration => sd.toString
         case _: Module => "module"
         case vd: VarDecl => vd.toString
@@ -222,6 +222,7 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
         try {new Checker(ErrorThrower).inferCheckedExpression(gc,e).toString}
         catch {case e: PError => "inference error: " + e.getMessage}
       case tp: Type => tp.toString
+      case eD: ExprDecl => eD.toStringShort
       case _ => return null // sf.toString
     }
     new Hover(hov)

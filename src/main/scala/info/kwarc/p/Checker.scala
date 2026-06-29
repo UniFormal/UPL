@@ -2027,16 +2027,16 @@ class Checker(errorHandler: ErrorHandler) {
   def inferOperator(gc: GlobalContext,op: KnownOperator, ins: List[Type], out: Option[Type])(implicit cause: Expression): FunType = {
     op.arity.foreach {a =>
       if (ins.length != a)
-        fail("wrong number of arguments")
+        fail(s"Wrong number of arguments for operator ${op.symbol}")
     }
     val insS = ins.map(_.skipUnknown)
     val outS = out.map(_.skipUnknown).getOrElse(Type.unknown(gc))
     val cbs = new infCBs(gc)
     val ft = op.typeFor(insS, outS, cbs).getOrElse {
-      fail("no matching type for operator")
+      fail(s"No matching type for operator ${op.symbol}")
     }
     val assignments = matchTypes(SimpleFunType(insS,outS), ft, BiContext(Nil))(gc, Some(false)).value.getOrElse {
-      fail("ill-typed operator of type " + ft)
+      fail(s"Ill-typed operator. ${op.symbol} does not have type $ft")
     }
     assignAsMatched(gc,assignments)
     ft

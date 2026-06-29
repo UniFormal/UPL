@@ -13,7 +13,8 @@ trait SyntaxFragment {
   }
   def toStringShort: String = {
     val s = toString
-    s.take(Math.min(30,s.length))
+    if (s.length <= 50) s
+    else s.take(50-3) + "..."
   }
   /** moves over mutable fields, may be called after performing traversals
    * if the resulting expression is "the same" as the original in some sense
