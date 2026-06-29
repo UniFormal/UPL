@@ -234,7 +234,7 @@ module Basic {
 
   // run-time tests
   u = {ASSERT(1+1,2); true} // aborts on unexpected results
-  norm: (float,float) -> float = (x,y) -> CAST(float, (x^2 + y^2)^0.5) // the infered type is complex
+  norm: (float,float) -> float = (x,y) -> CAST(float, (x^2 + y^2)^(1/2)) // the infered type is complex
   
   // Variable declarations can occur inside other expressions, in which case they evaluate to their initial value.
   deepBinding1 = {factorial(factorial(val n = 3)); n+1} == 4
