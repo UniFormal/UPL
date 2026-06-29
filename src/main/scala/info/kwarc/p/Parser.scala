@@ -911,6 +911,16 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           (es(0),es(1))
         }
         Assert(test,Type.unknown(),expected)
+      } else if (!ctxs.inType && startsWithS("Cast")) {
+        trim
+        skip("(")
+        val e = parseExpression
+        trim
+        skip(",")
+        val t = parseType
+        trim
+        skip(")")
+        Cast(e,t)
       } else if (!ctxs.inType && allowS && startsWithS("while")) {
         val c = parseBracketedExpression
         val b = parseExpression(doAllowS)

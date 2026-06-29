@@ -1048,17 +1048,7 @@ class Checker(errorHandler: ErrorHandler) {
           case None if r.isInstanceOf[VarRef] => r // ToDo when checking ExprContexts gc isn't updated => VarRefs are not found
           case None => fail("unknown identifier")(exp)
         }
-        // Expressions that certainly don't belong into a type
-        case Assert(_,_,_) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
-        case Assign(target, value) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
-        case Block(exprs) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
-        case IfThenElse(cond, thn, els) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
-        case Match(expr, cases, handler) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
-        case MatchCase(context, pattern, body) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
-        case For(vd, range, body) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
-        case While(cond, body) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
-        case Return(exp, thrw) => fail(s"found ${exp.getClass.getSimpleName} expression in type")(exp)
-        // ToDo: Add special rules
+        // TODO: Add special rules
         case _ => applyDefault(exp)
       }
     override def apply(tp: Type)(implicit gc: GlobalContext, a:Unit): Type = {
@@ -1575,6 +1565,15 @@ class Checker(errorHandler: ErrorHandler) {
             if (alsoCheck) checkExpressionPure(gc, eq, BoolType) else eq
           }
           (Assert(tC,tpC,eC), BoolType)
+        case Cast(e,t) =>
+          val (eC,eI) = inferExpression(gc,e)
+          val tC = checkType(gc,t)
+          (eI,tC) match {
+            case (n1: NumberType,n2:NumberType) =>
+            case (c1: CollectionType, c2: CollectionType) =>
+            case _ => reportError("cast cannot succeed or not supported")
+          }
+          (Cast(eC,tC), tC)
         case EVarDecl(n, tp, dfO, mut, output) =>
           if (alsoCheck) {
             val tpC = checkType(gc, tp)

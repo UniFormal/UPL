@@ -1156,6 +1156,13 @@ case class Assert(test: Expression, tp: Type, expected: Expression) extends Expr
   def children = List(test,tp,expected)
 }
 
+/** unsafe run-time cast, possibly throwing exception */
+case class Cast(exp: Expression, tp: Type) extends Expression {
+  override def toString = s"As($exp, $tp)"
+  def label = "as"
+  def children = List(exp,tp)
+}
+
 /*
 case class Using(hints: List[Expression]) extends Expression {
   override def toString = "using " + hints.mkString(", ")
@@ -1184,7 +1191,11 @@ case class NumberValue(override val tp: NumberType, re: Real, im: Real) extends 
   }
   def valid = re.valid && im.valid
   def normal = re.normal && im.normal
-  def normalize = if (normal) this else NumberValue(tp, re.normalize, im.normalize)
+  def normalize = if (normal) this else NumberValue(minimalType, re.normalize, im.normalize)
+  def minimalType = NumberType(
+               negative = re.negative || im.negative, fractional = !re.integer || !im.integer,
+               imaginary = !im.zero,                  approximate = re.approximate || im.approximate,
+               infinite = re.infinite || im.infinite)
   def zero = re.zero && im.zero
   def positive = re.positive && im.positive
   def integer = re.integer && im.integer
@@ -1266,6 +1277,7 @@ sealed abstract class Real {
   def positive = !zero && !negative
   def integer: Boolean
   def natural: Boolean
+  def approximate: Boolean
 }
 object Real {
   val b0 = BigInt(0)
@@ -1292,6 +1304,7 @@ case class ApproxReal(value: Double) extends Real {
   def negative = value < 0
   def integer = false
   def natural = false
+  def approximate = true
 }
 case class Rat(enu: BigInt, deno: BigInt) extends Real {
   override def toString = {
@@ -1339,6 +1352,7 @@ case class Rat(enu: BigInt, deno: BigInt) extends Real {
   def negative = (enu > 0 && deno < 0) || (enu < 0 && deno > 0)
   def integer = normalize.deno == 1
   def natural = integer && !negative
+  def approximate = false
 }
 
 /** elements of [[StringType]] */

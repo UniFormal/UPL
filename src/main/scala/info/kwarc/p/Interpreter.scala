@@ -450,6 +450,14 @@ class Interpreter(vocInit: TheoryValue) {
           false
         } else true
         BoolValue(r)
+      case Cast(e,t) =>
+        val eI = interpretExpression(e)
+        (eI,t) match {
+           case (n: NumberValue, nT: NumberType) =>
+             if (n.minimalType sub nT) n.copy(tp = nT)
+             else abort(s"impossible cast: found $eI, expected type $nT")
+           case _ => abort("unsupported cast")
+        }
       case u: UndefinedValue => u
     } // end match
   }
