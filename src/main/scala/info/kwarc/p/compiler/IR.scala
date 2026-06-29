@@ -2,7 +2,7 @@ package info.kwarc.p.compiler
 
 import scala.collection.mutable
 
-case class IrProgram(declaredFunctions: mutable.ArrayBuffer[IrDeclFun], structs: List[IrStruct], globals: List[IrGlobal],
+case class IrProgram(declaredFunctions: mutable.ArrayBuffer[IrDeclFun], structs: List[IrStruct], globals: List[IrGlobalValue],
   functions: List[IrFun])
 
 case class IrStruct(name: String, fields: List[IrType]) extends IrType {
@@ -40,6 +40,12 @@ case class IrGlobal(name: String, tp2: IrType, init: Option[String] = None) exte
 
   def renderGlobal(): String = s"@$name = global ${tp2.render()} ${init.getOrElse("zeroinitializer")}"
 
+  override def render(): String = s"@$name"
+}
+/*external value declaration*/
+case class IrGlobalExtern(name: String, tp: IrType) extends IrGlobalValue{
+
+  def renderGlobal(): String = s"@$name = external global ${tp.render()}"
   override def render(): String = s"@$name"
 }
 
@@ -207,9 +213,17 @@ case class IrArgument(tp: IrType, name: String) extends IrSSAValue {
   override def render(): String = s"%$name"
 }
 
+case class IrNullValue() extends IrValue {
+
+  override def render(): String = "null"
+  override def tp: IrType = IrPtrType(null)
+}
+
 sealed trait IrConstant extends IrValue
 
-sealed trait IrGlobalValue extends IrConstant
+sealed trait IrGlobalValue extends IrConstant {
+  def renderGlobal(): String
+}
 
 
 // const char* with fixed size
@@ -224,6 +238,8 @@ case class IrFunctionRef(fun: IrFunctionLike) extends IrGlobalValue {
   override def tp = fun.signature
 
   override def render() = s"@${fun.name}"
+
+  override def renderGlobal(): String = render()
 
   def this(irDeclFun: IrDeclFun)= {
     this(IrFun(irDeclFun.name, IrFunType(irDeclFun.signature.ret, irDeclFun.signature.params), null, null))
@@ -242,13 +258,67 @@ object IrConst {
   //def apply(value: String) = new IrConst(IrConstChar, value)
 }
 
-//mapping certain builtins hav
-case class IrBuiltin(name: String, llvmBuiltin: String, retType: IrType, param: List[IrType])
+/*
+  name: Name of the builtin in UPL
+  retType: return type of the builtin Method
+  param: expected parameters of the builtin Method
+ */
+abstract class IrBuiltin(val name: String, val retType: IrType, val param: List[IrType]) {
+  def llvmName: String = s"Builtin.$name"
+  def generateFunction(): (IrDeclFun, IrFun)
+}
+case class IrSimpleBuiltin(override val name: String, override val retType: IrType, override val param: List[IrType],
+                           llvmBuiltin: String) extends IrBuiltin(name, retType, param) {
+
+  override def generateFunction(): (IrDeclFun, IrFun) = {
+    val decl = IrDeclFun(llvmBuiltin, IrFunType(retType, param))
+    var i = 0
+    val params = param.map(x => {
+      val arg = IrArgument(x, s"param$i")
+      i = i +1
+      arg
+    })
+
+    val ret = IrVar(retType, "res")
+    val call = IrCall(Some(ret), new IrFunctionRef(decl), params)
+
+    val fun = IrFun(llvmName, IrFunType(retType, param), params,
+      List(IrBlock("builtin", List(call, IrReturn(ret)))))
+
+    (decl, fun)
+  }
+}
+
+case class IrBuiltinRead()
+  extends IrBuiltin("read", IrConstChar(0), null) {
+
+  override def generateFunction(): (IrDeclFun, IrFun) = {
+    val decl = IrDeclFun("getline", IrFunType(IrIntType.I64, List(IrPtrType(IrConstChar(0)),
+      IrPtrType(IrIntType.I64), IrPtrType(IrIntType.I64))))
+
+    val cPtr = IrAlloca(IrVar(IrPtrType(null), "line"))
+    val size = IrAlloca(IrVar(IrPtrType(null), "size"))
+    val s1 = IrStore(IrNullValue(), cPtr.result)
+    val s2 = IrStore(IrConst(IrIntType.I64, 0), size.result)
+    val stdin = IrVar(IrPtrType(IrPtrType(null)), "stdin")
+    val l1 = IrLoad(stdin, SpecialFunctions.stdin)
+    val call = IrCall(None, new IrFunctionRef(decl), List(cPtr.result, size.result, stdin))
+    val res = IrVar(IrPtrType(null), "res")
+    val l2 = IrLoad(res, cPtr.result)
+    val fun = IrFun(llvmName, IrFunType(IrPtrType(null), List(IrVoidType)), List.empty,
+      List(IrBlock("builtin", List(cPtr, size, s1, s2, l1, call, l2, IrReturn(res)))))
+
+    (decl, fun)
+  }
+}
+
+
 
 object builtins {
   var Builtins: Seq[IrBuiltin] = Seq(
-    IrBuiltin("print", "puts", IrIntType.I32, List[IrType](IrPtrType(IrConstChar(0)))),
-    IrBuiltin("sin", "llvm.sin.f64",IrFloat64(), List[IrType]{IrFloat64()})
+    IrSimpleBuiltin("print", IrIntType.I32, List[IrType](IrPtrType(IrConstChar(0))), "puts"),
+    IrSimpleBuiltin("sin",IrFloat64(), List[IrType]{IrFloat64()}, "llvm.sin.f64"),
+    IrBuiltinRead()
   )
 }
 

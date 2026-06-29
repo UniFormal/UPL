@@ -359,6 +359,7 @@ class Interpreter(vocInit: TheoryValue) {
             }
           case BuiltinRef(p) => p.head match {
             case "print" => builtins.print(asI)
+            case "read" => builtins.read()
             case _ => fail("missing case for built-in function")
           }
           case lam: Lambda =>

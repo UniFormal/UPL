@@ -24,11 +24,18 @@ object IRGenerator {
 case class Variable(name: String, irValue: IrVar)
 case class VariableScope(var variables: List[Variable] = Nil)
 
-private class IRGenerator {
-  private val mallocFun = IrDeclFun("malloc", IrFunType(IrPtrType(IrIntType.I64), List(IrIntType.I64)))
-  private val declaredFunctions: mutable.ArrayBuffer[IrDeclFun] = mutable.ArrayBuffer(mallocFun)
+object SpecialFunctions {
+  val mallocFun = IrDeclFun("malloc", IrFunType(IrPtrType(IrIntType.I64), List(IrIntType.I64)))
 
-  private val globals: mutable.ArrayBuffer[IrGlobal] = mutable.ArrayBuffer()
+  val stdin = IrGlobalExtern("stdin", IrPtrType(null))
+}
+
+
+private class IRGenerator {
+
+  private val declaredFunctions: mutable.ArrayBuffer[IrDeclFun] = mutable.ArrayBuffer(SpecialFunctions.mallocFun)
+
+  private val globals: mutable.ArrayBuffer[IrGlobalValue] = mutable.ArrayBuffer(SpecialFunctions.stdin)
   private val structs: mutable.ArrayBuffer[IrStruct] = mutable.ArrayBuffer()
   private val functions: mutable.ArrayBuffer[IrFun] = mutable.ArrayBuffer()
 
@@ -265,7 +272,7 @@ private class IRGenerator {
       ctx.emit(IrComputeSize(size, struct))
 
       val structPtr = IrVar(IrPtrType(struct), fresh("struct_ptr"))
-      ctx.emit(IrCall(Some(structPtr), IrFunctionRef(mallocFun), List(size)))
+      ctx.emit(IrCall(Some(structPtr), IrFunctionRef(SpecialFunctions.mallocFun), List(size)))
       val initFun = IrDeclFun(s"${theoryPath}_initialize", IrFunType(IrVoidType, Nil))
       ctx.emit(IrCall(None, IrFunctionRef(initFun), List(structPtr)))
 
@@ -284,7 +291,7 @@ private class IRGenerator {
       ctx.emit(IrComputeSize(size, struct))
 
       val structPtr = IrVar(IrPtrType(struct), fresh("struct_ptr"))
-      ctx.emit(IrCall(Some(structPtr), IrFunctionRef(mallocFun), List(size)))
+      ctx.emit(IrCall(Some(structPtr), IrFunctionRef(SpecialFunctions.mallocFun), List(size)))
 
       // Initializes the tuple values
       values.zipWithIndex.foreach { case (vl, fieldIndex) => storeField(struct, structPtr, vl, fieldIndex)}
@@ -470,32 +477,19 @@ private class IRGenerator {
     val definition = builtins.Builtins.find(x => x.name == name)
       .getOrElse(throw new NotImplementedError(s"builtin $name doesn't have a signature"))
 
-    var function: IrFun = null
     //declare llvm builtin
-    if(!functions.exists(x => x.name == s"Builtin.$name")) {
-      val decl = IrDeclFun(definition.llvmBuiltin, IrFunType(definition.retType, definition.param))
+    if(!functions.exists(x => x.name == definition.llvmName)) {
+      val (decl, fun) = definition.generateFunction()
+      //add function to lists
       declaredFunctions.append(decl)
-      var i = 0
-      val params = definition.param.map(x => {
+      functions.append(fun)
 
-        val arg = IrArgument(x, s"param$i")
-        i = i +1
-        arg
-      })
-
-      val ret = IrVar(definition.retType, "res")
-      val call = IrCall(Some(ret), new IrFunctionRef(decl), params)
-
-      function = IrFun(s"Builtin.$name", IrFunType(definition.retType, definition.param), params,
-        List(IrBlock("builtin", List(call, IrReturn(ret)))))
-      //add function itself
-      functions.append(function)
-
-      return function
+      fun
     }else{
-      functions.find(x => x.name == s"Builtin.$name").getOrElse(throw new NotImplementedError())
+      functions.find(x => x.name == definition.llvmName).getOrElse(throw new NotImplementedError())
     }
   }
+
 
   private def llvmType(tp: Type): IrType = {
     tp match {
