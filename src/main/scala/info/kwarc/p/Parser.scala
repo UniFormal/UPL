@@ -911,13 +911,13 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           (es(0),es(1))
         }
         Assert(test,Type.unknown(),expected)
-      } else if (!ctxs.inType && startsWithS("Cast")) {
+      } else if (!ctxs.inType && startsWithS("CAST")) {
         trim
         skip("(")
-        val e = parseExpression
+        val t = parseType
         trim
         skip(",")
-        val t = parseType
+        val e = parseExpression
         trim
         skip(")")
         Cast(e,t)

@@ -1158,8 +1158,8 @@ case class Assert(test: Expression, tp: Type, expected: Expression) extends Expr
 
 /** unsafe run-time cast, possibly throwing exception */
 case class Cast(exp: Expression, tp: Type) extends Expression {
-  override def toString = s"As($exp, $tp)"
-  def label = "as"
+  override def toString = s"CAST($tp,$exp)"
+  def label = "cast"
   def children = List(exp,tp)
 }
 
