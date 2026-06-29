@@ -2036,7 +2036,7 @@ class Checker(errorHandler: ErrorHandler) {
       fail(s"No matching type for operator ${op.symbol}")
     }
     val assignments = matchTypes(SimpleFunType(insS,outS), ft, BiContext(Nil))(gc, Some(false)).value.getOrElse {
-      fail(s"Ill-typed operator. ${op.symbol} does not have type $ft")
+      fail(s"Ill-typed operator. Expected ${SimpleFunType(insS,outS)}, but ${op.symbol} has type ${ft}")
     }
     assignAsMatched(gc,assignments)
     ft
