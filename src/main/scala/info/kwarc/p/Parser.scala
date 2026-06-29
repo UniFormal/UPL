@@ -254,7 +254,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     finally {trialRun = trialRunBefore}
   }
 
-  /** Generate a [[Location]] between `from` and `toD` whithout whitespace */
+  /** Generate a [[Location]] between `from` and `toD` without whitespace */
   def makeRef(from: Int, toD: Int = index) = {
     var to = toD // the end of the source region (exclusive)
     while (to > 0 && input(to-1).isWhitespace) to -= 1 // remove trailing whitespace from source region

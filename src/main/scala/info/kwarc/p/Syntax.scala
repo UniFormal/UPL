@@ -1665,7 +1665,7 @@ case object Not extends PrefixOperator("!") with SelfInverseUnary {
   override val uniqueType = Some(B <-- B)
 }
 
-/** implication a => b is the same as comparision a <= b; but we need a separate operator to get the right notation */
+/** implication a => b is the same as comparison a <= b; but we need a separate operator to get the right notation */
 case object Implies extends InfixOperator("=>", RightAssociative) with Connective {
   override def isDynamic = true
 }
