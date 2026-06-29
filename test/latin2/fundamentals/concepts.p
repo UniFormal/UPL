@@ -9,19 +9,15 @@ module concepts {
     // base theory for any language that has proofs of propositions
     theory Proofs {
         include Propositions
-
-        ded: prop -> bool   # prefix ⊦
-        type dedT(p: prop)
-        
-        // which one?
-        lemma:--- ⊦F => (⊦F => ⊦G) => ⊦G
-        // lemma: F -> G -> dedT F -> (dedT F -> dedT G) -> dedT G
+        // Judgement as types
+        type ded(p: prop) // # prefix ⊦
+        lemma: (F, G) -> ded F -> (ded F -> ded G) -> ded G
     }
 
     // base theory for any logic with a judgment for disprovable propositions
     theory Disproofs {
         include Propositions
-        disproof: prop -> bool
+        type disproof(p: prop)
     }
 
     // base theory for any logic, i.e., a language with propositions and proofs
@@ -29,11 +25,11 @@ module concepts {
         include Propositions
         include Proofs
 
-        inconsistent : bool = forall F. ⊦F 
-        inconsistentE:--- inconsistent => forall F. ⊦F
+        type inconsistent = F -> ded F // # nullfix ↯
+        inconsistentE: inconsistent -> F -> ded F = p -> F -> p F
 
-        realize Disproofs
-        disproof = F -> (⊦F => inconsistent)
+        // realize Disproofs
+        // disproof = F -> (ded F) -> inconsistent
     }
 
     // base theory for any language that has terms that do not carry a type
@@ -73,7 +69,8 @@ module concepts {
         include Terms
         include Types
         include Propositions
-
+        // The notation uses jcolon, which is a different unicode symbol than :.
+        // Syntax highlighting should distinguish them because many fonts barely do.
         of: (term, tp) -> prop # infix ∶ 
     }
 
@@ -83,7 +80,7 @@ module concepts {
     }
 
     // base theory for any language that has hard-kinded types
-    theory KindedTypes {
+    theory Kindedypes {
         include Kinds
         type tf(k: kd)
         tpk: kd

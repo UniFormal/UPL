@@ -6,12 +6,12 @@ module fol {
 
     theory UniversalQuantificationNDI {
         include UniversalQuantification
-        uforallI:--- (forall x. ⊦(P x)) => ⊦ (∀ᵘx. P x) 
+        uforallI: P -> (x -> ded (P x)) -> ded (∀ᵘx. P x) 
     }
 
     theory UniversalQuantificationNDE {
         include UniversalQuantification
-        uforallE:--- ⊦(∀ᵘx. P x) => ⊦(P X)
+        uforallE: (P, X) -> ded (∀ᵘx. P x) -> ded (P X)
     }
 
     theory UniversalQuantificationND {
@@ -26,12 +26,12 @@ module fol {
 
     theory ExistentialQuantificationNDI {
         include ExistentialQuantification
-        uexistsI:--- ⊦(P X) => ⊦ ∃ᵘx. P x
+        uexistsI: (P,X) -> ded (P X) -> ded (∃ᵘx. P x)
     }
 
     theory ExistentialQuantificationNDE {
         include ExistentialQuantification 
-        uexistsE:--- ⊦ (∃ᵘx. P x) => (forall x. ⊦(P x) => ⊦C) => ⊦C 
+        uexistsE: (P,C) -> ded (∃ᵘx. P x) -> (x -> ded (P x) -> ded C) -> ded C 
     }
 
     theory ExistentialQuantificationND {
@@ -89,28 +89,28 @@ module fol {
         include .concepts.SoftTypedTerms
         include FOLEQ
         rforall: (tp, (term -> prop)) -> prop 
-        rforall = (A, P) -> ∀x. x∶A ⇒ P x
+        rforall = (A, P) -> ∀ᵘx. x∶A ⇒ P x
     }
 
     theory RelativizedUniversalQuantificationND {
         include RelativizedUniversalQuantification
         include FOLEQND
-        rforallI:--- (forall x. ⊦x∶A => ⊦(F x)) => ⊦rforall(A, F)
-        rforallE:--- ⊦rforall(A, F) => forall x. ⊦x∶A => ⊦(F x)
+        rforallI: (A,F) -> (x -> ded x∶A -> ded (F x)) -> ded rforall(A, F)
+        rforallE: (A,F) -> ded rforall(A, F) -> x -> ded x∶A -> ded (F x)
     }
 
     theory RelativizedExistentialQuantification {
         include .concepts.SoftTypedTerms
         include .FOLEQ
         rexists: (tp, (term -> prop)) -> prop 
-        rexsits = (A, P) -> ∃x. x∶A ∧ P x
+        rexsits = (A, P) -> ∃ᵘx. x∶A ∧ P x
     }
 
     theory RelativizedExistentialQuantificationND {
         include RelativizedExistentialQuantification
         include FOLEQND
-        rexistsI:--- forall x. ⊦x∶A => ⊦(F x) => ⊦rexists(A, F)
-        rexistsE:--- ⊦rexists(A, F) => (forall x. ⊦x∶A => ⊦(F x) => ⊦C) => ⊦C
+        rexistsI: (A,F) -> x -> ded x∶A -> ded (F x) -> ded rexists(A, F)
+        rexistsE: (A,F,C) -> ded rexists(A, F) -> (x -> ded x∶A -> ded (F x) -> ded C) -> ded C
     }
 
     theory UniqueExistentialQuantification {
@@ -121,8 +121,8 @@ module fol {
 
     theory UniqueExistentialQuantificationND {
         include UniqueExistentialQuantification
-        uexistsUniqueI:--- ⊦(P x) => (forall y. ⊦(P y) => ⊦x≐y) => ⊦uexistsUnique(P)
-        uexistsUniqueE:--- ⊦uexistsUnique(P) => (forall x. ⊦(P x) => (forall Y. ⊦(P y) => ⊦x≐y) => ⊦C) => ⊦C
+        uexistsUniqueI: P -> x -> ded (P x) -> (y -> ded (P y) -> ded x≐y) -> ded (uexistsUnique P)
+        uexistsUniqueE: (P,C) -> ded (uexistsUnique P) -> (x -> ded (P x) -> (y -> ded (P y) -> ded x≐y) -> ded C) -> ded C
     }
 
     theory Description {
@@ -146,8 +146,8 @@ module fol {
         include ExistentialQuantificationND
         include .equality.UntypedEquality
         anyTC: (term -> prop) -> term
-        any_ax:--- ⊦(∃x. P x) => ⊦(P (anyTC p))
-        any_eq:--- (⊦(P x) => ⊦(Q x)) => (⊦(Q x) => ⊦(P x)) => ⊦(anyTC P)≐(anyTC Q)
+        any_ax: (P,p) -> ded (∃ᵘx. P x) -> ded (P (anyTC p))
+        any_eq: (P, Q) -> (x -> ded (P x) -> ded (Q x)) -> (x -> ded (Q x) -> ded (P x)) -> ded (anyTC P ≐ anyTC Q)
 
         realize Choice
         some = ???

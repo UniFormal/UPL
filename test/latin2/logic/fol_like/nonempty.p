@@ -3,13 +3,13 @@ module nonempty {
         include .base_languages.UntypedLogic
 
         // the universe is non-empty, i.e., we can pick fresh elements at any point in a proof
-        univ_nonempty: C -> (term -> dedT C) -> dedT C
+        univ_nonempty: C -> (term -> ded C) -> ded C
     }
 
     theory TypesNonEmpty {
         include .base_languages.TypedLogic
 
         // all types are non-empty, i.e., we can pick fresh elements at any point in a proof
-        type_nonempty: A -> C -> (tm A -> dedT C) -> dedT C
+        type_nonempty: A -> C -> (tm A -> ded C) -> ded C
     }
 }

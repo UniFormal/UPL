@@ -12,59 +12,59 @@ module pl {
     theory EquivalenceNDI {
         include Equivalence
         include .concepts.Proofs
-        equivI:--- (⊦F => ⊦G) => (⊦G => ⊦F) => ⊦F⇔G
+        equivI: (F,G) -> (ded F -> ded G) -> (ded G -> ded F) -> ded F⇔G
     }
 
     theory EquivalenceNDE {
         include Equivalence
         include .concepts.Proofs
-        equivEl:--- ⊦F⇔G => ⊦F => ⊦G
-        equivEr:--- ⊦F⇔G => ⊦G => ⊦F
+        equivEl: (F,G) -> ded F⇔G -> ded F -> ded G
+        equivEr: (F,G) -> ded F⇔G -> ded G -> ded F
     }
 
     theory EquivalenceND {
         include EquivalenceNDI
         include EquivalenceNDE
 
-        equiv_equivalence: .relations.EquivalenceRelation {
-            type carrier = prop
-            rel = (x, y) -> ⊦x⇔y
-            refl = ???
-            sym = ???
-            trans = ???
-        }
+        // equiv_equivalence: .relations.EquivalenceRelation {
+        //     type carrier = prop
+        //     // type rel = (x, y) -> ded x⇔y
+        //     refl = ???
+        //     sym = ???
+        //     trans = ???
+        // }
 
-        lindenbaum: .relations.EqualityType {
-            type carrier = prop
-            equalityRel = equiv_equivalence
-        }
+        // lindenbaum: .relations.EqualityType {
+        //     type carrier = prop
+        //     equalityRel = equiv_equivalence
+        // }
     }
 
     theory Lindenbaum {
         include EquivalenceND
-        include .relations.EqualityType = EquivalenceND.lindenbaum
+        // include .relations.EqualityType = EquivalenceND.lindenbaum
     }
 
     theory Truth {
         include .concepts.Propositions
-        verum : prop // # nullfix ⊤
+        truth : prop # nullfix ⊤
     }
 
     theory TruthND {
         include Truth
         include .concepts.Logic
-        trueI : |- ⊦verum
+        trueI : ded (⊤)
     }
 
     theory Falsity {
         include .concepts.Propositions
-        falsum : prop // # nullfix ⊥
+        falsity : prop # nullfix ⊥
     }
 
     theory FalsityND {
         include Falsity
         include .concepts.Logic
-        falseE : |- ⊦falsum => inconsistent
+        falseE : ded (⊥) -> inconsistent
     }
 
     theory Negation {
@@ -75,14 +75,14 @@ module pl {
     theory NegationNDI {
         include Negation
         include .concepts.Logic
-        notI:--- (⊦F => inconsistent) => ⊦¬F
+        notI: (F,G) -> (ded F -> inconsistent) -> ded (¬F)
     }
 
     theory NegationNDE {
         include Negation
         include .concepts.Logic
-        notE:--- ⊦¬F => ⊦F => inconsistent
-        notE_done:--- ⊦¬F => ⊦F => ⊦G
+        notE: F -> ded (¬F) -> ded F -> inconsistent
+        notE_done: (F,G) -> ded (¬F) -> ded F -> ded G
     }
 
     theory NegationND {
@@ -98,20 +98,20 @@ module pl {
     theory DisjunctionNDI {
         include Disjunction
         include .concepts.Logic
-        orIl:--- ⊦F => ⊦F∨G
-        orIr:--- ⊦G => ⊦F∨G
+        orIl: (F,G) -> ded F -> ded F∨G
+        orIr: (F,G) -> ded G -> ded F∨G
     }
 
     theory DisjunctionNDE {
         include Disjunction
         include .concepts.Logic
-        orE:--- ⊦F∨G => (⊦F => ⊦C) => (⊦G => ⊦C) => ⊦C
+        orE: (F,G,C) -> ded F∨G -> (ded F -> ded C) -> (ded G -> ded C) -> ded C
     }
 
     theory DisjunctionND {
         include DisjunctionNDI
         include DisjunctionNDE
-        or_swap:--- ⊦F∨G => ⊦G∨F
+        or_swap: (F,G) -> ded F∨G -> ded G∨F
     }
 
     theory Conjunction {
@@ -122,20 +122,20 @@ module pl {
     theory ConjunctionNDI {
         include Conjunction
         include .concepts.Logic
-        andI:--- ⊦F => ⊦G => ⊦F∧G
+        andI: (F,G) -> ded F -> ded G -> ded F∧G
     }
 
     theory ConjunctionNDE {
         include Conjunction
         include .concepts.Proofs
-        andEl:--- ⊦F∧G => ⊦F 
-        andEr:--- ⊦F∧G => ⊦G 
+        andEl: (F,G) -> ded F∧G -> ded F 
+        andEr: (F,G) -> ded F∧G -> ded G 
     }
 
     theory ConjunctionND {
         include ConjunctionNDI
         include ConjunctionNDE
-        and_swap:--- ⊦F∧G => ⊦G∧F
+        and_swap: (F,G) -> ded F∧G -> ded G∧F
     }
 
     theory Implication {
@@ -146,25 +146,25 @@ module pl {
     theory ImplicationNDI {
         include Implication
         include .concepts.Logic
-        implI:--- (⊦F => ⊦G) => ⊦(F ⇒ G)
+        implI: (F,G) -> (ded F -> ded G) -> ded (F ⇒ G)
     }
 
     theory ImplicationNDE {
         include Implication
         include .concepts.Logic
-        implE:--- ⊦(F ⇒ G) => ⊦F => ⊦G
+        implE: (F,G) -> ded (F ⇒ G) -> ded F -> ded G
     }
 
     theory ImplicationND {
         include ImplicationNDI
         include ImplicationNDE
 
-        impl_preorder: .relations.Preorder  {
-            type carrier = prop
-            rel = (x,y) -> ⊦x⇒y
-            refl = ???
-            trans = ???
-        }
+        // impl_order: .relations.Preorder  {
+        //     type carrier = prop
+        //     // type rel = (x,y) -> ded x⇒y
+        //     refl = ???
+        //     trans = ???
+        // }
     }
 
     theory IPL {
@@ -189,29 +189,29 @@ module pl {
         include ImplicationND
         include EquivalenceND
 
-        not_or_left:--- ⊦¬(F∨G) => ⊦¬F
-        not_or_right:--- ⊦¬(F∨G) => ⊦¬G
-        nntnd:--- ⊦¬¬(F∨¬F)
+        not_or_left: (F,G) -> ded (¬(F∨G)) -> ded ((¬F))
+        not_or_right: (F,G) -> ded (¬(F∨G)) -> ded (¬G)
+        nntnd: F -> ded (¬¬(F∨(¬F)))
 
-        impl_order : .relations.PartialOrder {
-            type carrier = impl_preorder.carrier
-            rel = impl_preorder.rel
-            refl = impl_preorder.refl
-            trans = impl_preorder.trans
+        // impl_order : .relations.PartialOrder {
+        //     type carrier = impl_preorder.carrier
+        //     // type rel = impl_preorder.rel
+        //     refl = impl_preorder.refl
+        //     trans = impl_preorder.trans
 
-            equalityRel = equiv_equivalence
-            antisym = ???
-        }
+        //     equalityRel = equiv_equivalence
+        //     antisym = ???
+        // }
     }
 
     theory Classical {
         include .concepts.Logic
-        classical:--- ((⊦F => inconsistent) => inconsistent) => ⊦F
+        classical: F -> ((ded F -> inconsistent) -> inconsistent) -> ded F
     }
 
     theory ProofIrrelevance {
         include .concepts.Logic
-        proofirrelev:--- forall x,y::dedT F. x==y
+        proofIrrelevance: F -> (x,y::ded F) -> bool = F -> (x,y) -> x==y
     }
 
     theory PL {
@@ -224,10 +224,10 @@ module pl {
         include ProofIrrelevance
         include Classical
 
-        impl_flip:--- ⊦F⇒G => ⊦¬G⇒¬F
-        indirect:--- (⊦¬F => inconsistent) => ⊦F
-        dne:--- ⊦¬¬F => ⊦F
-        tnd:--- ⊦F∨¬F
+        impl_flip: (F,G) -> ded F⇒G -> ded (¬G ⇒ (¬F))
+        indirect: (F,G) -> (ded ((¬F)) -> inconsistent) -> ded F
+        dne: (F,G) -> ded (¬(¬F)) -> ded F
+        tnd: (F,G) -> ded F∨(¬F)
     }
 
     // doesn't work

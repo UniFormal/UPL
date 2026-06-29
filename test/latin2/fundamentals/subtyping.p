@@ -7,23 +7,27 @@ module subtyping {
 
     theory SubtypingPreorder {
         include Subtyping
+
         sub: .relations.Preorder {
-            type carrier = tp, 
-            rel = (A, B) -> ⊦A⪽B
+            type carrier = tp
+            // doesn't work 
+            // type rel = (A, B) -> ded A⪽B
+            refl = ???
+            trans = ???
         }
     }
 
     theory SoftSubtyping {
         include .concepts.SoftTypedTerms
         include Subtyping
-        subtypeI:--- (forall x. ⊦x∶A => ⊦x∶B) => ⊦A⪽B
-        subtypeE:--- ⊦A⪽B => forall x. ⊦x∶A => ⊦x∶B
+        subtypeI: (A,B) -> (x -> ded x∶A -> ded x∶B) -> ded A⪽B
+        subtypeE: (A,B) -> ded A⪽B -> x -> ded x∶A -> ded x∶B
 
-        realize SubtypingPreorder
-        subreal = sub {
-            refl = ???
-            trans = ???
-        }
+        // realize SubtypingPreorder
+        // sub = .relations.Preorder {
+        //     refl = ???
+        //     trans = ???
+        // }
     }
 
     theory HardSubtyping {
@@ -33,9 +37,10 @@ module subtyping {
         include Subtyping
         include SubtypingPreorder
 
-        inject: (A, B, dedT A⪽B, tm A) -> tm B
-        inject_irrelevant:--- tequal(B, inject(A, B, p, x), x) 
-        inject_refl:--- tequal(A, inject(A, B, sub.refl, x), x) 
-        inject_trans:--- tequal(C, inject(B, C, Q, inject(A, B, P, x)), inject(A, C, P, x)) 
+        inject: (A, B, ded A⪽B, tm A) -> tm B
+        inject_irrelevant: (A,x,p) -> ded tequal(A, inject(A, A, p, x), x) 
+        // missing parts ugly without implicit args
+        inject_refl: (A,x) -> ded tequal(A, inject(A, A, ???, x), x) 
+        inject_trans: (A,B,C,x,P,Q) -> ded tequal(C, inject(B, C, Q, inject(A, B, P, x)), inject(A, C, ???, x)) 
     }
 }

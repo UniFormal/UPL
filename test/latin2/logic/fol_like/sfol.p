@@ -6,8 +6,8 @@ module sfol {
 
     theory TypedUniversalQuantificationND {
         include TypedUniversalQuantification
-        tforallI:--- forall P: tm A -> prop. (forall x: tm A. ⊦(P x)) => ⊦(tforall A P)
-        tforallE:--- forall P: tm A -> prop. ⊦(tforall A P) => forall x: tm A. ⊦(P x)
+        tforallI: (A, P) -> (x -> ded (P x)) -> ded (tforall A P)
+        tforallE: (A, P) -> ded (tforall A P) -> x -> ded (P x)
     }
 
     theory TypedExistentialQuantification {
@@ -17,8 +17,8 @@ module sfol {
 
     theory TypedExistentialQuantificationND {
         include TypedExistentialQuantification
-        texistsI:--- forall P: tm A -> prop, x: tm A. ⊦(P x) => ⊦(texists A P)
-        texistsE:---  forall P: tm A -> prop. ⊦(texists A P) => (forall x: tm A. ⊦(P x) => ⊦C) => ⊦C
+        texistsI: (A,P) -> x -> ded (P x) -> ded (texists A P)
+        texistsE: (A,P,C) -> ded (texists A P) -> (x -> ded (P x) -> ded C) -> ded C
     }
 
     theory ISFOL {

@@ -13,29 +13,33 @@ change notation once implicit args are possible
 
 fundamentals:
 
-!!! concepts.p line 18. proofs as types like this? 
-!!! subtyping.p line 36 inject def and axioms like this?
+!!! is algebra/magmas.mmt needed? already exists in domain_theories
 
-same problem in:
-equality.p line 28 as
-type_equality.p line 21 transport
-universes.p line 8 univTm
-universes.p line 45-52 Pi_legal
-dependent_pl.p everything
-fol.p line 128 - 153 
+!!! use |- or ded?
+
+!!! relations.p line 51. Can "T: carrier -> carrier" be inferred? (UPL type checker doesn't complain if I write just T).
+In MMT it's written explicitly, why?
+
+!!! relations.p line 67. proof term like this? if yes, write them now or wait for implicit args notation?
+MMT explicitly writes out the type again (congT : type = proof term). 
+Is that needed in UPL or can I write (congT = proof term)?
+
+!!! relations.p line 81 doesn't work. why? (probably same problem as in (****))
+
+!!! relations.p line 90. needs sum types. does UPL have sumtypes? 
+do I even need meta sumtypes or do I make a theory for sumtypes and use that?
+
+!!! subtyping.p line 14. doesn't work (****)
+(equality.p line 16. same problem) 
+
+!!! universes.p line 33. doesn't work
+(what exactly happens in MMT here? universes.mmt line 36)
+
 
 ------------------------------------------------------
 
 logic:
 
-!!! pl.p line 50 can I do "true: prop" here? no
-!!! nullfix doesn't work
-
-!!! fol.p line 4. does ∀ᵘ work as notation? 
-(type checker doesn't complain if ∀ᵘ is replaced with something else in axiom)
-
-!!! fol.p line 183. view like this ok?
-(opposite direction)
 
 ------------------------------------------------------
 
@@ -49,3 +53,31 @@ todo:
 -change axioms to using SFOL
 
 ------------------------------------------------------
+
+
+UPL vs MMT:
+
+Pro UPL:
+
+-when declaring structs, includes don't need to be stated explicitly:
+In MMT:
+total structure typesAsPredicates : ?SoftTypedTerms =
+    include ?Terms❙
+    include ?Propositions❙
+    tp = term ⟶ prop❙
+    of = [X,A] A X❙
+  ❚
+In UPL:
+typesAsPredicates : SoftTypedTerms {
+    type tp = term -> prop
+    of = (X, A) -> (A X)
+}
+
+
+Pro MMT:
+
+-curried and uncurried functions can be used interchangably
+(in UPL uncurried version is needed for notation)
+
+-type-checker is faster
+(UPL struggles, especially for theories that include structs)

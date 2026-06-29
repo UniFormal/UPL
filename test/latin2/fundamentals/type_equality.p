@@ -15,10 +15,10 @@ module type_equality {
         include TypeEqualityND
         include .equality.TypedEqualityND
 
-        congType:--- forall x,y::tm A. ⊦ tequal(A, x, y) => forall B:tm A -> tp. ⊦ (B x)≛(B y)
+        congType: (A,x,y) -> ded tequal(A, x, y) -> B -> ded (B x ≛ B y)
 
-        // don't know how to do this
-        transport: ???
+        transport: (A,B) -> ded A≛B -> tm A -> tm B
+        // ugly without implicit args
         transport_refl: ???
         transport_trans: ???
     }
