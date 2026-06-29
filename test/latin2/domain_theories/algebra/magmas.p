@@ -5,11 +5,10 @@ module magmas {
         include .sets.Set
         op: (U, U) -> U # infix ∘
 
-        P = y -> 
-        divisibility: .relations.Relation {
-            type carrier = U
-            rel = (x, z) -> texist universe (y -> tequal(universe, x∘y, z))
-        }
+        // divisibility: .relations.Relation {
+        //     type carrier = U
+        //     // rel = (x, z) -> texist universe (y -> tequal(universe, x∘y, z))
+        // }
     }
 
     theory MagmaHom {
@@ -17,7 +16,7 @@ module magmas {
         domain : Magma
         codomain : Magma
 
-        op:--- tequal(codomain.U, U domain.op(x, y), codomain.op(U x, U y))
+        op: ??? // (x) -> tequal(codomain.U, U domain.op(x, y), codomain.op(U x, U y))
     }
 
     theory SubMagma {
@@ -28,27 +27,28 @@ module magmas {
 
     theory Commutative {
         include Magma
-        comm:--- x∘y == y∘x
+        comm: ??? // (x) -> x∘y == y∘x
     }
 
     OppositeMagma: Magma -> Magma = m -> Magma {
-        type U = m.U,
+        universe = m.universe
+        // type U = m.U
         op = (x, y) -> m.op(y,x)
     }
 
     theory Idempotent {
         include Magma
-        idem:--- x∘x == x
+        idem: ??? // (x) -> x∘x == x
     }
 
     theory PowerAssociative {
         include Magma
-        power_assoc:--- (x∘x)∘x == x∘(x∘x)
+        power_assoc: ??? // (x) -> (x∘x)∘x == x∘(x∘x)
     }
 
     theory Semigroup {
         include Magma
-        assoc:--- x∘(y∘z) == (x∘y)∘z
+        assoc: ??? // (x) -> x∘(y∘z) == (x∘y)∘z
     }
 
     theory CommSemigroup {
@@ -74,24 +74,24 @@ module magmas {
 
     theory Pointed {
         include Magma
-        point: carrier
+        point: U
     }
 
     theory AbsorbingElement {
         include Magma
-        abs : carrier
+        abs : U
         realize Pointed
         point = abs
     }
 
     theory RightAbsorptive {
         include AbsorbingElement
-        absorbR:--- x∘abs == x
+        absorbR: ??? // (x) -> x∘abs == x
     }
 
     theory LeftAbsorptive {
         include AbsorbingElement
-        absorbL:--- abs∘x == x
+        absorbL: ??? // (x) -> abs∘x == x
     }
 
     theory Absorptive {

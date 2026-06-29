@@ -45,8 +45,8 @@ logic:
 
 algebra:
 
-!!! using SFOL without notation is really really ugly
-(see magmas.p line 11. texists)
+magmas.p line 6. doesn't work
+
 
 todo:
 -extend views OppositeSemigroup
