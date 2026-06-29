@@ -1726,7 +1726,7 @@ case object Power extends InfixOperator("^", RightAssociative) {
       case _ => N
     }
     var ret = baseType
-    if (baseType.negative) ret = ret.copy(imaginary = true)
+    if ((baseType.negative && expType.fractional) || baseType.imaginary || expType.imaginary) ret = ret.copy(imaginary = true)
     if (expType.negative) ret = ret.copy(fractional = true)
     if (expType.fractional) ret = ret.copy(approximate = true)
     Some(SimpleFunType(List(baseType, expType), ret))
