@@ -1,6 +1,73 @@
 // ////////
 // Various minimal examples to reproduce errors
 // ////////
+module m{
+  i = 0
+  f: int -> int = x -> x+1
+}
+
+// ////////
+
+
+
+// ////////
+
+module Precedence{
+  x: int
+  test: |- x^2 + x^2 == 2
+}
+
+// ////////
+
+// module DependentTypes{
+//   theory Vectors {
+//     concat@a: (m,n) // while checking m: open module not a type
+//   }
+// }
+
+// ////////
+
+module TypeWithParameter{
+  theory Proofs {
+    type prop
+    // Judgement as types
+    type ded(p: prop)
+    lemma: F -> ded F
+    // noLemma: ded F
+    // unknownLocation: dud F -> text 
+  }
+}
+
+// ////////
+
+module DotWeirdness{
+  const = 0
+  theory T{
+    works1 : |- 0 == const 
+    works1 : |- .const == 0 // no declaration clash, and no hover for `const`
+    fails1 : |- 0 == .const
+
+    works2 : |- 0 == m.i // no hover for `m.i`
+    fails2 : |- 0 == .m.i
+    
+    works3 : |- 0 + const == 0
+    fails3 : |- 0 + .const == 0
+  } 
+}
+
+// ////////
+
+module DelayedClash{
+  theory T1{
+    i = 0
+  }
+  theory T2{
+    i = 1
+    include T1
+  }
+}
+
+// ////////
 
 module MutableKeywords{
   var = 0
@@ -50,6 +117,7 @@ module UnderscoreName{
 // }
 
 // //////// r is "already defined differently"
+
 module FailingMerge{
   theory T1 {
     i: int = 0815
@@ -77,20 +145,7 @@ module FailingMerge{
 
 // ////////
 
-module m1{
-  f: int -> int = x -> x+1
-}
-
-module m2{
-  val v1 =  m1.f(1) // works, but no hover
-  val v2 = .m1.f(1) // 
-  val p1: |- v1 == m1.f(1) // works, but no hover for m1.f
-  val p2: |- v1 == .m1.f(1) // parsed incorrectly, NullPointer on hover
-}
-
-// ////////
-
-module m{
+module gujizub{
   type point
   f:point -> float
   theory generic{
@@ -117,9 +172,15 @@ module m{
 
 // ////////// Maximum call stack size exceeded
 
-// type fact = (a:_, b:_, |- a==b)
-// fact1: (a: _, b: _) -> (a:_, b:_, |- a==b) 
-// fact1 = (a, b) -> (a, b, ???)
+module CallStackExceeded{
+  // include CallStack
+  // include Exceeded
+
+  // callStackExceeded: (a: _, b: _) -> (a:_, b:_, |- a==b)
+  // callStackExceeded = (a, b) -> (a, b, ???)
+
+  harmless: (a: _, b: _) -> (a:_, b:_, |- a==b) = (a, b) -> (a, b, ???)
+}
 
 // //////// Magic functions 
 
@@ -199,23 +260,9 @@ module NestedTheories{
 
 // //////////
 
-// module does{
-//     theory exist{}
-// }
 // module NullPointerFactory{
-//     theory t1{
-//         include doesnt.exist
-//     }
-//     theory t2{ 
-//         include does.exist
-//     }
-// }  
-
-// //////////
-
-// theory NullPointer {}
-// _ = NullPointer.on.hover
-  
+//   include doesnt.exist
+// }    
 
 // //////////
 
@@ -309,13 +356,6 @@ theory B{
 // //////////
 
 // h = doesn{t=???}.exist
-
-// //////////
-
-// theory t{
-//   include doesnt
-//   include exist 
-// } 
 
 // //////////
 
