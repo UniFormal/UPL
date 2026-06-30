@@ -10,7 +10,7 @@ module type_erasure {
         type prop = s.prop
         type ded(p: prop) = ded p
         // doesn't work, why?
-        //type ded(p: prop) = s.ded(p),
+        // type ded(p: prop) = s.ded(p)
         lemma = s.lemma
         tequal = (A,x,y) ->  s.requal(A,x,y)
     } 
