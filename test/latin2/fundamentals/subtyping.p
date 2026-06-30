@@ -11,7 +11,7 @@ module subtyping {
         sub: .relations.Preorder {
             type carrier = tp
             // doesn't work 
-            // type rel = (A, B) -> ded A⪽B
+            // type rel(c1:carrier, c2:carrier) = ded c1⪽c2
             refl = ???
             trans = ???
         }

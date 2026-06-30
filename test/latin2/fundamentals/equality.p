@@ -13,7 +13,7 @@ module equality {
         eq: .relations.EquivalenceCongruence {
             type carrier = term
             // doesn't work
-            // type rel = (x,y) -> ded uequal(x, y)
+            // type rel(c1:carrier, c2:carrier) = ded uequal(c1, c2)
             refl = ???
             sym = ???
             trans = ???

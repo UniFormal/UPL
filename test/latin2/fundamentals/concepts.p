@@ -28,8 +28,10 @@ module concepts {
         type inconsistent = F -> ded F // # nullfix ↯
         inconsistentE: inconsistent -> F -> ded F = p -> F -> p F
 
-        // realize Disproofs
-        // disproof = F -> (ded F) -> inconsistent
+        realize Disproofs
+        //type disproof(p: prop) = F -> (ded F) -> inconsistent
+        //type disproof(p: prop) = (p:prop) -> (ded p) -> inconsistent
+        type disproof(p: prop) = ded p -> inconsistent
     }
 
     // base theory for any language that has terms that do not carry a type

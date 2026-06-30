@@ -24,12 +24,12 @@ In MMT it's written explicitly, why?
 MMT explicitly writes out the type again (congT : type = proof term). 
 Is that needed in UPL or can I write (congT = proof term)?
 
-!!! relations.p line 81 doesn't work. why? (probably same problem as in (****))
+!!! relations.p line 81 doesn't work. why? (same problem as in type_erasure s.ded)
 
 !!! relations.p line 90. needs sum types. does UPL have sumtypes? 
 do I even need meta sumtypes or do I make a theory for sumtypes and use that?
 
-!!! subtyping.p line 14. doesn't work (****)
+!!! subtyping.p line 14. doesn't work (carrier illegal type)
 (equality.p line 16. same problem) 
 
 !!! universes.p line 33. doesn't work
@@ -43,9 +43,16 @@ logic:
 
 ------------------------------------------------------
 
+type theory:
+
+!!! type_erasure.p line 8-14. ugly because view can't be included. what's a better way to do it?
+
+
+------------------------------------------------------
+
 algebra:
 
-magmas.p line 6. doesn't work
+magmas.p line 6. doesn't work 
 
 
 todo:
