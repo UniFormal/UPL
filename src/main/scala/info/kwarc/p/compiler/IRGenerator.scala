@@ -293,6 +293,39 @@ private class IRGenerator {
       }
       // Projection indices start at 1, but llvm struct fields are 0 indexed
       loadField(struct, structPtr, index - 1)
+    case Match(e, cases, false) =>
+      val target = apply(e)
+      val endB = ctx.newBlock("end")
+
+      var tp: IrType = IrUnknownType
+      val allocMatchResult = IrVar(IrPtrType(tp), fresh("alloc_match_result"))
+      ctx.emitFirst(IrAlloca(allocMatchResult))
+
+      cases.zipWithIndex.foreach { case (MatchCase(context, pattern, body), index)  =>
+        scopes ::= VariableScope()
+        // Pattern variables, which will be assigned in compileMatch
+        context.decls.foreach { case vd: EVarDecl => bindDeclaration(vd, None) }
+        val bindings = context.decls.collect { case vd: EVarDecl => vd.name }.toSet
+
+        val nextMatchB = if (index == cases.length - 1) endB else ctx.newBlock("next_match")
+        val matchedB = ctx.newBlock("matched")
+        ctx.emit(IrCondBranch(compileMatch(pattern, target, bindings), matchedB.label, nextMatchB.label))
+        ctx.insertBlock(matchedB)
+
+        val matchResult = apply(body)
+        tp = matchResult.tp
+        ctx.emit(IrStore(matchResult, allocMatchResult))
+
+        ctx.emit(IRBranch(endB.label))
+
+        scopes = scopes.tail
+        ctx.insertBlock(nextMatchB)
+      }
+
+      val result = IrVar(tp, fresh("result"))
+      ctx.emit(IrLoad(result, allocMatchResult))
+
+      result
   }
 
   // Compiler equivalent of Interpreter.interpretDynamicBoolean.
@@ -314,26 +347,39 @@ private class IRGenerator {
 
   // Matches the value of the target expression against the value. Returns true if they match
   // This may bind new variables to the target expression.
-  private def compileMatch(target: Expression, value: IrValue)(implicit gc: GlobalContext): IrValue = target match {
+  private def compileMatch(target: Expression, value: IrValue, bindings: Set[String] = Set.empty)
+    (implicit gc: GlobalContext): IrValue = target match {
+    case VarRef(name) if bindings.contains(name) =>
+      // n is pattern-variable
+      ctx.emit(IrStore(value, getAllocatedVariable(name)))
+      IrConst(true)
     case VarRef(name) =>
       val current = loadVarRef(VarRef(name))
-      val equal = IrVar(IrIntType.I1, fresh("int_equal"))
-      ctx.emit(IrICmp(equal, EQUAL, current, value))
-      equal
+      // TODO String comparison is not supported yet
+      compileIntCompare(current, value)
     case vd: EVarDecl =>
       bindDeclaration(vd, Some(value))
       IrConst(true)
     case Tuple(components) =>
       val struct = tupleStruct(value)
       components.zipWithIndex
-        .map { case (component, index) => compileMatch(component, loadField(struct, value, index)) }
+        .map { case (component, index) => compileMatch(component, loadField(struct, value, index), bindings) }
         .foldLeft[IrValue](IrConst(true))(compileBooleanAnd)
+    case nv: NumberValue =>
+      val current = apply(nv)
+      compileIntCompare(current, value)
     case _ => ???
   }
 
   private def compileBooleanAnd(left: IrValue, right: IrValue): IrValue = {
     val result = IrVar(IrIntType.I1, fresh("bool_and"))
     ctx.emit(IrBinOp(result, IAND, left, right))
+    result
+  }
+
+  private def compileIntCompare(left: IrValue, right: IrValue): IrValue = {
+    val result = IrVar(IrIntType.I1, fresh("int_compare"))
+    ctx.emit(IrICmp(result, EQUAL, left, right))
     result
   }
 

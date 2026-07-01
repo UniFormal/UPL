@@ -1,0 +1,1 @@
+main: compose(4, 5)
