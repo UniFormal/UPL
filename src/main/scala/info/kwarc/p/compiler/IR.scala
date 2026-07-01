@@ -95,6 +95,7 @@ sealed abstract class Operation(val label: String)
 
 object Operation {
   case object IADD extends Operation("add")
+  case object IAND extends Operation("and")
   case object ISUB extends Operation("sub")
   case object IMUL extends Operation("mul")
   case object IDIV extends Operation("sdiv")
@@ -321,4 +322,3 @@ object builtins {
     IrBuiltinRead()
   )
 }
-

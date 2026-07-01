@@ -3,7 +3,7 @@ package info.kwarc.p.compiler
 import info.kwarc.p._
 import info.kwarc.p.compiler.Condition.{EQUAL, NOT_EQUAL, SIGNED_GREATER_EQUAL, SIGNED_GREATER_THAN, SIGNED_LESS_EQUAL, SIGNED_LESS_THAN}
 import info.kwarc.p.compiler.IRGenerator.TOP_LEVEL_STRUCT_NAME
-import info.kwarc.p.compiler.Operation.{IADD, IDIV, IMUL, ISUB}
+import info.kwarc.p.compiler.Operation.{IADD, IAND, IDIV, IMUL, ISUB}
 
 import scala.collection.mutable
 
@@ -89,9 +89,7 @@ private class IRGenerator {
       var elseB = ctx.newBlock("else")
       val endB = ctx.newBlock("end")
 
-      // This needs to evaluate to a 1-bit integer.
-      val condO = apply(cond)
-      assert(condO.tp == IrIntType.I1)
+      val condO = compileDynamicBoolean(cond)
       ctx.emit(IrCondBranch(condO, thenB.label, elseB.label))
 
       ctx.insertBlock(thenB)
@@ -119,7 +117,7 @@ private class IRGenerator {
       var thenB = ctx.newBlock("then")
       val endB = ctx.newBlock("end")
 
-      ctx.emit(IrCondBranch(apply(cond), thenB.label, endB.label))
+      ctx.emit(IrCondBranch(compileDynamicBoolean(cond), thenB.label, endB.label))
 
       ctx.insertBlock(thenB)
       val thnO = apply(thn)
@@ -207,8 +205,8 @@ private class IRGenerator {
       case o: VarRef => applyField(apply(o), args)
     }
     case o: OpenRef => loadOpenRef(o)
-    case r: ClosedRef => loadClosedRef(r)
-    case o: OwnedExpr => loadOwnedExpr(o)
+    case r: ClosedRef => loadFromPointer(loadClosedRef(r), fresh(r.name))
+    case o: OwnedExpr => loadFromPointer(loadOwnedExpr(o), fresh("owned"))
     case o: VarRef => loadVarRef(o)
     case Lambda(ins, body, _) => val prevCtx = ctx
       ctx = new FunctionContext
@@ -252,17 +250,9 @@ private class IRGenerator {
         case _ => IrReturn(value)
       })
       apply(Unit.Value)
-    case EVarDecl(name, tp, Some(e), _, _) =>
-      val res = apply(e)
-      val allocatedVar = IrVar(IrPtrType(llvmType(tp)), fresh(s"alloc_$name"))
-      ctx.emitFirst(IrAlloca(allocatedVar))
-
-      scopes.head.variables ::= Variable(name, allocatedVar)
-      ctx.emit(IrStore(res, allocatedVar))
-      allocatedVar
-    case Assign(VarRef(n), value) =>
-      val allocatedVariable = getAllocatedVariable(n)
-      ctx.emit(IrStore(apply(value), allocatedVariable))
+    case e@EVarDecl(_, _, dfO, _, _) => bindDeclaration(e, dfO.map(apply))
+    case Assign(target, value) =>
+      compileAssignment(target, apply(value))
       apply(Unit.Value)
     case Instance(theory) => val theoryPath = mainTheoryPath(theory)
       val module = gc.lookupGlobal(theoryPath).get.asInstanceOf[Module]
@@ -305,6 +295,61 @@ private class IRGenerator {
       loadField(struct, structPtr, index - 1)
   }
 
+  // Compiler equivalent of Interpreter.interpretDynamicBoolean.
+  private def compileDynamicBoolean(exp: Expression)(implicit gc: GlobalContext): IrValue = exp match {
+    case Assign(target, value) => compileMatch(target, apply(value))
+    case _ => apply(exp)
+  }
+
+  private def compileAssignment(target: Expression, value: IrValue)(implicit gc: GlobalContext): Unit = target match {
+    case VarRef(name) => ctx.emit(IrStore(value, getAllocatedVariable(name)))
+    case vd: EVarDecl => bindDeclaration(vd, Some(value))
+    case Tuple(components) =>
+      val struct = tupleStruct(value)
+      components.zipWithIndex.foreach { case (component, index) =>
+        compileAssignment(component, loadField(struct, value, index))
+      }
+    case _ => ???
+  }
+
+  // Matches the value of the target expression against the value. Returns true if they match
+  // This may bind new variables to the target expression.
+  private def compileMatch(target: Expression, value: IrValue)(implicit gc: GlobalContext): IrValue = target match {
+    case VarRef(name) =>
+      val current = loadVarRef(VarRef(name))
+      val equal = IrVar(IrIntType.I1, fresh("int_equal"))
+      ctx.emit(IrICmp(equal, EQUAL, current, value))
+      equal
+    case vd: EVarDecl =>
+      bindDeclaration(vd, Some(value))
+      IrConst(true)
+    case Tuple(components) =>
+      val struct = tupleStruct(value)
+      components.zipWithIndex
+        .map { case (component, index) => compileMatch(component, loadField(struct, value, index)) }
+        .foldLeft[IrValue](IrConst(true))(compileBooleanAnd)
+    case _ => ???
+  }
+
+  private def compileBooleanAnd(left: IrValue, right: IrValue): IrValue = {
+    val result = IrVar(IrIntType.I1, fresh("bool_and"))
+    ctx.emit(IrBinOp(result, IAND, left, right))
+    result
+  }
+
+  private def bindDeclaration(vd: EVarDecl, value: Option[IrValue]): IrVar = {
+    val allocatedVar = IrVar(IrPtrType(llvmType(vd.tp)), fresh(s"alloc_${vd.name}"))
+    ctx.emitFirst(IrAlloca(allocatedVar))
+    scopes.head.variables ::= Variable(vd.name, allocatedVar)
+    value.foreach(v => ctx.emit(IrStore(v, allocatedVar)))
+    allocatedVar
+  }
+
+  private def tupleStruct(value: IrValue): IrStruct = value.tp match {
+    case IrPtrType(struct: IrStruct) => struct
+    case _ => ???
+  }
+
   private def applyField(fieldVar: IrValue, args: List[Expression])(implicit gc: GlobalContext): IrVar = {
     val result = IrVar(fieldVar.tp.asInstanceOf[IrFunType].ret, fresh("result"))
 
@@ -332,17 +377,26 @@ private class IRGenerator {
   }
 
   private def storeField(struct: IrStruct, structPtr: IrValue, op: IrValue, fieldIndex: Int): Unit = {
-    val fieldPtr = IrVar(IrPtrType(struct), fresh(s"field_${fieldIndex}_ptr"))
-    ctx.emit(IrGetElement(fieldPtr, struct, structPtr, List(0, fieldIndex)))
+    val fieldPtr = getFieldPointer(struct, structPtr, fieldIndex)
     ctx.emit(IrStore(op, fieldPtr))
   }
 
   private def loadField(struct: IrStruct, structPtr: IrValue, fieldIndex: Int): IrVar = {
+    loadFromPointer(getFieldPointer(struct, structPtr, fieldIndex), fresh(s"field_$fieldIndex"))
+  }
+
+  private def getFieldPointer(struct: IrStruct, structPtr: IrValue, fieldIndex: Int): IrVar = {
     val fieldPtr = IrVar(IrPtrType(struct.fields(fieldIndex)), fresh(s"field_${fieldIndex}_ptr"))
     ctx.emit(IrGetElement(fieldPtr, struct, structPtr, List(0, fieldIndex)))
-    val fieldVar = IrVar(struct.fields(fieldIndex), fresh(s"field_$fieldIndex"))
-    ctx.emit(IrLoad(fieldVar, fieldPtr))
-    fieldVar
+    fieldPtr
+  }
+
+  private def loadFromPointer(ptr: IrVar, name: String): IrVar = ptr.tp match {
+    case IrPtrType(valueType) =>
+      val value = IrVar(valueType, name)
+      ctx.emit(IrLoad(value, ptr))
+      value
+    case _ => throw new IllegalArgumentException(s"Expected a pointer, found ${ptr.tp}")
   }
 
   private def compileModule(df: TheoryValue, closed: Boolean, moduleName: String, gcI: GlobalContext): Unit = { //
@@ -411,27 +465,24 @@ private class IRGenerator {
     }
   }
 
-  private def loadClosedRef(r: ClosedRef)(implicit gc: GlobalContext): IrValue = {
+  private def loadClosedRef(r: ClosedRef)(implicit gc: GlobalContext): IrVar = {
     val theoryPath = gc.currentParent
     val module = gc.lookupGlobal(theoryPath).get.asInstanceOf[Module]
     val exprDecls = module.decls.collect { case d: ExprDecl => d }
     val fieldIndex = exprDecls.indexWhere(_.name == r.name)
-    val struct = IrStruct(theoryPath.toString, exprDecls.map { d => llvmType(d.tp) })
-
-    val instanceArgument = IrArgument(IrPtrType(struct), "__instance")
-    loadField(struct, instanceArgument, fieldIndex)
+    val struct = IrStruct(theoryPath.toString, exprDecls.map(d => llvmType(d.tp)))
+    getFieldPointer(struct, IrArgument(IrPtrType(struct), "__instance"), fieldIndex)
   }
 
-  private def loadOwnedExpr(o: OwnedExpr)(implicit gc: GlobalContext): IrValue = {
+  private def loadOwnedExpr(o: OwnedExpr)(implicit gc: GlobalContext): IrVar = {
     o match {
-      case OwnedExpr(owner, ownerDom, ClosedRef(owned)) => val theoryPath = mainTheoryPath(ownerDom)
+      case OwnedExpr(owner, ownerDom, ClosedRef(name)) =>
+        val theoryPath = mainTheoryPath(ownerDom)
         val module = gc.lookupGlobal(theoryPath).get.asInstanceOf[Module]
         val exprDecls = module.decls.collect { case d: ExprDecl => d }
-        val fieldIndex = exprDecls.indexWhere(e => e.name == owned)
-        val struct = IrStruct(theoryPath.toString, exprDecls.map { d => llvmType(d.tp) })
-
-        val structPtr = apply(owner)(gc)
-        loadField(struct, structPtr, fieldIndex)
+        val fieldIndex = exprDecls.indexWhere(_.name == name)
+        val struct = IrStruct(theoryPath.toString, exprDecls.map(d => llvmType(d.tp)))
+        getFieldPointer(struct, apply(owner), fieldIndex)
       case _ => ???
     }
   }
