@@ -52,7 +52,7 @@ private class IRGenerator {
 
     val entry = ctx.newBlock("entry")
     ctx.insertBlock(entry)
-    val value = apply(exp)(gc)
+    val value = compileExpression(exp)(gc)
     //not every code statement returns a value => behave like C; default to 0
     val ret = value.tp match {
       case IrVoidType => IrReturn(IrConst(IrIntType.I64, 0))
@@ -70,7 +70,7 @@ private class IRGenerator {
    *
    * @param exp Expression to compile
    * @return IrOperand representing the result of the expression. */
-  def apply(exp: Expression)(implicit gc: GlobalContext): IrValue = exp match { // TODO Currently all numbers are
+  private def compileExpression(exp: Expression)(implicit gc: GlobalContext): IrValue = exp match { // TODO Currently all numbers are
     // treated as i64 integers.
     case NumberValue(_, re, _) => re match {
       case ApproxReal(value) => IrConst(value.toInt)
@@ -93,14 +93,14 @@ private class IRGenerator {
       ctx.emit(IrCondBranch(condO, thenB.label, elseB.label))
 
       ctx.insertBlock(thenB)
-      val thnO = apply(thn)
+      val thnO = compileExpression(thn)
       val allocResult = IrVar(IrPtrType(thnO.tp), fresh("alloc_result"))
       ctx.emit(IrStore(thnO, allocResult))
       ctx.emit(IRBranch(endB.label))
       thenB = ctx.currentBlock
 
       ctx.insertBlock(elseB)
-      val elsO = apply(els)
+      val elsO = compileExpression(els)
       ctx.emit(IrStore(elsO, allocResult))
       ctx.emit(IRBranch(endB.label))
       elseB = ctx.currentBlock
@@ -120,7 +120,7 @@ private class IRGenerator {
       ctx.emit(IrCondBranch(compileDynamicBoolean(cond), thenB.label, endB.label))
 
       ctx.insertBlock(thenB)
-      val thnO = apply(thn)
+      val thnO = compileExpression(thn)
       val allocResult = IrVar(IrPtrType(thnO.tp), fresh("alloc_result"))
       ctx.emit(IrStore(thnO, allocResult))
       ctx.emit(IRBranch(endB.label))
@@ -141,15 +141,15 @@ private class IRGenerator {
 
       ctx.emit(IRBranch(loopB.label))
       ctx.insertBlock(bodyB)
-      apply(body)
+      compileExpression(body)
       ctx.emit(IRBranch(loopB.label))
       ctx.insertBlock(loopB)
-      ctx.emit(IrCondBranch(apply(cond), bodyB.label, endB.label))
+      ctx.emit(IrCondBranch(compileExpression(cond), bodyB.label, endB.label))
       ctx.insertBlock(endB)
 
-      apply(Unit.Value)
-    case Equality(positive, tp, left, right) => val lO = apply(left)
-      val rO = apply(right)
+      compileExpression(Unit.Value)
+    case Equality(positive, tp, left, right) => val lO = compileExpression(left)
+      val rO = compileExpression(right)
       val cmpResult = IrVar(IrIntType.I1, fresh("cmp_result")) // We only support comparisons of boolean, numbers
       // (approximated as i64) and UnitValue
       assert(lO.tp.isInstanceOf[IrIntType])
@@ -168,13 +168,13 @@ private class IRGenerator {
             case _ => ???
           }
           val cmpResult = IrVar(IrIntType.I1, fresh("cmp_result"))
-          ctx.emit(IrICmp(cmpResult, irCond, apply(args(0)), apply(args(1))))
+          ctx.emit(IrICmp(cmpResult, irCond, compileExpression(args(0)), compileExpression(args(1))))
           cmpResult
         case inf: InfixOperator => val numArgs = args.length
           if (numArgs == 0) {
-            apply(inf.neutral.get)
+            compileExpression(inf.neutral.get)
           } else if (numArgs == 1) {
-            apply(args(0))
+            compileExpression(args(0))
           } else {
             val irOp = inf match {
               case Plus => IADD
@@ -186,12 +186,12 @@ private class IRGenerator {
 
             val (left, right) = if (numArgs > 2) {
               if (inf.assoc == RightAssociative) {
-                (apply(args(0)), apply(Application(bo, args.tail)))
+                (compileExpression(args(0)), compileExpression(Application(bo, args.tail)))
               } else {
-                (apply(Application(bo, args.init)), apply(args.last))
+                (compileExpression(Application(bo, args.init)), compileExpression(args.last))
               }
             } else {
-              (apply(args(0)), apply(args(1)))
+              (compileExpression(args(0)), compileExpression(args(1)))
             }
 
             val op_result = IrVar(IrIntType.I64, fresh("op_result"))
@@ -199,10 +199,10 @@ private class IRGenerator {
             op_result
           }
       }
-      case o: OpenRef => applyField(apply(o), args)
-      case o: ClosedRef => applyField(apply(o), args)
-      case o: OwnedExpr => applyField(apply(o), args)
-      case o: VarRef => applyField(apply(o), args)
+      case o: OpenRef => applyField(compileExpression(o), args)
+      case o: ClosedRef => applyField(compileExpression(o), args)
+      case o: OwnedExpr => applyField(compileExpression(o), args)
+      case o: VarRef => applyField(compileExpression(o), args)
     }
     case o: OpenRef => loadOpenRef(o)
     case r: ClosedRef => loadFromPointer(loadClosedRef(r), fresh(r.name))
@@ -223,7 +223,7 @@ private class IRGenerator {
         ctx.emit(IrStore(a, allocatedVar))
       }
 
-      val result = apply(body)(gc.append(ins))
+      val result = compileExpression(body)(gc.append(ins))
       scopes = scopes.tail
 
       ctx.emit(IrReturn(result))
@@ -235,25 +235,25 @@ private class IRGenerator {
     case Block(exprs) =>
       scopes ::= VariableScope()
       val result = if (exprs.nonEmpty) {
-        exprs.dropRight(1).foreach { e => apply(e) }
-        apply(exprs.last)
+        exprs.dropRight(1).foreach { e => compileExpression(e) }
+        compileExpression(exprs.last)
       } else {
         // dummy value (Unit.Value)
-        apply(Unit.Value)
+        compileExpression(Unit.Value)
       }
       scopes = scopes.tail
       result
     case Return(exp, false) =>
-      val value = apply(exp)
+      val value = compileExpression(exp)
       ctx.emit(value.tp match {
         case IrVoidType => IrReturnVoid
         case _ => IrReturn(value)
       })
-      apply(Unit.Value)
-    case e@EVarDecl(_, _, dfO, _, _) => bindDeclaration(e, dfO.map(apply))
+      compileExpression(Unit.Value)
+    case e@EVarDecl(_, _, dfO, _, _) => bindDeclaration(e, dfO.map(compileExpression))
     case Assign(target, value) =>
-      compileAssignment(target, apply(value))
-      apply(Unit.Value)
+      compileAssignment(target, compileExpression(value))
+      compileExpression(Unit.Value)
     case Instance(theory) => val theoryPath = mainTheoryPath(theory)
       val module = gc.lookupGlobal(theoryPath).get.asInstanceOf[Module]
       val exprDecls = module.decls.collect { case d: ExprDecl => d }
@@ -269,13 +269,13 @@ private class IRGenerator {
       // Initializes the expression declared by this instance
       theory.decls.foreach { case ExprDecl(name, _, _, Some(exp), _, _) => val fieldIndex = exprDecls.indexWhere(_
         .name == name)
-        storeField(struct, structPtr, apply(exp), fieldIndex)
+        storeField(struct, structPtr, compileExpression(exp), fieldIndex)
       case _ =>
       }
 
       structPtr
     case Tuple(comps) =>
-      val values = comps.map(apply)
+      val values = comps.map(compileExpression)
       val struct = findProdStruct(values.map(a => a.tp))
       val size = IrVar(IrIntType.I64, fresh("size"))
       ctx.emit(IrComputeSize(size, struct))
@@ -287,14 +287,14 @@ private class IRGenerator {
       values.zipWithIndex.foreach { case (vl, fieldIndex) => storeField(struct, structPtr, vl, fieldIndex)}
       structPtr
     case Projection(tuple, index) =>
-      val structPtr = apply(tuple)
+      val structPtr = compileExpression(tuple)
       val struct = structPtr.tp match {
         case IrPtrType(s: IrStruct) => s
       }
       // Projection indices start at 1, but llvm struct fields are 0 indexed
       loadField(struct, structPtr, index - 1)
     case Match(e, cases, false) =>
-      val target = apply(e)
+      val target = compileExpression(e)
       val endB = ctx.newBlock("end")
 
       var tp: IrType = IrUnknownType
@@ -312,7 +312,7 @@ private class IRGenerator {
         ctx.emit(IrCondBranch(compileMatch(pattern, target, bindings), matchedB.label, nextMatchB.label))
         ctx.insertBlock(matchedB)
 
-        val matchResult = apply(body)
+        val matchResult = compileExpression(body)
         tp = matchResult.tp
         ctx.emit(IrStore(matchResult, allocMatchResult))
 
@@ -330,8 +330,8 @@ private class IRGenerator {
 
   // Compiler equivalent of Interpreter.interpretDynamicBoolean.
   private def compileDynamicBoolean(exp: Expression)(implicit gc: GlobalContext): IrValue = exp match {
-    case Assign(target, value) => compileMatch(target, apply(value))
-    case _ => apply(exp)
+    case Assign(target, value) => compileMatch(target, compileExpression(value))
+    case _ => compileExpression(exp)
   }
 
   private def compileAssignment(target: Expression, value: IrValue)(implicit gc: GlobalContext): Unit = target match {
@@ -366,7 +366,7 @@ private class IRGenerator {
         .map { case (component, index) => compileMatch(component, loadField(struct, value, index), bindings) }
         .foldLeft[IrValue](IrConst(true))(compileBooleanAnd)
     case nv: NumberValue =>
-      val current = apply(nv)
+      val current = compileExpression(nv)
       compileIntCompare(current, value)
     case _ => ???
   }
@@ -404,11 +404,11 @@ private class IRGenerator {
       case _ => Some(result)
     }
 
-    ctx.emit(IrCall(option, fieldVar, args.map(a => apply(a))))
+    ctx.emit(IrCall(option, fieldVar, args.map(a => compileExpression(a))))
     result
   }
 
-  def apply(d: Declaration)(implicit gc: GlobalContext): Unit = {
+  private def compileDeclaration(d: Declaration)(implicit gc: GlobalContext): Unit = {
     d match {
       case m@Module(name, closed, df) => val gcI = gc.enter(m)
         val fullName = (gc.currentParent / name).toString
@@ -451,7 +451,7 @@ private class IRGenerator {
     // modules from messing with the function context
     df.decls.foreach { case _: ExprDecl =>
     case _: Include =>
-    case d => apply(d)(gcI)
+    case d => compileDeclaration(d)(gcI)
     }
 
     val exprDecls = df.decls.collect { case d: ExprDecl => d }
@@ -464,7 +464,7 @@ private class IRGenerator {
       ctx.insertBlock(ctx.newBlock("entry"))
 
       df.decls.foreach { case e@ExprDecl(_, _, _, Some(exp), _, _) => val fieldIndex = exprDecls.indexOf(e)
-        storeField(struct, structArg, apply(exp)(gcI), fieldIndex)
+        storeField(struct, structArg, compileExpression(exp)(gcI), fieldIndex)
       case _ =>
       }
       ctx.emit(IrReturnVoid)
@@ -484,7 +484,7 @@ private class IRGenerator {
       ctx.insertBlock(ctx.newBlock("entry"))
 
       df.decls.foreach { case e@ExprDecl(_, _, _, Some(exp), _, _) => val fieldIndex = exprDecls.indexOf(e)
-        storeField(struct, structGlobal, apply(exp)(gcI), fieldIndex)
+        storeField(struct, structGlobal, compileExpression(exp)(gcI), fieldIndex)
       case _ =>
       }
       ctx.emit(IrReturnVoid)
@@ -528,7 +528,7 @@ private class IRGenerator {
         val exprDecls = module.decls.collect { case d: ExprDecl => d }
         val fieldIndex = exprDecls.indexWhere(_.name == name)
         val struct = IrStruct(theoryPath.toString, exprDecls.map(d => llvmType(d.tp)))
-        getFieldPointer(struct, apply(owner), fieldIndex)
+        getFieldPointer(struct, compileExpression(owner), fieldIndex)
       case _ => ???
     }
   }
