@@ -32,6 +32,11 @@ object Solver {
      // prepare the solving by collecting the relevant information from the theory
      thyN.decls.foreach(d => findFields(d, Path(), thyN, Map()));
 
+     // clean up duplicate unknowns
+     unknowns = unknowns.distinct
+     // clean up known unknowns (e.g. value assignment via instanciation)
+     unknowns = unknowns.filter(u => knowns.count(k => k.name == u.name) == 0)
+
 
      // the actual solving
      // TODO
@@ -166,6 +171,7 @@ object Solver {
           val tV = Checker.evaluateTheory(gc, theo)
           // TODO funktioniert noch nicht
           tV.decls.foreach(dec => findFields(dec, pre/ed.name, thy, lpt+(ed.name -> theo))) // TODO besser mit map
+          ed.dfO.get.asInstanceOf[Instance].theory.decls.foreach(dec => findFields(dec, pre/ed.name, thy, lpt+(ed.name -> theo)))
           if (unknowns.exists(u => startsWith(u.name, pre/ed.name))) unknowns ::= Unknown(pre/ed.name, ed.tp, true)
           else knowns ::= Known(pre/ed.name, ed.dfO.get, false)
           // axiome --> beide Seiten OwnedExpr (owner = ClosedRef(ed.name), domain = theo, ownedExpr = left/right)
@@ -249,6 +255,7 @@ object Solver {
   }
 
   def cleanUpUnknownInstances(): Unit = {
+    // unknowns, die doch known sind entfernen
     val knownInstances = unknowns.filter(u => u.isInstance && unknowns.count(u2 => startsWith(u2.name, u.name)) == 1)
     unknowns = unknowns.filter(u => !knownInstances.exists(k => k.name == u.name))
     // TODO knownInstances.foreach(k => knowns ::= Known(u.name, TypeDecl()))
@@ -381,7 +388,8 @@ object SolverTest {
     //val tS = Solver.solve(gc, OpenRef(Path("Demo", "OppositeLength")))
     //val tS = Solver.solve(gc, OpenRef(Path("Demo", "TestOppositeLength")))
     //val tS = Solver.solve(gc, OpenRef(Path("Demo", "TestInterceptTheorem2")))
-    val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "Slingshot_test")));
+    //val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "Slingshot_test")));
+    val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "C")));
     // OppositeLength
     // TestOppositeLength
     println(tS)
