@@ -1,0 +1,1 @@
+main: if (inst_bool.x) inst_int.x else 4

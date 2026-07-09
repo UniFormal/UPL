@@ -125,10 +125,14 @@ case class IrGetElement(result: IrVar, struct: IrStruct, ptr: IrValue, vals: Lis
   }, ${vals.map(v => s"i32 $v").mkString(", ")}"
 }
 
-case class IrComputeSize(result: IrVar, struct: IrStruct) extends IrInstr {
-  override def render(): String = s"${result.render()} = ptrtoint ${struct.render()}* getelementptr (${
-    struct.render()
-  }, ${struct.render()}* null, i32 1) to ${result.tp.render()}"
+case class IrComputeSize(result: IrVar, tp: IrType) extends IrInstr {
+  override def render(): String = {
+    val pointerType = tp match {
+      case _: IrPtrType => "ptr"
+      case _ => s"${tp.render()}*"
+    }
+    s"${result.render()} = ptrtoint $pointerType getelementptr (${tp.render()}, $pointerType null, i32 1) to ${result.tp.render()}"
+  }
 }
 
 case class IrAlloca(result: IrVar) extends IrInstr {
@@ -189,7 +193,7 @@ object IrVoidType extends IrType {
 }
 
 object IrUnknownType extends IrType {
-  override def render(): String = ???
+  override def render(): String = "???"
 }
 
 object IrVariadicType extends IrType {

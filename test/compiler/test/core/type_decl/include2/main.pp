@@ -1,0 +1,1 @@
+main: if (inst2.y) inst2.x + inst2.z + inst1.y else 3

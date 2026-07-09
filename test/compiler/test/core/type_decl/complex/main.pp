@@ -1,0 +1,1 @@
+main: if (inst2.x) inst.y + inst.b(1) + inst2.z else 4
