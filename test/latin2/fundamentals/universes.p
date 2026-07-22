@@ -29,8 +29,8 @@ module universes {
         realize TwoUniverses
         utp = univTp univ_zero
         ukd = univTp (univ_next univ_zero)
-        // doesn't work
-        utp_kd = ??? // univ_in
+        // doesn't work, definitions don't get expanded
+        utp_kd = ??? // univ_in univ_zero
     }
 
     // Universes as a soft element typing relation on types

@@ -29,8 +29,6 @@ module concepts {
         inconsistentE: inconsistent -> F -> ded F = p -> F -> p F
 
         realize Disproofs
-        //type disproof(p: prop) = F -> (ded F) -> inconsistent
-        //type disproof(p: prop) = (p:prop) -> (ded p) -> inconsistent
         type disproof(p: prop) = ded p -> inconsistent
     }
 
@@ -119,7 +117,7 @@ module concepts {
 
         typesAsPredicates : SoftTypedTerms {
             type tp = term -> prop
-            of = (X, A) -> (A X)
+            of = (X, A) -> A X
         }
     }
 
@@ -138,7 +136,7 @@ module concepts {
         include Propositions
 
         // Should be included/realized in set theory
-        iin: (term, term) -> prop
+        iin: (term, term) -> prop # infix ⋵
 
         realize SoftTypedTerms
         type tp = term

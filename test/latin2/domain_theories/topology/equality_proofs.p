@@ -1,0 +1,3 @@
+module equality_proofs {
+  
+}

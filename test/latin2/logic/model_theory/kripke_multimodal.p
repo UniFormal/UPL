@@ -1,0 +1,3 @@
+module kripke_multimodal {
+  
+}

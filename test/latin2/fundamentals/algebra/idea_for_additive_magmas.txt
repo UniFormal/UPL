@@ -1,0 +1,11 @@
+theory AdditiveMagma {
+    include Carrier
+    add: (univ,univ) -> univ # infix +
+    magma = Magma {type univ = ..univ, op = add}
+}
+fromMagma(m: Magma) = AdditiveMagma {type univ = m.univ, add = m.op}
+
+// theory AdditiveCommutative {
+//     include AdditiveMagma
+//     add_comm:--- x+y == y+x
+// }

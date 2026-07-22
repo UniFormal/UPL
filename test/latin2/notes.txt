@@ -5,32 +5,42 @@ general:
 !!! what to do with mmt files that use ur?xxx or diagram?
 (see fundamentals/informal.mmt for ur?xxx
 and base_language_translations.mmt for diagram)
+x
 
 todo: 
 change notation once implicit args are possible
+do upl algebras. then realize sfol algebras
 
 ------------------------------------------------------
 
 fundamentals:
 
 !!! is algebra/magmas.mmt needed? already exists in domain_theories
+x
 
 !!! use |- or ded?
+ded
 
 !!! relations.p line 51. Can "T: carrier -> carrier" be inferred? (UPL type checker doesn't complain if I write just T).
 In MMT it's written explicitly, why?
+not needed in upl
 
 !!! relations.p line 67. proof term like this? if yes, write them now or wait for implicit args notation?
 MMT explicitly writes out the type again (congT : type = proof term). 
 Is that needed in UPL or can I write (congT = proof term)?
+use inhabited, wait for impl args
 
 !!! relations.p line 81 doesn't work. why? (same problem as in type_erasure s.ded)
+solved
 
 !!! relations.p line 90. needs sum types. does UPL have sumtypes? 
 do I even need meta sumtypes or do I make a theory for sumtypes and use that?
+use inhabitated
+
 
 !!! subtyping.p line 14. doesn't work (carrier illegal type)
 (equality.p line 16. same problem) 
+todo: not implemented yet
 
 !!! universes.p line 33. doesn't work
 (what exactly happens in MMT here? universes.mmt line 36)
@@ -53,7 +63,7 @@ type theory:
 algebra:
 
 magmas.p line 6. doesn't work 
-
+buggy
 
 todo:
 -extend views OppositeSemigroup
@@ -88,3 +98,4 @@ Pro MMT:
 
 -type-checker is faster
 (UPL struggles, especially for theories that include structs)
+write down examples

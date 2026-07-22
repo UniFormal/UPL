@@ -5,12 +5,9 @@ module type_erasure {
     } 
 
     TypeErasEquality: .equality.SoftTypedEquality -> .equality.TypedEquality = s -> .equality.TypedEquality {
-        type tp = s.tp
-        type tm(a: tp) = s.term
+        // include .concepts.TypedTerms = TypeErasTerms(s)
         type prop = s.prop
-        type ded(p: prop) = ded p
-        // doesn't work, why?
-        // type ded(p: prop) = s.ded(p)
+        type ded(p: prop) = s{ded p}
         lemma = s.lemma
         tequal = (A,x,y) ->  s.requal(A,x,y)
     } 

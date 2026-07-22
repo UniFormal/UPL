@@ -1,0 +1,3 @@
+module collection_monads {
+  
+}

@@ -35,12 +35,6 @@ module relations {
         include Transitivity
     }
 
-    // theory SubOneTyped {
-    //     include OneTyped
-    //     per: PER {type carrier = ..carrier}
-    //     perapply # infix $ = per.rel
-    // }
-
     theory EquivalenceRelation {
         include Preorder
         include Symmetry
@@ -48,7 +42,7 @@ module relations {
 
     theory Congruence {
         include Relation
-        congT: (x, y) -> rel(x, y) -> (T: carrier -> carrier) -> rel(T x, T y)
+        congT: (x, y) -> rel(x, y) -> T -> rel(T x, T y)
     }
 
     theory EquivalenceCongruence {
@@ -56,16 +50,17 @@ module relations {
         include Congruence
     }
 
-    // // Equality is an equivalence-congruence.
-    // // But semantic equality is even stronger: it allows substitution in objects of any type so that equal objects can never be distinguished.
-    // // This is different from the syntactic equality used inside a logic, where equal objets cannot be distinguished by logical formulas but might be distinguishable by other judgments.
-    // theory SemanticEquality {
-    //     include EquivalenceRelation
-    //     cong: (x, y) -> rel(x, y) -> A -> A x -> A y
+    // Equality is an equivalence-congruence.
+    // But semantic equality is even stronger: it allows substitution in objects of any type so that equal objects can never be distinguished.
+    // This is different from the syntactic equality used inside a logic, where equal objets cannot be distinguished by logical formulas but might be distinguishable by other judgments.
+    theory SemanticEquality {
+        include EquivalenceRelation
+        // cong: (x, y) -> rel(x, y) -> (A: carrier -> bool) -> |- A x -> |- A y
+        cong: (x, y) -> rel(x, y) -> (A: carrier -> bool) -> |- A x -> |- A y
 
-    //     // realize Congruence
-    //     // congT = (x, y, p, T) -> cong(x,y,p,(u -> rel(T x, T u)),refl)
-    // }
+        realize Congruence
+        congT = (x, y) -> p -> T -> cong(x,y) p (u -> inhabited@(rel(T x, T u))) refl
+    }
 
     theory EqualityType {
         include OneTyped
@@ -76,22 +71,11 @@ module relations {
         include EqualityType
         include Relation
         // this doesn't work
-        // antisym: (x, y) -> rel(x, y) -> rel(y, x) -> equalityRel.rel(x, y)
+        antisym: (x, y) -> rel(x, y) -> rel(y, x) -> equalityRel{rel(x, y)}
     }
 
-    theory PartialOrder {
+    theory Order {
         include Preorder
         include AntiSymmetry
     }
-
-    // theory Totality {
-    //     include Relation
-    //     // needs sum types
-    //     // total: (x, y) -> rel(x, y) | rel(y, x)
-    // }
-
-    // theory TotalOrder {
-    //     include PartialOrder
-    //     include Totality
-    // }
 }
