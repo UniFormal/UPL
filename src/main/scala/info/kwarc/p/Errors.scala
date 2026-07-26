@@ -37,6 +37,8 @@ class ErrorCollector extends ErrorHandler {
   def getErrors = errors.reverse
   def apply(e: SError) = {
     if (e.loc == null) throw IError(s"SError without valid Location: ${e.getMessage}")
+    if (errors.segmentLength(_ == e) >= 20)
+      throw IError(s"$e\nLoop suspected: This exact error has been reported 20 times in a row.")
     errors ::= e
   }
   def clear = {errors = Nil}

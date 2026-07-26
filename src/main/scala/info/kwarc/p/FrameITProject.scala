@@ -83,7 +83,13 @@ class FrameITProject private extends Project(Nil,None){
     def add(decls_String: String): Boolean = {
       counter += 1
       val stageString = s"theory $current{include $previous\n$decls_String}"
-      updateAndCheck(Origin(counter), stageString)
+      val checked = updateAndCheck(Origin(counter), stageString)
+      // Remove the 'Include's
+      // A lot of code, because we have to dig a bit, and copy everything to keep it like it is
+      val filtered = checked.decls.filter(_.isInstanceOf[Module]).map
+      { _.asInstanceOf[Module].copyF(_.filterNot(_.isInstanceOf[Include]))
+      }
+      get(Origin(counter)).checked = checked.copy(filtered)
       SiTh.update()
       if (debug) println(check(SiThOrigin, false))
       val err = hasErrors

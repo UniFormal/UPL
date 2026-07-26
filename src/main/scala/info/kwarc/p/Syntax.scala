@@ -129,6 +129,10 @@ case class Module(name: String, closed: Boolean, df: TheoryValue) extends NamedD
     case s @ Some(m: Module) => Some(m)
     case _ => None
   }
+
+  /** Does what you'd want from ```copy(decls = decls.f)``` */
+  def copyF(f: List[Declaration] => List[Declaration]): Module =
+    copy(df = df.copy(decls = f(df.decls)))
 }
 
 object Module {
