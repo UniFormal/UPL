@@ -16,12 +16,12 @@ object FrameIT_Backend {
   implicit val debug: Boolean = false
   var proj = FrameITProject("","")
 
-  // ToDO: Make a useful JS Object
+  /** ToDO: Make a useful JS Object */
   def makeJSReadable(declaration: Declaration) = declaration.toString
 
-  def showSiTh: String = proj.SiTh.get.toString
+  def showSiTh: String = proj.SiTh.toString
 
-  def getSiThErrors: String = proj.getSiThErrors.mkString("\n")
+  def getSiThErrors: String = proj.SiTh.errors.toString
   def getErrors = proj.getErrors.mkString("\n")
 
   /** Add [[Declaration]]s to the SiTh
@@ -82,6 +82,11 @@ object BackendTests {
     //add(s1)
     proj applySchema("SimilarTriangles", assignments, SeqMap(("CD","height"),("CD_P","height_P"))) // ("height_P","__CD_P") doesn't work right now
     println(proj.tryEval(s"${proj.Stage.name_curr}{}.height"))
+    val tmp1 = proj.tryEval(s"${proj.Stage.name_curr}.height")
+    println(Simplify(proj.makeGlobalContext(),tmp1.get))
+    val tmp2 = proj.SiTh.lookup("height")//.asInstanceOf[ExprDecl].dfO.get
+    println(Simplify(GlobalContext(proj.SiTh.get),tmp2).dfO)
+    val stophere: Unit= ()
     //debugPrintVerbose()
   }
   /** The Background */

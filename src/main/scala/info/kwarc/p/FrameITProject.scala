@@ -30,34 +30,39 @@ import scala.util.Try
   * Its current value is accessible as [[SiTh]], and new declarations can be added via [[Stage.add]]
   */
 class FrameITProject private extends Project(Nil,None){
-  import info.kwarc.p.FrameITProject._
   final val debug: Boolean = false
-  entries = List(SiTh)
-  main = Option(Parser.expression(SiThOrigin, "SiTh{}", ErrorIgnorer))
-  /** The current Situation is always the latest Stage, but with a constant Name ("SiTh") */
-  case object SiTh extends ProjectEntry(SiThOrigin) {
+
+  /** The current logical world
+    *
+    * This is essentially a constant handle for the latest [[Stage]], with interface sugar
+    */
+  object SiTh{
     private val proj = FrameITProject.this
 
     /** Set the [[SiTh]] to the combination of all [[Declaration Declarations]] of all [[Stage Stages]] */
-    def update(): TheoryValue = update(s"theory SiTh{include ${Stage.current}}")
+    //def update(): TheoryValue = update(s"theory SiTh{include ${Stage.current}}")
 
-    /** @throws NoSuchElementException if no SiTh can be found or created.
-      * @throws ClassCastException if SiTh is not a theory
+    /** @throws NoSuchElementException if SiTh cannot be found or is not a theory.
       *
-      * Neither should be possible
+      * Which should not be possible
       */
     def get: Module = {
-      update()
-      proj.check(SiThOrigin,false)
-      getVocabulary.lookup("SiTh") match {
+      val voc = proj.check(Stage.Origin.current,false)
+      voc.lookup(Stage.name_curr) match {
         case m:Module => m
-        case _ => throw new ClassCastException("SiTh is not a Theory")
+        case _ => throw new NoSuchElementException("SiTh is not a Theory")
       }
+    }
+
+    def lookup(name:String): Declaration = {
+      get.lookup(name)
     }
 
     def decls: List[Declaration] = get.decls
     override def toString: String =
-      source.toString ++ " ::" ++ decls.mkString("{\n", "\n", "\n}").indent(1)
+      s"{\n ${decls.mkString("\n").indent(1)} \n}"
+
+    def errors: ErrorCollector = Stage.current.errors
   }
 
   /** Intermediate Stages of the Situation
@@ -67,11 +72,13 @@ class FrameITProject private extends Project(Nil,None){
   case class Stage(num: Int = Stage.counter) extends ProjectEntry(Stage.Origin(num))
   object Stage {
     var counter = 0
-    def current: String = makeName(counter)
-    def previous: String = makeName(counter - 1)
+    def current: Stage = get(Origin(counter)).asInstanceOf[Stage]
+    def name_curr: String = makeName(counter)
+    def name_prev: String = makeName(counter - 1)
     private def makeName(num: Int) = s"Stage$num"
     /** Extractor, because [[SourceOrigin]] is a case class and cannot be extended */
     object Origin {
+      def current: SourceOrigin = apply(counter)
       def apply(num: Int): SourceOrigin = SourceOrigin(makeName(num))
 
       def unapply(so: SourceOrigin): Option[Int] = so match {
@@ -82,7 +89,7 @@ class FrameITProject private extends Project(Nil,None){
 
     def add(decls_String: String): Boolean = {
       counter += 1
-      val stageString = s"theory $current{include $previous\n$decls_String}"
+      val stageString = s"theory $name_curr{\ninclude $name_prev\n$decls_String\n}"
       val checked = updateAndCheck(Origin(counter), stageString)
       // Remove the 'Include's
       // A lot of code, because we have to dig a bit, and copy everything to keep it like it is
@@ -90,8 +97,6 @@ class FrameITProject private extends Project(Nil,None){
       { _.asInstanceOf[Module].copyF(_.filterNot(_.isInstanceOf[Include]))
       }
       get(Origin(counter)).checked = checked.copy(filtered)
-      SiTh.update()
-      if (debug) println(check(SiThOrigin, false))
       val err = hasErrors
       if (err) undo()
       !err
@@ -115,26 +120,6 @@ class FrameITProject private extends Project(Nil,None){
     //def apply(stage: Stage, data: Nothing): Stage = ???
   }
 
-  /** Helper Entry for the application of a Schema. For now, it's easiest to just keep them around. */
-  case class SchemaApplication(num: Int) extends ProjectEntry(SchemaApplication.Origin(num))
-  object SchemaApplication {
-    var counter = 0
-    def next: (SourceOrigin, String) = {
-      counter += 1
-      (Origin(counter), makeName(counter))
-    }
-    private def makeName(num: Int) = s"Application$num"
-    /** Extractor, because SourceOrigin is a case class and cannot be extended */
-    object Origin {
-      def apply(id: Int = counter): SourceOrigin = SourceOrigin(makeName(id))
-
-      def unapply(so: SourceOrigin): Option[Int] = so match {
-        case SourceOrigin(s"Application$num", null) => num.toIntOption
-        case _ => None
-      }
-    }
-  }
-
   /** Apply [[Schema]] to deduce the resulting Facts from the required ones.
     *
     * @param schema the name of the schema to apply
@@ -150,18 +135,17 @@ class FrameITProject private extends Project(Nil,None){
                   requiredFactsAssignment: collection.Map[String, String],
                   resultingFactsAssignment: collection.Map[String, String])
   : Boolean = {
-    val (apOrigin,apName) = SchemaApplication.next
+    val (apOrigin,apName) = (SourceOrigin.anonymous,"Application")
     val reqDecls = requiredFactsAssignment map {case (n, d) => s"$n = $d"} mkString "\n"
     val apCode = s"theory $apName{\ninclude ${Stage.name_curr}\n$reqDecls\nrealize $schema}"
     val apRaw = updateAndCheck(apOrigin, apCode).lookup(apName).asInstanceOf[Module]
     //val apRaw = Solver.solve(makeGlobalContext(),OpenRef(Path(s"$apName")))
-    implicit val gc = GlobalContext(apRaw)
-    implicit val sub: Substitution = Substitution(
+    val gc = GlobalContext(apRaw)
+    val sub: Substitution = Substitution(
       (requiredFactsAssignment.toList ::: resultingFactsAssignment.toList)
         map {case (n, d) => EVarDecl.sub(n,ClosedRef(d))}
     )
 
-    val subber = new Substituter(gc)
     val tmp = Regional_Substituter(gc, sub, apRaw)
     // take only the actual results
     val resDecls = resultingFactsAssignment map { case (n, d) =>
@@ -177,10 +161,8 @@ class FrameITProject private extends Project(Nil,None){
 
   def reset(): Unit = {
     Stage.counter = 0
-    entries = entries.filterNot(e => e.isInstanceOf[Stage] || e.isInstanceOf[SchemaApplication])
-    SiTh.update()
+    entries = entries.filterNot(e => e.isInstanceOf[Stage])
   }
-  def getSiThErrors: List[SError] = SiTh.errors.getErrors
 
   /** Find the corresponding [[ProjectEntry]] in [[entries]].
     *
@@ -189,7 +171,6 @@ class FrameITProject private extends Project(Nil,None){
   override def get(so: SourceOrigin): ProjectEntry = entries.find(_.source == so).getOrElse {
     val e = so match {
       case Stage.Origin(n) => Stage(n)
-      case SchemaApplication.Origin(n) => SchemaApplication(n)
       case _ => new ProjectEntry(so)
     }
     entries = entries :+ e
@@ -227,9 +208,6 @@ class FrameITProject private extends Project(Nil,None){
 }
 
 object FrameITProject {
-  // SiTh: SituationTheory
-  private val SiThOrigin: SourceOrigin = SourceOrigin("SiTh")
-
   /**
     * Create a FrameIT project from an unfolded UPL project-file
     * Using LazyLists means we don't need to keep all file contents in Memory.
@@ -256,7 +234,7 @@ object FrameITProject {
       l <- fileContents get "stageInit"
       (_ , c) <- l.headOption
     } yield c
-    val stageInitCode = s"theory ${project.Stage.current}{${siO.getOrElse("")}}"
+    val stageInitCode = s"theory ${project.Stage.name_curr}{${siO.getOrElse("")}}"
     project.update(SourceOrigin("InitialStage"), stageInitCode)
     project.checkAll()
     project
