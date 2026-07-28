@@ -1382,7 +1382,8 @@ case class BaseOperator(operator: Operator, tp: Type) extends Expression {
   * executing this is an error; but it type-checks against every type
   */
 case class UndefinedValue(tp: Type) extends Expression {
-  override def toString = "???" + "[" + tp + "]"
+  // TODO make typed [[UndefinedValue]] parsable
+  override def toString = "???"// + "[" + tp + "]"
   def label = "???"
   def children = List(tp)
 }

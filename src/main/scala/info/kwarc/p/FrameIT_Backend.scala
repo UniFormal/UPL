@@ -43,7 +43,8 @@ object FrameIT_Backend {
 
   @JSExport("eval")
   def JS_eval(exprS: String): js.Object = {
-    val triedExpression = proj.tryEval(exprS)
+    val evalS = s"${proj.Stage.name_curr}{}.$exprS"
+    val triedExpression = proj.tryEval(evalS)
     new js.Object {
       val success = triedExpression.isSuccess
       val content = triedExpression.fold(_.toString,_.toString)
@@ -63,14 +64,10 @@ object FrameIT_Backend {
 object BackendTests {
   import FrameIT_Backend._
   def main(args: Array[String]): Unit = {
-//    val err = new ErrorCollector
-//    Parser.text(SourceOrigin.anonymous, "    _helper_minmax : (x:float,ns:[float],min:bool) -> float\n    _helper_minmax = (x:float,ns:[float],min:bool) -> {\n       ns match {\n           [] -> x\n           hd -: r -> if ((hd<x)==min) _helper_minmax(hd,r,min) else _helper_minmax(x,r,min)\n       }\n    }", err)
-//    println(err.getErrors)
-    val path = File(args(0)).canonical
-    proj = FrameITProject(path)
-    val voc = proj.check(true)
-    val gc = GlobalContext(voc)
-    val tS = Solver.solve(gc, OpenRef(Path("Slingshot", "Slingshot_test")))
+    gameplayTest()
+//    proj = FrameITProject(File(args(0)))
+//    val gc = proj.makeGlobalContext()
+//    val tS = Solver.solve(gc, OpenRef(Path("Slingshot", "Slingshot_test")))
 //    Solver.printAsTheory("Result", tS.decls)
 //    add(tS.decls.mkString("\n"))
 //    proj.checkErrors()
@@ -80,17 +77,14 @@ object BackendTests {
 
   /** private, so scala.js doesn't need to see [[File]] */
   private def gameplayTest() = {
-    //proj = FrameITProject(File("test/FrameIt/Gameplay_Example/gameplay.pp"))
-    newLevel(bg,schema)
-    add(s1)
-    proj applySchema("_SimilarTriangles", assignments, SeqMap(("__CD","height"),("__CD_P","height_P"))) // ("height_P","__CD_P") doesn't work right now
-    println(proj.tryEval("SiTh{}.height"))
+    proj = FrameITProject(File("test/FrameIt/Gameplay_Example/gameplay.pp"))
+    //newLevel(bg,schema)
+    //add(s1)
+    proj applySchema("SimilarTriangles", assignments, SeqMap(("CD","height"),("CD_P","height_P"))) // ("height_P","__CD_P") doesn't work right now
+    println(proj.tryEval(s"${proj.Stage.name_curr}{}.height"))
     //debugPrintVerbose()
   }
-  /** The Background
-    *
-    * FrameIT.newLevel("type point type triangle = (point,point,point) dist: point -> point -> float similar: triangle -> triangle -> bool", "theory _SimilarTriangles{ _A: point   _B: point  _C: point  _D: point  _E: point _AB: float  _AB_P:  |- dist(_A)(_B) == _AB _AC: float  _AC_P:  |- dist(_A)(_C) == _AC _BE: float  _BE_P: |- dist(_B)(_E) == _BE _are_similar: |- similar((_D,_A,_C))((_E,_A,_B)) __CD = _AC * _BE / _AB  __CD_P: |- dist(_C)(_D) == __CD = ???}")
-    */
+  /** The Background */
   val bg =
     """type point
       |type triangle = (point,point,point)
@@ -122,25 +116,56 @@ object BackendTests {
   val s1 =
     """tip: point = ???
       |foot: point = ??? ground: point = ??? p: point = ??? q: point = ???
-      |ground_dist_small = 42 ground_dist_small_P:  |- dist(ground)(q) == ground_dist_small = ???
-      |ground_dist_large = 420 ground_dist_large_P:  |- dist(ground)(foot) == ground_dist_large = ???
-      |apparent_height = 42 apparent_height_P: |- dist(q)(p) == apparent_height = ???
+      |ground_dist_small = 42
+      |ground_dist_small_P:  |- dist(ground)(q) == ground_dist_small = ???
+      |ground_dist_large = 420
+      |ground_dist_large_P:  |- dist(ground)(foot) == ground_dist_large = ???
+      |apparent_height = 42
+      |apparent_height_P: |- dist(q)(p) == apparent_height = ???
       |are_similar: |- similar((tip,ground,foot))((p, ground, q)) = ???""".stripMargin
 
   val assignments = collection.mutable.Map(
-    ("_AB_P", "ground_dist_small_P"), ("_AB", "ground_dist_small"),
-    ("_A", "ground"), ("_B", "q"), ("_C", "foot"), ("_D", "tip"), ("_E", "p"),
-    ("_AC", "ground_dist_large"), ("_AC_P", "ground_dist_large_P"),
-    ("_BE", "apparent_height"), ("_BE_P", "apparent_height_P"),
-    ("_are_similar", "are_similar"))
+    ("AB_P", "ground_dist_small_P"), ("AB", "ground_dist_small"),
+    ("A", "ground"), ("B", "q"), ("C", "foot"), ("D", "tip"), ("E", "p"),
+    ("AC", "ground_dist_large"), ("AC_P", "ground_dist_large_P"),
+    ("BE", "apparent_height"), ("BE_P", "apparent_height_P"),
+    //("are_similar", "are_similar")
+  )
+}
 
-  val s2 = //INCORRECT
-    """realize _SimilarTriangles
-      |_A = tip _B = p _C = ground _D = q _E = foot
-      |_CD = ground_dist_small _CD_P = ground_dist_small_P
-      |_CE = ground_dist_large _CE_P = ground_dist_large_P
-      |_DB = apparent_height _DB_P = apparent_height_P
-      |_are_similar = are_similar""".stripMargin
+/** FrameIT adapted version of [[Substituter]] that substitutes [[ClosedRef]] in a closed [[Module]]
+  *
+  * TODO This is a bit of a hack. Saver options in the future:
+  *  - An advanced version that can traverse deeper, and gathers a valid [[Substitution]] on the way;
+  *    Might be useful in general as a "Simplify_mildly"
+  *  - More safeguards/sanity-checks, and even less traversal
+  */
+object Regional_Substituter {
+  def apply(gc: GlobalContext, sub: Substitution, m: Module) = {
+    if (sub.isIdentity || !m.closed) m
+    else {val subber = new _Substituter(gc)
+      m.copyF(_.map(subber(_)(gc,sub)))
+    }
+  }
+
+  private class _Substituter(initGC: GlobalContext) extends Substituter(initGC) {
+    import SyntaxFragment.matchC
+
+    override def apply(exp: Expression)(implicit gc: GlobalContext, sub: Substitution) = matchC(exp) {
+      case ClosedRef(n) if n != "" && inOriginalRegion => sub.lookupO(n) match {
+        case Some(EVarDecl(_, _, Some(df), _, _)) => df
+        case Some(_) => throw IError("unexpected substitute")
+        case None => exp
+      }
+      case _ => applyDefault(exp)
+    }
+
+    /** Don't traverse into other [[Module]], because [[ClosedRef]] are not valid in there */
+    override def apply(d: Declaration)(implicit gc: GlobalContext, sub: Substitution): Declaration = matchC(d){
+      case _:Module => d
+      case _ => applyDefault(d)
+    }
+  }
 }
 
 /** Experimental factory to make common, but convoluted, declarations easier to interact with.*/

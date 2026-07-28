@@ -97,7 +97,7 @@ class FrameITProject private extends Project(Nil,None){
       !err
     }
 
-    def add(decls: Iterable[Declaration]): Boolean = add(decls.mkString(" "))
+    def add(decls: Iterable[Declaration]): Boolean = add(decls.mkString("\n"))
 
     def undo(): Unit = {
       entries = entries.init
@@ -151,8 +151,8 @@ class FrameITProject private extends Project(Nil,None){
                   resultingFactsAssignment: collection.Map[String, String])
   : Boolean = {
     val (apOrigin,apName) = SchemaApplication.next
-    val reqDecls = requiredFactsAssignment map {case (n, d) => s"$n = $d"} mkString " "
-    val apCode = s"theory $apName{include ${Stage.current} $reqDecls realize $schema}"
+    val reqDecls = requiredFactsAssignment map {case (n, d) => s"$n = $d"} mkString "\n"
+    val apCode = s"theory $apName{\ninclude ${Stage.name_curr}\n$reqDecls\nrealize $schema}"
     val apRaw = updateAndCheck(apOrigin, apCode).lookup(apName).asInstanceOf[Module]
     //val apRaw = Solver.solve(makeGlobalContext(),OpenRef(Path(s"$apName")))
     implicit val gc = GlobalContext(apRaw)
@@ -162,10 +162,10 @@ class FrameITProject private extends Project(Nil,None){
     )
 
     val subber = new Substituter(gc)
-    val tmp = apRaw.decls.map { subber(_) }
+    val tmp = Regional_Substituter(gc, sub, apRaw)
     // take only the actual results
     val resDecls = resultingFactsAssignment map { case (n, d) =>
-      tmp.find(_.nameO.contains(n)).get.asInstanceOf[ExprDecl].copy(name= d)
+      tmp.decls.find(_.nameO.contains(n)).get.asInstanceOf[ExprDecl].copy(name= d)
     }
     Stage.add(resDecls)
   }
@@ -184,7 +184,7 @@ class FrameITProject private extends Project(Nil,None){
 
   /** Find the corresponding [[ProjectEntry]] in [[entries]].
     *
-    * If there isn't one yet, create it, and insert it as the __second to last__ entry, before the [[SiTh]]
+    * If there isn't one yet: Create it, and insert at the end
     */
   override def get(so: SourceOrigin): ProjectEntry = entries.find(_.source == so).getOrElse {
     val e = so match {
@@ -192,18 +192,19 @@ class FrameITProject private extends Project(Nil,None){
       case SchemaApplication.Origin(n) => SchemaApplication(n)
       case _ => new ProjectEntry(so)
     }
-    entries = entries match {
-      case es :: sith => es :: e :: sith
-      case _ => List(e)
-    }
+    entries = entries :+ e
+//    entries = entries match {
+//      case es :+ sith => es :+ e :+ sith
+//      case _ => List(e)
+//    }
     e
   }
   def tryEval(input: String) = {
     Try{
       val parsed = Parser.expression(SourceOrigin.anonymous, input, ErrorThrower)
-      val voc = check(true)
-      val (checked, _) = ThrowingChecker.checkAndInferExpression(GlobalContext(voc), parsed)
-      val (_, r) = Interpreter.run(Program(voc, checked))
+      val gc = makeGlobalContext()
+      val (checked, _) = ThrowingChecker.checkAndInferExpression(gc, parsed)
+      val (_, r) = Interpreter.run(Program(gc.voc.df, checked))
       r
     }
   }
@@ -282,7 +283,7 @@ object FrameITProject {
     * @param setupFile A UPL project-file (*.pp)
     * @return A fully set up FrameIt project
     */
-  def apply(setupFile: File): FrameITProject = FrameITProject(unfoldProjectFile(setupFile))
+  def apply(setupFile: File): FrameITProject = FrameITProject(unfoldProjectFile(setupFile.canonical))
 
 
   /** Kinda chimera of [[File.readPropertiesFromString]] and [[Project.fromFile]],
