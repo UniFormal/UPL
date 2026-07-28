@@ -12,11 +12,21 @@ module type_erasure {
     //     tequal = (A,x,y) ->  s.requal(A,x,y)
     // } 
 
+    // View currently not total
     // TypeErasSimpleFunctions: .function_types.SoftTypedSimpleFunctions -> .function_types.SimpleFunctions = s -> .function_types.SimpleFunctions {
     //     include .concepts.TypedTerms = TypeErasTerms(s)
     //     include .equality.TypedEquality = TypeErasEquality(s)
-    //     simplambda = (A,B,F) -> s.softlambda(A,B,F)
-    //     simpapply = (A,B,f,x) -> s.softapply(A,B,f,x)
-    //     simpbeta = (A,B,F,X) -> ded tequal(B, simpapply(A,B) (simplambda(A,B) F) X, F X)
+    //     simpfun = (A,B) -> s.simpfun(A,B)
+    //     simplambda = (A,B,F) -> s.softlambda(F)
+    //     simpapply = (A,B,F,X) -> s.softapply(F,X)
+    // }
+
+    // View currently not total
+    // TypeErasDependentFunctions: .function_types.SoftTypedDependentFunctions -> .function_types.DependentFunctions = s -> .function_types.DependentFunctions {
+    //     include .concepts.TypedTerms = TypeErasTerms(s)
+    //     include .equality.TypedEquality = TypeErasEquality(s)
+    //     depfun = (A,B) -> s.softfun(A,B)
+    //     deplambda = (A,B,F) -> s.softlambda(F)
+    //     depapply = (A,B,F,X) -> s.softapply(F,X)
     // }
 }

@@ -24,9 +24,16 @@ module function_types {
 
         simplambda: (A,B) -> (tm A -> tm B) -> tm A→B
         simpapply: (A,B) -> tm A→B -> tm A -> tm B
-        simpbeta : (A,B,F,X) -> ded (tequal(B, simpapply(A,B) (simplambda(A,B) F) X, F X))
+        simpbeta: (A,B,F,X) -> ded (tequal(B, simpapply(A,B) (simplambda(A,B) F) X, F X))
 
-        // missing
+        simpxi: (A,B,F,G) -> (x -> ded tequal(B, F x, G x)) -> ded tequal(A → B, simplambda(A,B) F, simplambda(A,B) G) = ???
+        apply_eq: (A,B,F,G,x,y) -> ded tequal(A → B, F, G) -> ded tequal(A, x, y) -> ded tequal(B, simpapply(A,B) F x, simpapply(A,B) G y) = ???
+        apply_eq_l: (A,B,F,G) -> ded tequal(A → B, F, G) -> ((x:tm A) -> ded tequal(B, simpapply(A,B) F x, simpapply(A,B) G x)) = ???
+        apply_eq_r: (A,B,x,y) -> ded tequal(A, x, y) -> ((F:tm A→B) -> ded tequal(B, simpapply(A,B) F x, simpapply(A,B) F y)) = ???
+
+        // should be an extra notation for simpapply
+        apply1: (A,B) -> tm A→B -> tm A -> tm B = (A,B) -> F -> x -> simpapply(A,B) F x
+        applyTo: (A,B) -> tm A -> tm ((A→B)→B) = (A,B) -> x -> simplambda(A→B, B) (F -> simpapply(A,B) F x)
     }
 
     theory DependentFunctions {
@@ -37,7 +44,10 @@ module function_types {
         depapply: (A,B) -> tm (depfun A B) -> (x:tm A) -> tm (B x)
         depbeta : (A,B,F,X) -> ded tequal(B X, depapply(A,B) (deplambda(A,B) F) X, F X)
 
-        // missing
+        // realize SimpleFunctions
+        // simplambda = (A,B) -> F -> deplambda(A,B) (x -> F x)
+        // simpapply = (A,B) -> F -> depapply(A,B) F X
+        // simpbeta = (A,B,F,X) -> depbeta
     }
 
     theory SoftTypedFunctions {
