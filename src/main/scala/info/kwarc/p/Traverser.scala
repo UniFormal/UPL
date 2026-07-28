@@ -359,20 +359,24 @@ object Substituter {
 }
 
 object Simplify extends StatelessTraverser {
+  // TODO This is currently applied inside [[ProofType]] as well, resulting in `|- true`, or `|- false`
   override def apply(exp: Expression)(implicit gc: GlobalContext, a:Unit): Expression = {
     val expR = applyDefault(exp) // first, recursively simplify subexpressions
     matchC(expR) {
       case r: Ref => gc.lookupRef(r) match {
+        // TODO Do we really want to de-ref everything? (E.g. '???' doesn't seem sensible)
         case Some(ed: ExprDecl) if !ed.modifiers.mutable && ed.dfO.isDefined => apply(ed.dfO.get)
         case _ => expR
       }
       case Application(bo: BaseOperator, args) => Operator.simplify(bo, args)
-      // TODO Steffi case Applicatin(OpenRef(upl.math)) => Math.sin(args(0))
-      // TODO Steffi Math lib func anwendungen auf Zahlen => App(OpenRef(Mathlib.sin, 1.0) => NumberValue(scala.math.sin(1.0))
-      // TODO Steffi besser mit Objekt MathLib --> sin(NumberValue x) -> NumberValue(scala.math.sin(x))
+      // TODO Steffi `case Application(OpenRef(upl.math)) => Math.sin(args(0))`
+      // TODO Steffi Math lib func [[Application]] for Numbers => `App(OpenRef(Mathlib.sin, 1.0) => NumberValue(scala.math.sin(1.0))`
+      // TODO Steffi better with object MathLib --> sin(NumberValue x) -> NumberValue(scala.math.sin(x))
       case Projection(Tuple(es),i) => es(i-1)
       case ListElem(CollectionValue(es,k),IntValue(i)) => es(i.toInt)
       case Application(Lambda(vs,b,false), as) => Substituter(gc, vs.substitute(as), b)
+      case Equality(p,_:BaseType,l:BaseValue,r:BaseValue) => BoolValue(p == (l == r))
+      // TODO Do we actually want to compare expressions that couldn't be simplified
       case Equality(p,_:BaseType,l,r) => BoolValue(p == (l == r))
       case Equality(p,_:ProofType,_,_) => BoolValue(p)
       case Equality(p, tp:ProdType, Tuple(ls), Tuple(rs)) =>
