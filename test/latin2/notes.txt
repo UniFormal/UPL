@@ -55,7 +55,7 @@ logic:
 
 type theory:
 
-!!! type_erasure.p line 8-14. ugly because view can't be included. what's a better way to do it?
+!!! function_types.p - SoftTypedFunctions - line 43 - bindfix lambda not working
 
 
 ------------------------------------------------------

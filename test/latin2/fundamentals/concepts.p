@@ -11,7 +11,7 @@ module concepts {
         include Propositions
         // Judgement as types
         type ded(p: prop) // # prefix ⊦
-        lemma: (F, G) -> ded F -> (ded F -> ded G) -> ded G
+        lemma: (F, G) -> ded F -> (ded F -> ded G) -> ded G = (F, G) -> p -> Q -> Q p
     }
 
     // base theory for any logic with a judgment for disprovable propositions
