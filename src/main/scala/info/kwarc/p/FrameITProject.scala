@@ -92,9 +92,8 @@ class FrameITProject private extends Project(Nil,None){
       val stageString = s"theory $name_curr{\ninclude $name_prev\n$decls_String\n}"
       val checked = updateAndCheck(Origin(counter), stageString)
       // Remove the 'Include's
-      // A lot of code, because we have to dig a bit, and copy everything to keep it like it is
-      val filtered = checked.decls.filter(_.isInstanceOf[Module]).map
-      { _.asInstanceOf[Module].copyF(_.filterNot(_.isInstanceOf[Include]))
+      val filtered = checked.decls.collect{
+        case m:Module => m.copyF(_.filterNot(_.isInstanceOf[Include]))
       }
       get(Origin(counter)).checked = checked.copy(filtered)
       val err = hasErrors
@@ -146,11 +145,17 @@ class FrameITProject private extends Project(Nil,None){
         map {case (n, d) => EVarDecl.sub(n,ClosedRef(d))}
     )
 
-    val tmp = Regional_Substituter(gc, sub, apRaw)
+    val subbed = Regional_Substituter(gc, sub, apRaw)
     // take only the actual results
-    val resDecls = resultingFactsAssignment map { case (n, d) =>
-      tmp.decls.find(_.nameO.contains(n)).get.asInstanceOf[ExprDecl].copy(name= d)
+    val resDecls = subbed.decls.collect { case d: ExprDecl
+      if resultingFactsAssignment.contains(d.name) => d.copy(name= resultingFactsAssignment(d.name))
     }
+    // "proper" solving with editing the theory; No point in that rn
+    val assignedNames = requiredFactsAssignment.keySet ++ resultingFactsAssignment.keySet
+    val solved = subbed.copyF(
+      _.filterNot(d => d.nameO.exists(assignedNames.contains) || d.isInstanceOf[Include])
+      ++: resDecls
+    )
     Stage.add(resDecls)
   }
 

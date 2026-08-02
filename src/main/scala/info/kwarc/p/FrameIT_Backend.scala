@@ -86,7 +86,7 @@ object BackendTests {
     println(Simplify(proj.makeGlobalContext(),tmp1.get))
     val tmp2 = proj.SiTh.lookup("height")//.asInstanceOf[ExprDecl].dfO.get
     println(Simplify(GlobalContext(proj.SiTh.get),tmp2).dfO)
-    val stophere: Unit= ()
+    val stopHereForDebug: Unit= ()
     //debugPrintVerbose()
   }
   /** The Background */
