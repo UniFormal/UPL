@@ -1,6 +1,6 @@
 package info.kwarc.p
 
-object Solver {
+class Solver {
    val checker = new Checker(ErrorThrower)
    case class Error(msg: String, thy: Theory) extends SError(thy.loc, msg + " while solving " + thy)
    def fail(msg: String)(implicit thy: Theory) = throw Error(msg, thy)
@@ -87,7 +87,7 @@ object Solver {
                // other forms
                // TODO umformungen
                case Some(_) | None => {
-                 val iso = findIsolatable(p.left, Occurrence.root.path).filter(n => n._1 == u.name)
+                 val iso = Isolator.findIsolatable(p.left, Occurrence.root.path).filter(n => n._1 == u.name)
                  //Console.println(iso)
                  //Console.println(InverseMethods.all.foreach(m => m.apply(p.left, p.right)))
                  iso match {
@@ -100,7 +100,7 @@ object Solver {
                      unknowns = unknowns.filter(x => x.name != u.name)
                      noChanges = false
                  }
-                 val iso2 = findIsolatable(p.right, Occurrence.root.path).filter(n => n._1 == u.name)
+                 val iso2 = Isolator.findIsolatable(p.right, Occurrence.root.path).filter(n => n._1 == u.name)
                  iso2 match {
                    case Nil =>
                    case iso_head :: rest =>
@@ -208,23 +208,7 @@ object Solver {
 
 
 
-  /**
-   * finds all possibilities which unknowns can be isolated where
-   * @param e current expression to traverse
-   * @param traversed: accumulator of path traversed so far
-   */
-  def findIsolatable(e: Expression, traversed: List[Int]): List[(Path,Occurrence)] = e match {
-    case ClosedRef(n) => List((Path(n), Occurrence(traversed.reverse)))
-    // case OwnedExpr(ClosedRef(n), _, e) // findIsolatable auf e
-    case o: OwnedExpr => List((PathHelper.extractPathFromOwnedExpr(o, Path()), Occurrence(traversed.reverse)))
-    case Application(BaseOperator(op: KnownOperator,_), as) =>
-      op.isolatableArguments(as).flatMap(i => findIsolatable(as(i), i::traversed))
-    case Application(OpenRef(p), as) =>
-      InverseMethods.findIsolatable(p, as, traversed)
-    case Tuple(es) =>
-      Range(0,es.length).toList.flatMap(i => findIsolatable(es(i), i::traversed))
-    case _ => Nil
-  }
+
 
   /**
    * rearranges a property so that it isolates at an occurrence in the left expression
@@ -263,6 +247,27 @@ object Solver {
     //unknowns.exists(u => startsWith(u.name, pre/ed.name))) unknowns ::= Unknown(pre/ed.name, ed.tp)
   }
 }
+
+object Isolator {
+  /**
+   * finds all possibilities which unknowns can be isolated where
+   * @param e current expression to traverse
+   * @param traversed: accumulator of path traversed so far
+   */
+  def findIsolatable(e: Expression, traversed: List[Int]): List[(Path,Occurrence)] = e match {
+    case ClosedRef(n) => List((Path(n), Occurrence(traversed.reverse)))
+    // case OwnedExpr(ClosedRef(n), _, e) // findIsolatable auf e
+    case o: OwnedExpr => List((PathHelper.extractPathFromOwnedExpr(o, Path()), Occurrence(traversed.reverse)))
+    case Application(BaseOperator(op: KnownOperator,_), as) =>
+      op.isolatableArguments(as).flatMap(i => findIsolatable(as(i), i::traversed))
+    case Application(OpenRef(p), as) =>
+      InverseMethods.findIsolatable(p, as, traversed)
+    case Tuple(es) =>
+      Range(0,es.length).toList.flatMap(i => findIsolatable(es(i), i::traversed))
+    case _ => Nil
+  }
+}
+
 
 object PathHelper {
   def extractPathFromOwnedExpr(e: Expression, p: Path): Path = e match {
@@ -328,7 +333,7 @@ case class InverseUnary(fun: Path, inv: Path) extends InverseMethodData (fun, 0)
 
   def findIsolatable(p: Path, args: List[Expression], traversed: List[Int]): List[(Path, Occurrence)] = {
     if (fun.toString().equals(p.toString())) {
-      Solver.findIsolatable(args.head, 0 :: traversed)
+      Isolator.findIsolatable(args.head, 0 :: traversed)
     }
     else {
       Nil
@@ -385,11 +390,13 @@ object SolverTest {
     val proj = Project.fromFile(path, None)
     val voc = proj.check(true)
     val gc = GlobalContext(voc)
+    val S = new Solver()
     //val tS = Solver.solve(gc, OpenRef(Path("Demo", "OppositeLength")))
     //val tS = Solver.solve(gc, OpenRef(Path("Demo", "TestOppositeLength")))
     //val tS = Solver.solve(gc, OpenRef(Path("Demo", "TestInterceptTheorem2")))
     //val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "Slingshot_test")));
-    val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "C")));
+    //val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "C")));
+    val tS = S.solve(gc, OpenRef(Path("SolverTestCases", "AddXL")))
     // OppositeLength
     // TestOppositeLength
     println(tS)
