@@ -1,1 +1,1 @@
-source:math.p test.p
+source:math.p test.p demo.p test_cases.p

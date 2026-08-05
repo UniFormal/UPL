@@ -13,6 +13,8 @@ class Solver {
 
   var gc : GlobalContext = _
 
+  var shouldPrint : Boolean = true
+
    /**
     * conservatively extends a theory, trying to reduce the abstract interface
     * e.g., by adding definitions for symbols that are determined by axioms
@@ -127,9 +129,6 @@ class Solver {
      printAsTheory("Properties", props)
      printAsTheory("Redundant", redundantP)
      printAsTheory("New", knowns.filter(k => k.isNew))
-
-     // just for temporary testing: add one definition
-     //knowns ::= Known("a", IntValue(1), true)
 
      // return the extended theory by adding definitions and dropping now-redundant properties
      var changed = false
@@ -246,6 +245,10 @@ class Solver {
     //Instance(Include(theo)::List[ExprDecl](known field und lösung)) prefix bei feldern entfernen
     //unknowns.exists(u => startsWith(u.name, pre/ed.name))) unknowns ::= Unknown(pre/ed.name, ed.tp)
   }
+
+  def println(arg: Any): Unit = {
+    if (shouldPrint) Console.println(arg)
+  }
 }
 
 object Isolator {
@@ -341,6 +344,12 @@ case class InverseUnary(fun: Path, inv: Path) extends InverseMethodData (fun, 0)
   }
 }
 
+object Printer {
+  def printTheory(name: String, t : Theory): Unit = {
+    println(name + t.toString().replace(", ", ",\r\n\t").replace("{", "{\r\n\t").replace("}", "\r\n}"))
+  }
+}
+
 // TODO InverseBinaryLeft
 //case class InverseBinaryLeft(fun: Path, inv: Path) extends InverseMethodData(fun, 1) {
   //def apply(l: Expression, r: Expression): Option[(Expression,Expression)] = {
@@ -392,13 +401,57 @@ object SolverTest {
     val gc = GlobalContext(voc)
     val S = new Solver()
     //val tS = Solver.solve(gc, OpenRef(Path("Demo", "OppositeLength")))
-    //val tS = Solver.solve(gc, OpenRef(Path("Demo", "TestOppositeLength")))
+    val tS = S.solve(gc, OpenRef(Path("Demo", "TestOppositeLength")))
     //val tS = Solver.solve(gc, OpenRef(Path("Demo", "TestInterceptTheorem2")))
-    //val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "Slingshot_test")));
+    //val tS = S.solve(gc, OpenRef(Path("SolverTest", "Slingshot_test")));
     //val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "C")));
-    val tS = S.solve(gc, OpenRef(Path("SolverTestCases", "AddXL")))
+    //val tS = S.solve(gc, OpenRef(Path("SolverTestCases", "AddXL")))
+    //S.printAsTheory("Result", tS.decls);
     // OppositeLength
     // TestOppositeLength
-    println(tS)
+
+    //test_cases(args)
+
+    //println(tS)
+  }
+
+  def test_cases(args: Array[String]): Unit = {
+    val path = File(args(0)).canonical
+    val proj = Project.fromFile(path, None)
+    val voc = proj.check(true)
+    val gc = GlobalContext(voc)
+
+    val thsXYZ = List("Add")
+
+    var thLR : List[String] = List()
+    thLR :::= thsXYZ.map(t => List(t+"X", t+"Y",  t+"Z")).flatten
+
+    var ths : List[String] = List()
+    ths :::= thLR.map(t => List(t+"L", t+"R")).flatten
+
+    println(ths)
+    val checker = new Checker(ErrorThrower)
+    val S = new Solver()
+
+    val solThy = OpenRef(Path("SolverTestCases", "Solutions"))
+    val solThyE = Checker.evaluateTheory(gc, solThy)
+    val solThyN = checker.Normalize(gc, solThyE)
+
+    ths.foreach(t => {
+      val thy = OpenRef(Path("SolverTestCases", t))
+      val thyE = Checker.evaluateTheory(gc, thy)
+      val thyN = checker.Normalize(gc,thyE)
+      // find solution
+
+      val tS = S.solve(gc, thy)
+      Printer.printTheory(t, tS) // .printAsTheory("Result " + thy.path, tS.decls);
+      // solution must be equivalent to Solver result
+
+      val sol = solThyN.decls.filter(d => d.isInstanceOf[ExprDecl]).find(d => d.asInstanceOf[ExprDecl].name == t).get
+      println("Solution: " + sol)
+      // TODO
+
+      println("--------------------")
+    })
   }
 }
