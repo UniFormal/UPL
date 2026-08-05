@@ -449,7 +449,7 @@ object SolverTest {
 
       val sol = solThyN.decls.filter(d => d.isInstanceOf[ExprDecl]).find(d => d.asInstanceOf[ExprDecl].name == t).get
       println("Solution: " + sol)
-      // TODO
+      // TODO some automated check if the solution is somehow included in the result
 
       println("--------------------")
     })
