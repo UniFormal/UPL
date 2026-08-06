@@ -164,6 +164,10 @@ trait VarDecl extends Named {
   def label = if (name != "") name else "_"
   def toRef = VarRef(name).copyFrom(this)
   def toSub: VarDecl
+  def renamesTo = dfO match {
+    case Some(VarRef(n)) => Some(n)
+    case _ => None
+  }
 }
 
 object VarDecl {
@@ -182,6 +186,7 @@ case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
   def label = "substitution"
   def children = decls.map(_.dfO.get)
 
+  def apply(n: String) = lookupO(n).map(_.dfO.get)
   /** e_1, ..., e_n */
   def defs = Util.reverseMap(decls)(_.dfO.get)
   def map(f: VarDecl => VarDecl) = Substitution(
@@ -189,10 +194,12 @@ case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
   )
   def take(n: Int) = Substitution(decls.drop(decls.length-n))
 
+  def append(s: Substitution): Substitution = Substitution(s.decls ::: this.decls)
+
   /** this : G -> target   --->  this, n/e : G, n:_ -> target */
-  def append(n: String, e: Expression) = copy(decls = EVarDecl.sub(n, e) :: decls)
+  def append(n: String, e: Expression): Substitution = copy(decls = EVarDecl.sub(n, e) :: decls)
   /** this : G -> target   --->  this, n/e : G, n:_ -> target */
-  def append(n: String, t: Type) = copy(decls = TVarDecl.sub(n, t) :: decls)
+  def append(n: String, t: Type): Substitution = copy(decls = TVarDecl.sub(n, t) :: decls)
 
   /** this : G -> target   --->  this, n/vd.name : G, n:_ -> target, vd */
   def appendRename(n: String, vd: VarDecl) = {
@@ -213,19 +220,22 @@ case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
   /** substitution is no-op */
   def isIdentity = decls.forall(d => d.anonymous || d.dfO.contains(VarRef(d.name)))
 
-  /** if this is an injective renaming, the inverse */
-  def inverse: Option[Substitution] = {
-    var image: List[String] = Nil
-    val subs = decls.collect {
-      case vd @ EVarDecl(_, _, Some(VarRef(n)), _, _) if !vd.anonymous && !image.contains(n) =>
-        image ::= n
-        EVarDecl.sub(n, vd.toRef)
-      case vd @ TVarDecl(_,Some(VarRef(n))) if !vd.anonymous && !image.contains(n) =>
-        image ::= n
-        TVarDecl.sub(n, vd.toRef)
-      case _ => return None
+  /** the substitution containing x/v whenever v/x is in this subistution and x occurs in no other RHS
+    * in particular, if this is an injective renaming, the inverse
+    * In those cases, an x in e[this], must have come from a v in e.
+    */
+  def inverse(gc: GlobalContext): Substitution = {
+    val fvs = decls.map(vd => FreeVariables.collect(gc,vd.dfO.get))
+    def unique(n: String) = fvs.count(_.contains(n)) == 1
+    var subs: List[VarDecl] = Nil
+    decls.foreach {
+      case vd @ EVarDecl(_, _, Some(VarRef(n)), _, _) if !vd.anonymous && unique(n) =>
+        subs ::= EVarDecl.sub(n, vd.toRef)
+      case vd @ TVarDecl(_,Some(VarRef(n))) if !vd.anonymous && unique(n) =>
+        subs ::= TVarDecl.sub(n, vd.toRef)
+      case _ =>
     }
-    Some(Substitution(subs))
+    Substitution(subs)
   }
 }
 object Substitution {
@@ -241,6 +251,7 @@ case class BiContext(lr: List[(VarDecl, VarDecl)]) {
   def right = LocalContext(lr.map(_._2))
   def renameLeftToRight = Substitution(lr.map({case (a, b) => VarDecl.rename(a,b)}))
   def renameRightToLeft = Substitution(lr.map({case (a, b) => VarDecl.rename(b,a)}))
+  def find(l: String) = lr.find(_._1.name == l).map(_._2.name)
 }
 
 object BiContext {

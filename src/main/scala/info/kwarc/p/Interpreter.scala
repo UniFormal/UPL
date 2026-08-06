@@ -459,6 +459,7 @@ class Interpreter(vocInit: TheoryValue) {
            case _ => abort("unsupported cast")
         }
       case u: UndefinedValue => u
+      case u: UnknownExpr => abort("unsolved unknown")
     } // end match
   }
 

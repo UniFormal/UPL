@@ -14,20 +14,30 @@ import SyntaxFragment.matchC
   * You can also use an Extractor-pattern to apply the Traverser, and continue matching on the result.
   */
 abstract class Traverser[A] {
-  def apply(p: Path)(implicit gc: GlobalContext, a: A): Path = matchC(p) {p => p}
-  def unapply(p: Path)(implicit gc: GlobalContext, a: A): Option[Path] = Option(apply(p))
-
-  def apply(r: Ref)(implicit gc: GlobalContext, a: A): Ref = matchC(r) {
-    case VarRef(n) => VarRef(n)
-    case ClosedRef(n) => ClosedRef(n)
-    case OpenRef(p) => OpenRef(apply(p))
+  @inline def apply(p: Path)(implicit gc: GlobalContext, a: A): Path = matchC(p) {p => p}
+  @inline def apply(r: Ref)(implicit gc: GlobalContext, a: A): Ref = r match {
+    case OpenRef(p) => OpenRef(apply(p)).copyFrom(r)
+    case _ => r
   }
-  def unapply(r: Ref)(implicit gc: GlobalContext, a: A): Option[Ref] = Option(apply(ref))
+
+  def apply(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = matchC(d)(applyDefault _)
+  protected final def applyDefault(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = d match {
+    case m@Module(n,op,df) =>
+      val gcI = gc.enter(m)
+      val dsT = df.decls.map(d => apply(d)(gcI, a))
+      Module(n, op, TheoryValue(dsT))
+    case Include(dm,df, r) =>
+      Include(apply(dm), df map apply, r)
+    case TypeDecl(n, tc, bd, dfO, ms) =>
+      val (tcT,aT) = apply(tc)
+      TypeDecl(n, tcT, apply(bd)(gc,aT), dfO map {d => apply(d)(gc,aT)}, ms)
+    case ExprDecl(n, tc, tp, dfO, ntO, ms) =>
+      val (tcT,aT) = apply(tc)
+      ExprDecl(n, tcT, apply(tp)(gc,aT), dfO map {d => apply(d)(gc,aT)}, ntO, ms)
+  }
 
   /** must satisfy apply(thy.toValue) == apply(thy).toValue */
   def apply(thy: Theory)(implicit gc: GlobalContext, a: A): Theory = matchC(thy)(applyDefault _)
-  def unapply(thy: Theory)(implicit gc: GlobalContext, a: A): Option[Theory] = Option(apply(thy))
-
   protected final def applyDefault(thy: Theory)(implicit gc: GlobalContext, a: A) = thy match {
     case null => null
     case r: Ref => apply(r)
@@ -55,7 +65,6 @@ abstract class Traverser[A] {
       (ctxT.copyFrom(ctx), aT)
     }
   }
-  def unapply(ctx: LocalContext)(implicit gc: GlobalContext, a: A): Option[(LocalContext,A)] = Option(apply(ctx))
 
   def apply(ctx: ExprContext)(implicit gc: GlobalContext, a:A): (ExprContext,A) = {
     if (ctx == null) (null,a) else {
@@ -63,7 +72,6 @@ abstract class Traverser[A] {
       (ExprContext.force(ctxT), aT)
     }
   }
-  def unapply(ctx:ExprContext)(implicit gc: GlobalContext, a: A): Option[(ExprContext,A)] = Option(apply(ctx))
 
   def applyVarDecl(vd: VarDecl)(implicit gc: GlobalContext, a:A): (VarDecl,A) = {
     val vdT = matchC(vd) {
@@ -80,45 +88,17 @@ abstract class Traverser[A] {
   def apply(rc: RegionalContext)(implicit gc: GlobalContext, a:A): RegionalContext = {
     RegionalContext(apply(rc.theory).toValue, rc.owner map apply, apply(rc.local)._1).copyFrom(rc)
   }
-  def unapply(rc: RegionalContext)(implicit gc: GlobalContext, a: A): Option[RegionalContext] = Option(apply(rc))
 
-  def apply(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = matchC(d)(applyDefault _)
-  def unapply(d: Declaration)(implicit gc: GlobalContext, a: A): Option[Declaration] = Option(apply(d))
+  def apply(sub: Substitution)(implicit gc: GlobalContext, a: A) = sub.map {vd => applyVarDecl(vd)._1}
 
-  protected final def applyDefault(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = d match {
-    case m@Module(n,op,df) =>
-      val gcI = gc.enter(m)
-      val dsT = df.decls.map(d => apply(d)(gcI, a))
-      Module(n, op, TheoryValue(dsT))
-    case Include(dm,df, r) =>
-      Include(apply(dm), df map apply, r)
-    case TypeDecl(n, tc, bd, dfO, ms) =>
-      val (tcT,aT) = apply(tc)
-      TypeDecl(n, tcT, apply(bd)(gc,aT), dfO map {d => apply(d)(gc,aT)}, ms)
-    case ExprDecl(n, tc, tp, dfO, ntO, ms) =>
-      val (tcT,aT) = apply(tc)
-      ExprDecl(n, tcT, apply(tp)(gc,aT), dfO map {d => apply(d)(gc,aT)}, ntO, ms)
-  }
+  // occasionally these substitutions must be treated differently, so this can be overridden here
+  def applySubstitutionInUnknown(u: UnknownObject, sub: Substitution)(implicit gc: GlobalContext, a: A) = apply(sub)
 
   def apply(tp: Type)(implicit gc: GlobalContext, a: A): Type = matchC(tp)(applyDefault _)
-  def unapply(tp: Type)(implicit gc: GlobalContext, a: A): Option[Type] = Option(apply(tp))
-
   protected final def applyDefault(tp: Type)(implicit gc: GlobalContext, a: A): Type = tp match {
-    case UnknownType(g,cont,sub) =>
-      if (cont.known)
-        apply(tp.skipUnknown)  // eliminate unknown-wrappers
-      else {
-        val subT = if (sub == null) null else {
-          // or traverse into the substitution values (this gives the right results for collecting free variables and applying substitutions)
-          sub // map {vd => applyVarDecl(vd)._1}
-          // TODO: the previous version used the code below, which falsely calls applyDefault instead of apply,
-          //  thus, e.g., not recursing into x in the common case of x/x
-          //  doing it correctly interferes with solving unknowns, e.g., possible free variables are collected as free variables
-          //  and unknowns are not equated
-          // sub.map {vd => vd.copy(dfO = vd.dfO map applyDefault)}
-        }
-        UnknownType(g,cont, subT)
-      }
+    case u @ UnknownType(g,cont,sub) =>
+      if (cont.known) apply(tp.skipUnknown)  // eliminate unknown-wrappers
+      else UnknownType(g,cont, if (sub == null) null else applySubstitutionInUnknown(u,sub))
     case r: Ref => apply(r)
     case AppliedRef(r, tps, es) => AppliedRef(apply(r), tps map apply, es map apply)
     case OwnedType(e, d, o) => OwnedType(apply(e), apply(d), apply(o)(gc.push(d,Some(e)),a))
@@ -136,13 +116,16 @@ abstract class Traverser[A] {
   }
 
   def apply(exp: Expression)(implicit gc: GlobalContext, a: A): Expression = matchC(exp)(applyDefault _)
-  def unapply(exp: Expression)(implicit gc: GlobalContext, a: A): Option[Expression] = Option(apply(exp))
   protected final def applyDefault(exp: Expression)(implicit gc: GlobalContext, a: A): Expression = exp match {
     case null => null
+    case u @ UnknownExpr(g,cont,tp,sub) =>
+      if (cont.known) apply(exp.skipUnknown)  // eliminate unknown-wrappers
+      else UnknownExpr(g, cont, tp, if (sub == null) null else applySubstitutionInUnknown(u,sub))
+      // TODO not traversing into tp because it lives in context g
     case _: BaseValue => exp
+    case This(l) => exp
     case r: Ref => apply(r)
     case AppliedRef(r, tps, es) => AppliedRef(apply(r), tps map apply, es map apply)
-    case This(l) => This(l)
     case OwnedExpr(o, d, e) => OwnedExpr(apply(o), apply(d), apply(e)(gc.push(d,Some(o)),a))
     case BaseOperator(o,tp) => BaseOperator(o, apply(tp))
     case Instance(thy) => Instance(apply(thy))
@@ -202,16 +185,23 @@ abstract class StatelessTraverser extends Traverser[Unit] {
   def apply(gc: GlobalContext, tp: Type): Type = apply(tp)(gc,())
   def apply(gc: GlobalContext, thy: Theory): Theory = apply(thy)(gc,())
 
-  // allows using the traversal result in pattern-matching directly
-  def unapply(d: Declaration)(implicit gc:GlobalContext) = Option(apply(gc,d))
-  def unapply(exp:Expression)(implicit gc:GlobalContext) = Option(apply(gc,exp))
-  def unapply(tp: Type)(implicit gc:GlobalContext) = Option(apply(gc,tp))
-  def unapply(thy: Theory)(implicit gc:GlobalContext) = Option(apply(gc,thy))
+  /** delegates to one of the above
+    * needs a separate name because of type overlaps
+    * must only be called if the joint parts of Object-subclasses are treated identically
+    */
+  def applyObj(gc: GlobalContext, o: Object): Object = o match {
+    case o: Expression => apply(o)(gc,())
+    case o: Type => apply(o)(gc,())
+    case o: Theory => apply(o)(gc,())
+  }
 }
 
 trait TraverseOnlyOriginalRegion {
   val initGC: GlobalContext
   def inOriginalRegion(implicit gc: GlobalContext) = gc.regions.length == initGC.regions.length
+  /** the variables that have been traversed during the current call */
+  def localBindings(implicit gc: GlobalContext) = gc.unappend(initGC)
+  def isLocallyBound(n: String)(implicit gc: GlobalContext) = localBindings.exists(_.declares(n))
 }
 
 object IdentityTraverser extends StatelessTraverser
@@ -339,6 +329,7 @@ object OwnersSubstitutor {
   }
 }
 
+// TODO do not traverse into domain of owned objects (very slow)
 class Substituter(val initGC: GlobalContext) extends Traverser[Substitution] with TraverseOnlyOriginalRegion {
   override def apply(exp: Expression)(implicit gc: GlobalContext, sub: Substitution) = matchC(exp) {
     case e if e.closing => e // no free variables in e even if they have not been inferred yet
@@ -367,6 +358,14 @@ class Substituter(val initGC: GlobalContext) extends Traverser[Substitution] wit
   }
 }
 object Substituter {
+  def applyObj(gc: GlobalContext, sub: Substitution, o: Object) = {
+     o match {
+       case e: Expression => apply(gc,sub,e)
+       case t: Type => apply(gc,sub,t)
+       case t: Theory => t // TODO how to substitute in theory?
+     }
+  }
+
   def apply(gc: GlobalContext, sub: Substitution, e: Expression) = {
     if (sub.isIdentity) e else
       new Substituter(gc)(e)(gc,sub)
@@ -420,29 +419,31 @@ object Simplify extends StatelessTraverser {
   }
 }
 
-private class FreeVariables(val initGC: GlobalContext, alsoRegionals: Boolean) extends StatelessTraverser with TraverseOnlyOriginalRegion {
+/**
+  * @param infer only return variables that are not declared in initGC, i.e., find the unknown context of the input
+  * @param alsoRegionals treat regional names like local ones, only relevant for unchecked context
+  *
+  */
+private class FreeVariables(val initGC: GlobalContext, infer: Boolean, alsoRegionals: Boolean) extends StatelessTraverser with TraverseOnlyOriginalRegion {
   private var names: List[String] = Nil
-  override def apply(exp: Expression)(implicit gc: GlobalContext, a:Unit) = matchC(exp) {
-    case VarRef(n) if inOriginalRegion && gc.resolveName(exp).isEmpty =>
-      names ::= n
-      exp
-    case ClosedRef(n) if inOriginalRegion && gc.resolveName(exp).isEmpty =>
-      if (alsoRegionals) {names ::= n; VarRef(n)} else exp
-    case _ => applyDefault(exp)
+  override def apply(r: Ref)(implicit gc: GlobalContext, a:Unit) = {
+    if (inOriginalRegion) r match {
+      case VarRef(n) =>
+        if (!infer || !isLocallyBound(n))
+          names ::= n
+      case ClosedRef(n) if alsoRegionals =>
+        if (!infer || gc.resolveName(r).isEmpty)
+          names ::= n
+      case _ =>
+    }
+    r
   }
 }
 object FreeVariables {
   /** the list of free local/regional names not bound and not declared in the context */
-  def infer(gc: GlobalContext, e: Expression) = {
-    val fv = new FreeVariables(gc, true)
-    fv(e)(gc,())
-    fv.names.distinct
-  }
-  /** the list of unbound local names (not bound variables) */
-  def collect(y: Type) = {
-    val gc = GlobalContext("") // running it with the empty context excludes exactly the bound names
-    val fv = new FreeVariables(gc, false)
-    fv(y)(gc,())
+  def collect(gc: GlobalContext, o: Object, infer: Boolean = false, alsoRegionals: Boolean = false) = {
+    val fv = new FreeVariables(gc, infer, alsoRegionals)
+    fv.applyObj(gc,o)
     fv.names.distinct
   }
 }
@@ -511,45 +512,6 @@ object TestLocationFields extends StatelessTraverser {
   override def apply(thy: Theory)(implicit gc: GlobalContext, a: Unit) = {
     test(thy)
     applyDefault(thy)
-  }
-}
-
-/** Traverser that creates the package imports string for the Isabelle compiler */
-class IsabellePackageTraverser extends StatelessTraverser { // with TraverseOnlyOriginalRegion?
-  var packages: List[String] = List("Main")
-  /** indexes packages by matching the type; checking ensures there are no unknown types */
-  // todo: adding imperative programming features might necessitate additionally matching over expressions
-  override def apply(tp: Type)(implicit gc: GlobalContext, a: Unit) =
-    matchC(tp) {
-      case NumberType(true, true, false, false, false) => {
-        packages = packages.updated(0, "Complex_Main");
-        applyDefault(tp)
-      }
-      case NumberType(true, true, true, false, false) => {
-        packages = packages.updated(0, "Complex_Main");
-        applyDefault(tp)
-      }
-      case NumberType(true, true, false, true, true) => {
-        packages = packages.updated(0, "Complex_Main");
-        applyDefault(tp)
-      }
-      case CollectionType(elem, kind) => kind match {
-        case CollectionKind(false, true, false) => {
-          packages = packages.appended("\"HOL-Library.Multiset\"")
-          applyDefault(tp)
-        }
-          //case CollectionKind(true, false, false) => throw IError("ULists not yet implemented. Implement with distint property or as finite sets")
-          case _ => applyDefault(tp)
-        }
-        case _ => applyDefault(tp)
-      }
-}
-
-object IsabellePackageTraverser {
-  def importsString(gc: GlobalContext, decl: Declaration): String = {
-    val packTrav = new IsabellePackageTraverser
-    packTrav(decl)(gc, ())
-    packTrav.packages.mkString(" ")
   }
 }
 

@@ -301,9 +301,12 @@ sealed trait Type extends Object {
   def power(n: Int) = ProdType.simple(Range(1, n).toList.map(_ => this))
 }
 object Type {
-  def unknown(gc: GlobalContext = null) = {
+  def unknown(gc: GlobalContext = null): Type = {
+    unknown(gc, if (gc == null) null else gc.visibleLocals.identity)
+  }
+  def unknown(gc: GlobalContext, sub: Substitution): Type = {
     val cont = new UnknownContainer
-    UnknownType(gc, cont, if (gc == null) null else gc.visibleLocals.identity)
+    UnknownType(gc, cont, sub)
   }
 
   val unbounded = AnyType
@@ -319,6 +322,14 @@ sealed trait Expression extends Object {
   def substitute(sub: Substitution) = Substituter(GlobalContext(""), sub, this)
   /** true if this expression binds all free variables in its children */
   def closing = false
+}
+
+object Expression {
+  def unknown(gc: GlobalContext = null, a: Type = null) = {
+    val cont = new UnknownContainer
+    val etp = if (a == null) a else Type.unknown(gc)
+    UnknownExpr(gc, cont, etp, if (gc == null) null else gc.visibleLocals.identity)
+  }
 }
 
 // ************************** Common objects ************************
@@ -566,8 +577,9 @@ object TheoryAsValue {
 /** mutable memory location that holds an omitted object that is to be filled in during type inference */
 class UnknownContainer {
   private[p] var obj: Object = null
-  private val id = UnknownContainer.next
-  def known = obj != null && obj.known
+  private[p] val id = UnknownContainer.next
+  def known = !empty && obj.known
+  def empty = obj == null
 
   def label = "???" + id
   override def toString = if (known) obj.toString else label
@@ -583,13 +595,13 @@ object UnknownContainer {
  *
  * All local variables that were visible when the type was created can be free in the solution.
  * This class can be seen as a redex that abstracts over them and is then applied to some arguments.
- * @param originalContext the free variables, initially context in which this type occurred
- * @param container the mutable container of the solved object, initially empty
- * @param sub the argument corresponding to the free variables, initially the identity
  */
 sealed trait UnknownObject extends Object {
+  /** the free variables that may occur, the context in which this object occurred */
   def originalContext: GlobalContext
+  /** the mutable container of the solved object, initially empty */
   def container: UnknownContainer
+  /** a substitution to the free variables that has to be applied once solved, initially the identity */
   def sub: Substitution
 
   override def toString = container.toString + (if (sub != null && !sub.isIdentity) "[" + sub + "]" else "")
@@ -618,20 +630,18 @@ sealed trait UnknownObject extends Object {
       case _ => throw IError("impossible case")
     }
   }
-  /** pattern fragment: sub is a renaming of the free variables */
-  def isSolvable = !known && sub.inverse.isDefined
 }
 
 case class UnknownType(originalContext: GlobalContext, container: UnknownContainer, sub: Substitution) extends Type with UnknownObject {
   def finite = if (known) skipUnknown.finite else false
-  override def skipUnknown = if (!known) this else {
+  override def skipUnknown = if (container.empty) this else {
     val sk = container.obj.skipUnknown.asInstanceOf[Type]
     if (sub == null) sk // only happens if unchecked content is reused after solving
     else sk.substituteInType(sub)
   }
 }
-case class UnknownExpr(originalContext: GlobalContext, container: UnknownContainer, sub: Substitution) extends Expression with UnknownObject {
-  override def skipUnknown = if (!known) this else {
+case class UnknownExpr(originalContext: GlobalContext, container: UnknownContainer, tp: Type, sub: Substitution) extends Expression with UnknownObject {
+  override def skipUnknown = if (container.empty) this else {
     val sk = container.obj.skipUnknown.asInstanceOf[Expression]
     if (sub == null) sk
     else sk.substitute(sub)
@@ -1563,7 +1573,7 @@ sealed abstract class Operator {
   def close: String = Symbols.makeClosingBracket(symbol)
   /** if the operator has exactly one type, this should be overridden for easy type inference */
   def uniqueType: Option[FunType] = None
-  def makeExpr(args: List[Expression]) = Application(BaseOperator(this, uniqueType.getOrElse(Type.unknown(null))), args)
+  def makeExpr(args: List[Expression]) = Application(BaseOperator(this, uniqueType.getOrElse(Type.unknown())), args)
   def unapply(e: Expression) = e match {
     case Application(BaseOperator(op,_), args) if op == this => Some(args)
     case _ => None

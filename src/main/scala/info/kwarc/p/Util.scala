@@ -34,6 +34,18 @@ object Util {
   }
   def reverseMap[A,B](l: List[A])(f: A => B) = l.reverseIterator.map(f).toList
 
+  /** like map but drops values where f(a) == null, more efficient than l.flatMap(a => Option(f(a)).toList) */
+  def partialMap[A,B](l: List[A])(f: A => B) = {
+    var result: List[B] = Nil
+    var rest = l
+    while (rest.nonEmpty) {
+      val b = f(rest.head)
+      if (b != null) result ::= b
+      rest = rest.tail
+    }
+    result.reverse
+  }
+
   /** mutable list seen as a map
    *  update prepends for efficiency; obsolete values are not cleared
    */

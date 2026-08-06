@@ -173,6 +173,7 @@ case class Circumfix(flex: Boolean = false) extends Fixity {
         case (_,CollectionKind.List(a)) :: Nil => Some(List(a,out))
         case _ => None
       }
+    case _ => None
   }
   def arity(n: Int) = true
   def neededTargetType(ins: List[Type], out: Type): Type = {
