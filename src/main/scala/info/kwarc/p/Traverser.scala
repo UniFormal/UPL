@@ -10,17 +10,23 @@ import SyntaxFragment.matchC
   * All local variable bindings pass through applyVarDecl, which also returns an updated state for use in the variable's scope.
   *
   * The value 'null' is respected for theories and contexts, assuming they are inferred later.
+  *
+  * You can also use an Extractor-pattern to apply the Traverser, and continue matching on the result.
   */
 abstract class Traverser[A] {
   def apply(p: Path)(implicit gc: GlobalContext, a: A): Path = matchC(p) {p => p}
+  def unapply(p: Path)(implicit gc: GlobalContext, a: A): Option[Path] = Option(apply(p))
+
   def apply(r: Ref)(implicit gc: GlobalContext, a: A): Ref = matchC(r) {
     case VarRef(n) => VarRef(n)
     case ClosedRef(n) => ClosedRef(n)
     case OpenRef(p) => OpenRef(apply(p))
   }
+  def unapply(r: Ref)(implicit gc: GlobalContext, a: A): Option[Ref] = Option(apply(ref))
 
   /** must satisfy apply(thy.toValue) == apply(thy).toValue */
   def apply(thy: Theory)(implicit gc: GlobalContext, a: A): Theory = matchC(thy)(applyDefault _)
+  def unapply(thy: Theory)(implicit gc: GlobalContext, a: A): Option[Theory] = Option(apply(thy))
 
   protected final def applyDefault(thy: Theory)(implicit gc: GlobalContext, a: A) = thy match {
     case null => null
@@ -49,12 +55,15 @@ abstract class Traverser[A] {
       (ctxT.copyFrom(ctx), aT)
     }
   }
+  def unapply(ctx: LocalContext)(implicit gc: GlobalContext, a: A): Option[(LocalContext,A)] = Option(apply(ctx))
+
   def apply(ctx: ExprContext)(implicit gc: GlobalContext, a:A): (ExprContext,A) = {
     if (ctx == null) (null,a) else {
       val (ctxT, aT) = apply(ctx.toLocalContext)
       (ExprContext.force(ctxT), aT)
     }
   }
+  def unapply(ctx:ExprContext)(implicit gc: GlobalContext, a: A): Option[(ExprContext,A)] = Option(apply(ctx))
 
   def applyVarDecl(vd: VarDecl)(implicit gc: GlobalContext, a:A): (VarDecl,A) = {
     val vdT = matchC(vd) {
@@ -71,8 +80,10 @@ abstract class Traverser[A] {
   def apply(rc: RegionalContext)(implicit gc: GlobalContext, a:A): RegionalContext = {
     RegionalContext(apply(rc.theory).toValue, rc.owner map apply, apply(rc.local)._1).copyFrom(rc)
   }
+  def unapply(rc: RegionalContext)(implicit gc: GlobalContext, a: A): Option[RegionalContext] = Option(apply(rc))
 
   def apply(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = matchC(d)(applyDefault _)
+  def unapply(d: Declaration)(implicit gc: GlobalContext, a: A): Option[Declaration] = Option(apply(d))
 
   protected final def applyDefault(d: Declaration)(implicit gc: GlobalContext, a: A): Declaration = d match {
     case m@Module(n,op,df) =>
@@ -90,6 +101,7 @@ abstract class Traverser[A] {
   }
 
   def apply(tp: Type)(implicit gc: GlobalContext, a: A): Type = matchC(tp)(applyDefault _)
+  def unapply(tp: Type)(implicit gc: GlobalContext, a: A): Option[Type] = Option(apply(tp))
 
   protected final def applyDefault(tp: Type)(implicit gc: GlobalContext, a: A): Type = tp match {
     case UnknownType(g,cont,sub) =>
@@ -124,6 +136,7 @@ abstract class Traverser[A] {
   }
 
   def apply(exp: Expression)(implicit gc: GlobalContext, a: A): Expression = matchC(exp)(applyDefault _)
+  def unapply(exp: Expression)(implicit gc: GlobalContext, a: A): Option[Expression] = Option(apply(exp))
   protected final def applyDefault(exp: Expression)(implicit gc: GlobalContext, a: A): Expression = exp match {
     case null => null
     case _: BaseValue => exp
@@ -188,6 +201,12 @@ abstract class StatelessTraverser extends Traverser[Unit] {
   def apply(gc: GlobalContext, exp: Expression): Expression = apply(exp)(gc,())
   def apply(gc: GlobalContext, tp: Type): Type = apply(tp)(gc,())
   def apply(gc: GlobalContext, thy: Theory): Theory = apply(thy)(gc,())
+
+  // allows using the traversal result in pattern-matching directly
+  def unapply(d: Declaration)(implicit gc:GlobalContext) = Option(apply(gc,d))
+  def unapply(exp:Expression)(implicit gc:GlobalContext) = Option(apply(gc,exp))
+  def unapply(tp: Type)(implicit gc:GlobalContext) = Option(apply(gc,tp))
+  def unapply(thy: Theory)(implicit gc:GlobalContext) = Option(apply(gc,thy))
 }
 
 trait TraverseOnlyOriginalRegion {

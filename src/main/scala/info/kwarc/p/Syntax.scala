@@ -563,7 +563,7 @@ object TheoryAsValue {
 
 // ***************** Unknowns *************************************
 
-/** mutable memore loccation that holds an omitted object that is to be filled in during type inference */
+/** mutable memory location that holds an omitted object that is to be filled in during type inference */
 class UnknownContainer {
   private[p] var obj: Object = null
   private val id = UnknownContainer.next
