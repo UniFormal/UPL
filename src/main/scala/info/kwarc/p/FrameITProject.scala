@@ -185,13 +185,14 @@ class FrameITProject private extends Project(Nil,None){
 //    }
     e
   }
-  def tryEval(input: String) = {
+  def tryEval(input:String) = tryEvalTyped(input).map(_._1)
+  def tryEvalTyped(input: String) = {
     Try{
       val parsed = Parser.expression(SourceOrigin.anonymous, input, ErrorThrower)
       val gc = makeGlobalContext()
-      val (checked, _) = ThrowingChecker.checkAndInferExpression(gc, parsed)
+      val (checked, tp) = ThrowingChecker.checkAndInferExpression(gc, parsed)
       val (_, r) = Interpreter.run(Program(gc.voc.df, checked))
-      r
+      (r,tp)
     }
   }
 

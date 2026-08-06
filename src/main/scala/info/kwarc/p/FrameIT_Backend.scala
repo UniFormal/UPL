@@ -3,6 +3,7 @@ package info.kwarc.p
 import scala.collection.SeqMap
 import scala.scalajs.js
 import js.annotation._
+import scala.annotation.tailrec
 
 /**
   * The API for interfacing with the Backend from the outside.
@@ -14,7 +15,8 @@ import js.annotation._
 @JSExportAll
 object FrameIT_Backend {
   implicit val debug: Boolean = false
-  var proj = FrameITProject("","")
+  implicit var proj: FrameITProject = FrameITProject("","")
+  implicit def gc: GlobalContext = proj.makeGlobalContext()
 
   /** ToDO: Make a useful JS Object */
   def makeJSReadable(declaration: Declaration) = declaration.toString
@@ -41,20 +43,49 @@ object FrameIT_Backend {
     !proj.hasErrors
   }
 
-  @JSExport("eval")
-  def JS_eval(exprS: String): js.Object = {
+  import js.JSConverters._
+  def eval(exprS: String): js.UndefOr[js.Object] = {
     val evalS = s"${proj.Stage.name_curr}{}.$exprS"
-    val triedExpression = proj.tryEval(evalS)
-    new js.Object {
-      val success = triedExpression.isSuccess
-      val content = triedExpression.fold(_.toString,_.toString)
-    }
+    proj.tryEvalTyped(evalS)
+      .map{ case (r,t) =>
+      new js.Object {
+        val result = r.toString
+        val `type` = t.toString
+      }}
+      .toOption
+      .orUndefined
+  }
+
+  def evalNum(exprS: String): js.UndefOr[Double] = {
+    val evalS = s"${proj.Stage.name_curr}{}.$exprS"
+    proj.tryEval(evalS)
+      .collect { case NumberValue(_, re, _) => re.approx.value }
+      .toOption
+      .orUndefined
+  }
+
+  def evalFuncValueFact(factName: String): js.UndefOr[js.Object] = {
+    val exprS = s"${proj.Stage.name_curr}{}.${factName}_P"
+    proj.tryEval(exprS)
+      .collect { case ValueFact(f, as, v) =>
+        new js.Object {
+          val func = f.toString
+          val args = as.map(_.toString).toJSArray
+          val value = v
+        }
+      }
+      .toOption
+      .orUndefined
   }
 
   /** @see [[FrameITProject.applySchema]]
     *
     */
-  def applySchema (schema:String, assignReq:js.Dictionary[String], assignRes:js.Dictionary[String])= {
+  def applySchema(
+      schema: String,
+      assignReq: js.Map[String, String],
+      assignRes: js.Map[String, String]
+  ) = {
     proj.applySchema(schema, assignReq, assignRes)
   }
 
@@ -81,11 +112,16 @@ object BackendTests {
     //newLevel(bg,schema)
     //add(s1)
     proj applySchema("SimilarTriangles", assignments, SeqMap(("CD","height"),("CD_P","height_P"))) // ("height_P","__CD_P") doesn't work right now
+    implicit var gc: GlobalContext = proj.makeGlobalContext()
+    implicit val useless:Unit = ()
     println(proj.tryEval(s"${proj.Stage.name_curr}{}.height"))
     val tmp1 = proj.tryEval(s"${proj.Stage.name_curr}.height")
-    println(Simplify(proj.makeGlobalContext(),tmp1.get))
+    println(Simplify(tmp1.get))
+    gc = GlobalContext(proj.SiTh.get)
     val tmp2 = proj.SiTh.lookup("height")//.asInstanceOf[ExprDecl].dfO.get
-    println(Simplify(GlobalContext(proj.SiTh.get),tmp2).dfO)
+    println(Simplify(tmp2).dfO)
+    val tmp3 = proj.SiTh.lookup("height_P")
+    tmp3 match { case ValueFact(n,f, as, v) => println(n,f, as, v) }
     val stopHereForDebug: Unit= ()
     //debugPrintVerbose()
   }
@@ -173,34 +209,121 @@ object Regional_Substituter {
   }
 }
 
-/** Experimental factory to make common, but convoluted, declarations easier to interact with.*/
-object ValueFact {
-  ////// Useful conversions.
-  import scala.language.implicitConversions
-  implicit def varDeclAsDecl(expr: EVarDecl): ExprDecl = expr match {
-    case EVarDecl(name, tp, dfO, mutable, output) => ExprDecl(name, LocalContext.empty, tp, dfO, None, Modifiers(false, mutable))
-  }
-  implicit def exprDeclAsExpr(decl: ExprDecl): EVarDecl = decl match {
-    case ed: ExprDecl => EVarDecl(ed.name, ed.tp, ed.dfO, ed.modifiers.mutable)
-  }
-  //////
+// Experimental factories to make common, but convoluted, declarations easier to interact with.
 
-  def apply(name: String, func: ClosedRef, args: List[Expression], value: Double): ExprDecl = {
-    val tp = ProofType(Equality(
-      positive = true,
-      tp = NumberType.Float,
-      left = Application(func, args),
-      right = FloatValue(value)
-    ))
+/** "Accessors" for [[Declaration]]s of the form ```name: |- func(args) == value```
+  *
+  * @todo ValueFacts actually consist of two declarations. But that's probably a lot uglier to tackle
+  * @todo Allow for `value` to a type other than just [[Double]]
+  */
+object ValueFact {
+  def apply( name: String,
+             func: ClosedRef,
+             args: List[Expression],
+             value: Double
+           ): ExprDecl = {
+    val tp = ValueFactType(func, args, value)
     val modifiers = Modifiers(closed = false, mutable = false)
     //VarDecl(name, tp, dfO = None, mutable = false)
     ExprDecl(name, LocalContext.empty, tp, dfO = None, None, modifiers)
   }
 
-  def unapply(decl: ExprDecl): Option[(ClosedRef, List[Expression], Double)] = {
-    decl.tp match {
-      case ProofType(Equality(true, NumberType.Float, Application(fun: ClosedRef, args), FloatValue(value))) =>
-        Some(fun, args, value)
+  /*
+  def apply2(
+             name: String,
+             func: ClosedRef,
+             args: List[Expression],
+             value: Double
+           ) = {
+    val tp = ValueFactType(func, args, value)
+    val modifiers = Modifiers(closed = false, mutable = false)
+    //VarDecl(name, tp, dfO = None, mutable = false)
+    EVarDecl(name, tp, dfO = None, mutable = false, output = false)
+  }
+  */
+
+  /** @param decl Has to be an [[ExprDecl]]; allows for arbitrary [[Declaration]]s, because
+    *             the type is often hard to narrow beforehand
+    */
+  def unapply(decl: Declaration)(implicit gc: GlobalContext): Option[(String, Ref, List[Expression], Double)] = {
+    decl match {
+      case ExprDecl(name,_,ValueFactType(func,args,res),_,_,_) => Option(name, func, args, res)
+      case _ => None
+    }
+  }
+
+  def unapply(expr: Expression)(implicit gc: GlobalContext): Option[(Ref, List[Expression], Double)] = {
+    expr match {
+      case UndefinedValue(ValueFactType(f,as,v)) => Option(f,as,v)
+      case EVarDecl(_, ValueFactType(f,as,v), _, _, _) => Option(f,as,v)
+      case _ => None
+    }
+  }
+  /** Helper for readability and easier adaption.
+    *
+    * Basically just a recursive application of the same pattern
+    */
+  private object ValueFactType {
+    def apply(func: Ref, args: List[Expression], value: Double): ProofType = {
+      ProofType(
+        Equality(
+          positive = true,
+          tp = NumberType.Float,
+          left = Application(func, args),
+          right = FloatValue(value)
+        )
+      )
+    }
+
+    def unapply(tp: Type)(implicit gc: GlobalContext): Option[(Ref, List[Expression], Double)] = {
+      tp match {
+        case ProofType(Equality(
+          true,
+          _,
+          ap:Application,
+          Simplify(NumberValue(_, re, im))
+          ))  if im.zero => {
+          val (func, args) = uncurried(ap)
+          Option(func, args, re.approx.value)
+        }
+        case _ => None
+      }
+    }
+    @tailrec
+    private def uncurried(ap: Application, collectedArgs: List[Expression] = Nil): (Ref, List[Expression]) = {
+      val args: List[Expression] = ap.args ++: collectedArgs
+      ap.fun match {
+        case fun: Ref => (fun,args)
+        case app:Application => uncurried(app, args)
+        case _ => throw new Exception
+      }
+    }
+  }
+}
+
+/** "Accessors" for [[Declaration]]s of the form ```name: |- formula``` */
+object AssertionFact {
+  def apply( name: String, formula: Expression ): ExprDecl = {
+    val tp = ProofType(formula)
+    val modifiers = Modifiers(closed = false, mutable = false)
+    ExprDecl(name, LocalContext.empty, tp, dfO = None, None, modifiers)
+  }
+
+  /** @param decl Has to be an [[ExprDecl]]; allows for arbitrary [[Declaration]]s, because
+    *             the type is often hard to narrow beforehand
+    */
+  def unapply(decl: Declaration)(implicit gc: GlobalContext): Option[(String, Expression)] = {
+    decl match {
+      case ExprDecl(name,_,ProofType(formula),_,_,_) => Option(name, formula)
+      case _ => None
+    }
+  }
+
+  /**  */
+  def unapply(expr: Expression)(implicit gc: GlobalContext): Option[Expression] = {
+    expr match {
+      case UndefinedValue(ProofType(formula)) => Option(formula)
+      case EVarDecl(_, ProofType(formula), _, _, _) => Option(formula)
       case _ => None
     }
   }

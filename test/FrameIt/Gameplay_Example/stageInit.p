@@ -10,3 +10,4 @@ ground_dist_large_P: |- dist(ground)(foot) == ground_dist_large = ???
 apparent_height = 42    
 apparent_height_P: |- dist(q)(p) == apparent_height = ???
 are_similar: |- similar((tip,ground,foot))((p, ground, q)) = ???
+are_similar_T: |- similar_T (triA tip ground foot) (triA p ground q) = ???

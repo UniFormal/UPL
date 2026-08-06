@@ -11,18 +11,19 @@ theory SimilarTriangles{
   D: point
   E: point
   AB: float
-  AB_P:  |- dist(A)(B) == AB
+  AB_P:  |- dist A B == AB
   AC: float
-  AC_P:  |- dist(A)(C) == AC
+  AC_P:  |- dist A C  == AC
   BE: float
-  BE_P: |- dist(B)(E) == BE
-  are_similar: |- similar((D,A,C))((E,A,B)) 
+  BE_P: |- dist B E  == BE
+  are_similar: |- similar((D,A,C))((E,A,B))
+  are_similar_T: |- similar_T(triA D A C)(triA E A B) 
 
   // The solution of the scroll. Recognizable by 
   // - starting with a double underscore
   // - having a definiens ?
   CD = AC * BE / AB
-  CD_P: |- dist(C)(D) == CD = ???
+  CD_P: |- dist C D  == CD = ???
   //__CD_Schema: |- __CD == (_AC * _BE / _AB) = ???
 }
 
