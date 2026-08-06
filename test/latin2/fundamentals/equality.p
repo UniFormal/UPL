@@ -56,7 +56,7 @@ module equality {
         trefl: (A,x) -> ded tequal(A, x, x)
 
         // We use an unusual congruence in order to be able to perform congruence under an arbitrary binder.
-        // The rule captures a |- X a = y a ---> P [a] X a ⇔ P [a] y a.
+        // The rule captures a |- X a = Y a ---> P [a] X a ⇔ P [a] Y a.
         // That suffices to derive the xi rule for λ later. 
         tcongB: (A,B,X,Y) -> (a -> ded tequal(B, X a, Y a)) -> P -> ded (P X) -> ded (P Y)
         

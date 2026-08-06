@@ -39,4 +39,70 @@ module logic_to_type_theory {
     //     include .pl.Truth = TruthCH(u)
     //     trueI = u.unit
     // }
+
+    // conjunctions as product types
+    // ConjunctionCH: .product_types.SimpleProductTypes -> .pl.Conjunction = p -> .pl.Conjunction {
+    //     include .concepts.Propositions = PropositionsAsTypes(p)
+    //     and = p.simpprod
+    // }
+
+    // ConjunctionNDCH: .product_types.SimpleProducts -> .pl.ConjunctionND = p -> .pl.ConjunctionND {
+    //     include .pl.Conjunction = ConjunctionCH(p)
+    //     include .concepts.Proofs = ProofsAsTerms(t)
+    //     andI = p.simppair
+    //     andEl = p.simppi1
+    //     andEr = p.simppi2
+    // }
+
+    // dependent conjunctions as dependent product types 
+    // DependentConjunctionCH : .product_types.DependentProductTypes -> .dependent_pl.DependentConjunction = p -> .dependent_pl.DependentConjunction {
+    //     include .concepts.Logic = LogicCH(p)
+    //     dand = p.depprod
+    // }
+
+    // DependentConjunctionNDCH : .product_types.DependentProducts -> .dependent_pl.DependentConjunctionND = p -> .dependent_pl.DependentConjunctionND {
+    //     include .dependent_pl.DependentConjunction = DependentConjunctionCH(p)
+    //     dandI = p.deppair
+    //     dandEl = p.deppi1
+    //     dandEr = p.deppi2
+    // }
+
+    // implications as functions types
+    // ImplicationCH: .function_types.SimpleFunctionTypes -> .pl.Implication = f -> .pl.Implication {
+    //     include .concepts.Propositions = PropositionsAsTypes(f)
+    //     impl = f.simpfun
+    // }
+
+    // ImplicationNDCH: .function_types.SimpleFunctions -> .pl.ImplicationND = f -> .pl.ImplicationND {
+    //     include .pl.Implication = ImplicationCH(f)
+    //     include .concepts.Proofs = ProofsAsTerms(f)
+    //     implI = f.simplambda
+    //     implE = f.simpapply
+    // }
+
+    // dependent implication as dependent function types
+    // DependentImplicationCH : .function_types.DependentFunctionTypes -> .dependent_pl.DependentImplication = f -> .dependent_pl.DependentImplication {
+    //     include .concepts.Logic = LogicCH(f)
+    //     dimpl = f.depfun
+    // }
+
+    // DependentImplicationNDCH : .function_types.DependentFunctions -> .dependent_pl.DependentImplicationND = f -> .dependent_pl.DependentImplicationND {
+    //     include .dependent_pl.DependentImplication = DependentImplicationCH(f)
+    //     dimplI = f.deplambda
+    //     dimplE = f.depapply
+    // }
+
+    // disjunction as coproduct types
+    // DisjunctionCH: .coproduct_types.CoproductTypes -> .pl.Disjunction = c -> .pl.Disjunction {
+    //     include .concepts.Propositions = PropositionsAsTypes(c)
+    //     or = c.coprod
+    // }
+
+    // DisjunctionNDCH: .coproduct_types.Coproducts -> .pl.DisjunctionND = c -> .pl.DisjunctionND {
+    //     include .concepts.Logic = LogicCH(f)
+    //     include .pl.Disjunction = DisjunctionCH(c)
+    //     orI1 = c.inj1
+    //     orI2 = c.inj2
+    //     orE = c.cases
+    // }
 }
