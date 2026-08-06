@@ -10,8 +10,6 @@ import SyntaxFragment.matchC
   * All local variable bindings pass through applyVarDecl, which also returns an updated state for use in the variable's scope.
   *
   * The value 'null' is respected for theories and contexts, assuming they are inferred later.
-  *
-  * You can also use an Extractor-pattern to apply the Traverser, and continue matching on the result.
   */
 abstract class Traverser[A] {
   @inline def apply(p: Path)(implicit gc: GlobalContext, a: A): Path = matchC(p) {p => p}
@@ -377,14 +375,16 @@ object Substituter {
 }
 
 object Simplify extends StatelessTraverser {
-  // TODO This is currently applied inside [[ProofType]] as well, resulting in `|- true`, or `|- false`
   override def apply(exp: Expression)(implicit gc: GlobalContext, a:Unit): Expression = {
     val expR = applyDefault(exp) // first, recursively simplify subexpressions
     matchC(expR) {
       case r: Ref => gc.lookupRef(r) match {
-        // TODO Do we really want to de-ref everything? (E.g. '???' doesn't seem sensible)
-        case Some(ed: ExprDecl) if !ed.modifiers.mutable && ed.dfO.isDefined => apply(ed.dfO.get)
-        case _ => expR
+        case Some(ed: ExprDecl) if !ed.modifiers.mutable =>
+           ed.dfO match {
+             case Some(v: BaseValue) => v
+             case _ => r
+           }
+        case _ => r
       }
       case Application(bo: BaseOperator, args) => Operator.simplify(bo, args)
       // TODO Steffi `case Application(OpenRef(upl.math)) => Math.sin(args(0))`
@@ -394,8 +394,6 @@ object Simplify extends StatelessTraverser {
       case ListElem(CollectionValue(es,k),IntValue(i)) => es(i.toInt)
       case Application(Lambda(vs,b,false), as) => Substituter(gc, vs.substitute(as), b)
       case Equality(p,_:BaseType,l:BaseValue,r:BaseValue) => BoolValue(p == (l == r))
-      // TODO Do we actually want to compare expressions that couldn't be simplified
-      case Equality(p,_:BaseType,l,r) => BoolValue(p == (l == r))
       case Equality(p,_:ProofType,_,_) => BoolValue(p)
       case Equality(p, tp:ProdType, Tuple(ls), Tuple(rs)) =>
         val sub = tp.comps.substitute(ls)

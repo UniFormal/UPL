@@ -185,7 +185,7 @@ object Regional_Substituter {
   def apply(gc: GlobalContext, sub: Substitution, m: Module) = {
     if (sub.isIdentity || !m.closed) m
     else {val subber = new _Substituter(gc)
-      m.copyF(_.map(subber(_)(gc,sub)))
+      m.copyBody(_.map(subber(_)(gc,sub)))
     }
   }
 
@@ -277,15 +277,13 @@ object ValueFact {
 
     def unapply(tp: Type)(implicit gc: GlobalContext): Option[(Ref, List[Expression], Double)] = {
       tp match {
-        case ProofType(Equality(
-          true,
-          _,
-          ap:Application,
-          Simplify(NumberValue(_, re, im))
-          ))  if im.zero => {
-          val (func, args) = uncurried(ap)
-          Option(func, args, re.approx.value)
-        }
+        case ProofType(Equality(true,_,ap:Application,nv)) =>
+          Simplify(gc,nv) match {
+            case NumberValue(_, re, im) if im.zero =>
+              val (func, args) = uncurried(ap)
+              Option(func, args, re.approx.value)
+            case _ => None
+         }
         case _ => None
       }
     }

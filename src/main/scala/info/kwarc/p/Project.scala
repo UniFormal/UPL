@@ -121,12 +121,6 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
   }
 
   def check(stopOnError: Boolean) = {
-    /** TODO Do we really want
-      *  1) local entries, and
-      *  2) [[parsed]] if [[checked]] is available?
-      *  If not, we should use [[makeGlobalContext]], or
-      *  val ds = entries.filter(_.global).flatMap(_.getVocabulary.decls)
-    */
     val ds = entries.flatMap(_.parsed.decls)
     val voc = TheoryValue(ds)
     val ec = if (stopOnError) ErrorThrower else new ErrorCollector

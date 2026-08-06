@@ -111,6 +111,9 @@ case class Module(name: String, closed: Boolean, df: TheoryValue) extends NamedD
     }
   }
 
+  /** replaces the body of the definiens */
+  def copyBody(f: List[Declaration] => List[Declaration]): Module = copy(df = df.copy(decls = f(df.decls)))
+
   /** dereferences a path inside this module, returns the result followed by its ancestors */
   def lookupPathAndParents(path: Path, parents: List[NamedDeclaration]): Option[List[NamedDeclaration]] = path.names match {
     case Nil => Some(this :: parents)
@@ -129,10 +132,6 @@ case class Module(name: String, closed: Boolean, df: TheoryValue) extends NamedD
     case s @ Some(m: Module) => Some(m)
     case _ => None
   }
-
-  /** Does what you'd want from ```copy(decls = decls.f)``` */
-  def copyF(f: List[Declaration] => List[Declaration]): Module =
-    copy(df = df.copy(decls = f(df.decls)))
 }
 
 object Module {

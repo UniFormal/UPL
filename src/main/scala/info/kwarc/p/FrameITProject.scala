@@ -93,7 +93,7 @@ class FrameITProject private extends Project(Nil,None){
       val checked = updateAndCheck(Origin(counter), stageString)
       // Remove the 'Include's
       val filtered = checked.decls.collect{
-        case m:Module => m.copyF(_.filterNot(_.isInstanceOf[Include]))
+        case m:Module => m.copyBody(_.filterNot(_.isInstanceOf[Include]))
       }
       get(Origin(counter)).checked = checked.copy(filtered)
       val err = hasErrors
@@ -152,7 +152,7 @@ class FrameITProject private extends Project(Nil,None){
     }
     // "proper" solving with editing the theory; No point in that rn
     val assignedNames = requiredFactsAssignment.keySet ++ resultingFactsAssignment.keySet
-    val solved = subbed.copyF(
+    val solved = subbed.copyBody(
       _.filterNot(d => d.nameO.exists(assignedNames.contains) || d.isInstanceOf[Include])
       ++: resDecls
     )
