@@ -121,7 +121,7 @@ object BackendTests {
     val tmp2 = proj.SiTh.lookup("height")//.asInstanceOf[ExprDecl].dfO.get
     println(Simplify(tmp2).dfO)
     val tmp3 = proj.SiTh.lookup("height_P")
-    tmp3 match { case ValueFact(n,f, as, v) => println(n,f, as, v) }
+    tmp3 match { case ValueFact(vF) => println(vF) case _ => println("!!`height_P` not recognised as ValueFact") }
     val stopHereForDebug: Unit= ()
     //debugPrintVerbose()
   }
@@ -278,9 +278,8 @@ object ValueFact {
     def unapply(tp: Type)(implicit gc: GlobalContext): Option[(Ref, List[Expression], Double)] = {
       tp match {
         case ProofType(Equality(true,_,ap:Application,nv)) =>
-          Simplify(gc,nv) match {
-            case NumberValue(_, re, im) if im.zero =>
-              val (func, args) = uncurried(ap)
+          (Simplify(gc,nv), uncurried(ap)) match {
+            case (NumberValue(_, re, im),Some((func, args))) if im.zero =>
               Option(func, args, re.approx.value)
             case _ => None
          }
@@ -288,12 +287,12 @@ object ValueFact {
       }
     }
     @tailrec
-    private def uncurried(ap: Application, collectedArgs: List[Expression] = Nil): (Ref, List[Expression]) = {
+    private def uncurried(ap: Application, collectedArgs: List[Expression] = Nil): Option[(Ref, List[Expression])] = {
       val args: List[Expression] = ap.args ++: collectedArgs
       ap.fun match {
-        case fun: Ref => (fun,args)
+        case fun: Ref => Option(fun,args)
         case app:Application => uncurried(app, args)
-        case _ => throw new Exception
+        case _ => None
       }
     }
   }
