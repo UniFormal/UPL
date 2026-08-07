@@ -380,7 +380,7 @@ object Simplify extends StatelessTraverser {
     matchC(expR) {
       case r: Ref => gc.lookupRef(r) match {
         case Some(ed: ExprDecl) if !ed.modifiers.mutable =>
-           ed.dfO match {
+           ed.dfO.map(apply) match { // first simplify the lookup
              case Some(v: BaseValue) => v
              case _ => r
            }
