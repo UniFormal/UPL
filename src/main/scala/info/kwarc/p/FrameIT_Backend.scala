@@ -279,7 +279,7 @@ object ValueFact {
       tp match {
         case ProofType(Equality(true,_,ap:Application,nv)) =>
           (Simplify(gc,nv), uncurried(ap)) match {
-            case (NumberValue(_, re, im),Some((func, args))) if im.zero =>
+            case (RealValue(re),Some((func, args))) =>
               Option(func, args, re.approx.value)
             case _ => None
          }

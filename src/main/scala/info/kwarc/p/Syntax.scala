@@ -1239,7 +1239,7 @@ object NumberValue {
 object RealValue {
   def apply(r: Real) = NumberValue(r.tp, r, Real.zero)
   def unapply(e: Expression) = e match {
-    case NumberValue(_,r,s) if s == Real.zero => Some(r)
+    case n@NumberValue(_,r,_) if n.real => Some(r)
     case _ => None
   }
 }
@@ -1253,7 +1253,7 @@ object RatValue {
 object IntValue {
   def apply(i: BigInt) = RatValue(i,1)
   def unapply(e: Expression) = e match {
-    case RatValue(i,j) if i % j == 0 => Some(i/j)
+    case RealValue(r@Rat(i,j)) if r.integer => Some(i/j)
     case _ => None
   }
 }
