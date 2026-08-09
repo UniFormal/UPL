@@ -501,14 +501,20 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   private def inPhysicalTheory = regions.forall(_.physical.isDefined)
 
   /** the path to the current theory if in physical theory */
-  def currentParent: Path = {
+  private def currentParent: Path = {
     if (!inPhysicalTheory)
       throw IError("not in physical theory")
-    else currentRegion.theory match {
+    else currentTheory
+  }
+
+  /** the path to the current theory */
+  def currentTheory: Path = {
+    currentRegion.theory match {
       case PhysicalTheory(p, _) => p
       case _ => throw IError("not a physical theory")
     }
   }
+
   /** the current theory if in physical theory */
   def parentDecl = voc.lookupModule(currentParent).getOrElse {
     throw ASTError("unknown parent: " + currentParent)

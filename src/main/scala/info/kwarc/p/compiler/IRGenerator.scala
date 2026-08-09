@@ -2,23 +2,19 @@ package info.kwarc.p.compiler
 
 import info.kwarc.p._
 import info.kwarc.p.compiler.Condition.{EQUAL, NOT_EQUAL, SIGNED_GREATER_EQUAL, SIGNED_GREATER_THAN, SIGNED_LESS_EQUAL, SIGNED_LESS_THAN}
-import info.kwarc.p.compiler.IRGenerator.TOP_LEVEL_STRUCT_NAME
+import info.kwarc.p.compiler.IRGenerator.{INLINED_EXPRESSIONS, STORED_EXPRESSIONS, TOP_LEVEL_STRUCT_NAME}
 import info.kwarc.p.compiler.Operation.{IADD, IAND, IDIV, IMUL, ISUB}
 
 import scala.collection.mutable
 
 object IRGenerator {
-  val TOP_LEVEL_STRUCT_NAME = "__top_level"
+  private val TOP_LEVEL_STRUCT_NAME = "__top_level"
+  private val NEEDS_STORING: ExprDecl => Boolean = d => d.dfO.isEmpty || d.modifiers.mutable
+  private val STORED_EXPRESSIONS: PartialFunction[Declaration, ExprDecl] = { case d: ExprDecl if NEEDS_STORING(d) => d }
+  private val INLINED_EXPRESSIONS: PartialFunction[Declaration, ExprDecl] = { case d: ExprDecl if !NEEDS_STORING(d) => d }
 
   def run(p: Program): IrProgram = {
     val ig = new IRGenerator()
-
-
-    // TODO The type checker is not strong enough to infer all types we need.
-//    val ch = new Checker(ErrorThrower)
-//    val gcC = GlobalContext(p.voc)
-//    ch.checkExpression(gcC, p.main, NumberType.Int)
-
 
     val gc = GlobalContext(p.voc)
     ig.compileModule(Module("", closed = false, p.voc))(gc)
@@ -77,31 +73,28 @@ private class IRGenerator {
 
   private def getAllocatedVariable(n: String): IrVar = scopes.find(_.variables.exists(_.name == n)).map(_.variables.find(_.name == n).get).getOrElse(throw new RuntimeException(s"Variable $n not found")).irValue
   private def getAllocatedTypeVariableO(n: String): Option[IrType] = scopes.find(_.typeVariable.exists(_.name == n)).map(_.typeVariable.find(_.name == n).get).map(_.irValue)
-  private def getAllocatedTypeVariable(n: String): IrType = getAllocatedTypeVariableO(n).getOrElse(throw new RuntimeException(s"Variable $n not found"))
 
   def compileMain(exp: Expression)(implicit gc: GlobalContext): Unit = {
-    ctx = new FunctionContext
+    inNewFunctionCtx {
+      var value = compileExpression(exp)(gc)
+      value = value match {
+        // Boxed values need to be unboxed before returning.
+        // We currently assume that the main expression always evaluates to a 64-bit integer.
+        case v@IrVar(IrPtrType(IrUnknownType), _) => loadFromPointer(v.copy(tp = IrPtrType(IrIntType.I64)), fresh("result"))
+        case _ => value
+      }
 
-    val entry = ctx.newBlock("entry")
-    ctx.insertBlock(entry)
-    var value = compileExpression(exp)(gc)
-    value = value match {
-      // Boxed values need to be unboxed before returning.
-      // We currently assume that the main expression always evaluates to a 64-bit integer.
-      case v@IrVar(IrPtrType(IrUnknownType), _) => loadFromPointer(v.copy(tp = IrPtrType(IrIntType.I64)), fresh("result"))
-      case _ => value
+      val ret = value.tp match {
+        //not every code statement returns a value => behave like C; default to 0
+        case IrVoidType => IrReturn(IrConst(IrIntType.I64, 0))
+        case _ => IrReturn(value)
+      }
+      ctx.emit(ret)
+
+      // We currently assume that the main expression evaluates to a 64-bit integer.
+      val mainFun = IrFun("main", IrFunType(IrIntType.I64, Nil), Nil, ctx.buildBlocks())
+      functions += mainFun
     }
-
-    val ret = value.tp match {
-      //not every code statement returns a value => behave like C; default to 0
-      case IrVoidType => IrReturn(IrConst(IrIntType.I64, 0))
-      case _ => IrReturn(value)
-    }
-    ctx.emit(ret)
-
-    // We currently assume that the main expression evaluates to a 64-bit integer.
-    val mainFun = IrFun("main", IrFunType(IrIntType.I64, Nil), Nil, ctx.buildBlocks())
-    functions += mainFun
   }
 
   /** Compiles an expression
@@ -238,39 +231,35 @@ private class IRGenerator {
             op_result
           }
       }
-      case o: OpenRef => applyField(compileExpression(o), args)
-      case o: ClosedRef => applyField(compileExpression(o), args)
-      case o: OwnedExpr => applyField(compileExpression(o), args)
-      case o: VarRef => applyField(compileExpression(o), args)
+      case r => applyField(compileExpression(r), args)
     }
     case o: OpenRef => loadOpenRef(o)
-    case r: ClosedRef => loadFromPointer(loadClosedRef(r), fresh(r.name))
-    case o: OwnedExpr => loadFromPointer(loadOwnedExpr(o), fresh("owned"))
+    case r: ClosedRef => loadClosedRef(r)
+    case o: OwnedExpr => loadOwnedExpr(o)
     case o: VarRef => loadVarRef(o)
-    case Lambda(ins, body, _) => val prevCtx = ctx
-      ctx = new FunctionContext
-      ctx.insertBlock(ctx.newBlock("entry"))
-      val params = ins.variables.reverse
-      val arguments = params.map(v => IrArgument(llvmType(v.tp), v.name))
+    case Lambda(ins, body, _) =>
+      inNewFunctionCtx {
+        val params = ins.variables.reverse
+        val arguments = params.map(v => IrArgument(llvmType(v.tp), v.name))
 
-      scopes ::= VariableScope()
-      arguments.foreach { a =>
-        val allocatedVar = IrVar(IrPtrType(a.tp), fresh(s"alloc_arg_${a.name}"))
-        ctx.emitFirst(IrAlloca(allocatedVar))
+        scopes ::= VariableScope()
+        arguments.foreach { a =>
+          val allocatedVar = IrVar(IrPtrType(a.tp), fresh(s"alloc_arg_${a.name}"))
+          ctx.emitFirst(IrAlloca(allocatedVar))
 
-        scopes.head.variables ::= Variable(a.name, allocatedVar)
-        ctx.emit(IrStore(a, allocatedVar))
+          scopes.head.variables ::= Variable(a.name, allocatedVar)
+          ctx.emit(IrStore(a, allocatedVar))
+        }
+
+        val result = compileExpression(body)(gc.append(ins))
+        scopes = scopes.tail
+
+        ctx.emit(IrReturn(result))
+
+        val lambdaFun = IrFun(fresh("lambda"), IrFunType(result.tp, params.map(v => llvmType(v.tp))), arguments, ctx.buildBlocks())
+        functions += lambdaFun
+        IrFunctionRef(lambdaFun)
       }
-
-      val result = compileExpression(body)(gc.append(ins))
-      scopes = scopes.tail
-
-      ctx.emit(IrReturn(result))
-
-      val lambdaFun = IrFun(fresh("lambda"), IrFunType(result.tp, params.map(v => llvmType(v.tp))), arguments, ctx.buildBlocks())
-      functions += lambdaFun
-      ctx = prevCtx
-      IrFunctionRef(lambdaFun)
     case Block(exprs) =>
       scopes ::= VariableScope()
       val result = if (exprs.nonEmpty) {
@@ -294,28 +283,29 @@ private class IRGenerator {
       compileAssignment(target, compileExpression(value))
       compileExpression(Unit.Value)
     case Instance(concreteTheory) => val theoryPath = mainTheoryPath(concreteTheory)
-      val abstractTheory = TypeExpansion(gc, gc.lookupGlobal(theoryPath).get).asInstanceOf[Module]
-      val abstractExprDecls = abstractTheory.decls.collect { case d: ExprDecl => d }
-      val struct = IrStruct(theoryPath.toString, abstractExprDecls.map { d => llvmType(d.tp) })
-      val size = IrVar(IrIntType.I64, fresh("size"))
+      val theory = TypeExpansion(GlobalContext(gc.voc), gc.lookupGlobal(theoryPath).get).asInstanceOf[Module]
+      val storedExprDecls = theory.decls.collect(STORED_EXPRESSIONS)
+      val struct = IrStruct(theoryPath.toString, storedExprDecls.map { d => llvmType(d.tp) })
+      val size = IrVar(IrIntType.I64, fresh(s"${theoryPath.toString}_size"))
       ctx.emit(IrComputeSize(size, struct))
 
-      val structPtr = IrVar(IrPtrType(struct), fresh("struct_ptr"))
+      val structPtr = IrVar(IrPtrType(struct), fresh(s"${theoryPath.toString}_ptr"))
       ctx.emit(IrCall(Some(structPtr), IrFunctionRef(SpecialFunctions.mallocFun), List(size)))
-      val initFun = IrDeclFun(s"${theoryPath}_initialize", IrFunType(IrVoidType, Nil))
-      ctx.emit(IrCall(None, IrFunctionRef(initFun), List(structPtr)))
 
       // Initializes the expression declared by this instance
-      concreteTheory.decls.foreach { case ExprDecl(name, _, tp, Some(concreteExprDecl), _, _) =>
-        val (abstrExprDecl, fieldIndex) = abstractExprDecls.zipWithIndex.find { case (d, _) => d.name == name }.get
-        val gcD = gc.push(concreteTheory, Some(concreteExprDecl))
-        val concreteTp = TypeExpansion(gcD, abstrExprDecl.tp)
-        val compiledExpr = compileExpression(concreteExprDecl)
+      concreteTheory.decls.foreach { case ExprDecl(name, _, _, Some(concreteExprDecl), _, _) =>
+        storedExprDecls.zipWithIndex.find { case (d, _) => d.name == name } match {
+          case Some((abstrExprDecl, fieldIndex)) =>
+            val concreteTp = TypeExpansion(gc.push(concreteTheory, Some(concreteExprDecl)), abstrExprDecl.tp)
+            val compiledExpr = compileExpression(concreteExprDecl)
 
-        if (concreteTp != abstrExprDecl.tp) {
-          storeField(struct, structPtr, boxValue(compiledExpr, s"boxed_value_$name"), fieldIndex)
-        } else {
-          storeField(struct, structPtr, compiledExpr, fieldIndex)
+            if (concreteTp != abstrExprDecl.tp) {
+              storeField(struct, structPtr, boxValue(compiledExpr, s"boxed_value_$name"), fieldIndex)
+            } else {
+              storeField(struct, structPtr, compiledExpr, fieldIndex)
+            }
+          case None =>
+            // the expression was already declared in a parent theory
         }
         case _ =>
       }
@@ -430,7 +420,7 @@ private class IRGenerator {
     result
   }
 
-  private def bindDeclaration(vd: EVarDecl, value: Option[IrValue]): IrVar = {
+  private def bindDeclaration(vd: EVarDecl, value: Option[IrValue])(implicit gc: GlobalContext): IrVar = {
     val allocatedVar = IrVar(IrPtrType(llvmType(vd.tp)), fresh(s"alloc_${vd.name}"))
     ctx.emitFirst(IrAlloca(allocatedVar))
     scopes.head.variables ::= Variable(vd.name, allocatedVar)
@@ -487,11 +477,11 @@ private class IRGenerator {
   }
 
   private def loadField(struct: IrStruct, structPtr: IrValue, fieldIndex: Int): IrVar = {
-    loadFromPointer(getFieldPointer(struct, structPtr, fieldIndex), fresh(s"field_$fieldIndex"))
+    loadFromPointer(getFieldPointer(struct, structPtr, fieldIndex), fresh(s"${struct.name}_field$fieldIndex"))
   }
 
   private def getFieldPointer(struct: IrStruct, structPtr: IrValue, fieldIndex: Int): IrVar = {
-    val fieldPtr = IrVar(IrPtrType(struct.fields(fieldIndex)), fresh(s"field_${fieldIndex}_ptr"))
+    val fieldPtr = IrVar(IrPtrType(struct.fields(fieldIndex)), fresh(s"${struct.name}_field${fieldIndex}_ptr"))
     ctx.emit(IrGetElement(fieldPtr, struct, structPtr, List(0, fieldIndex)))
     fieldPtr
   }
@@ -505,7 +495,7 @@ private class IRGenerator {
   }
 
   private def compileModule(module: Module)(implicit gc: GlobalContext): Unit = {
-    val moduleName = if (gc.currentParent.isRoot) TOP_LEVEL_STRUCT_NAME else gc.currentParent.toString
+    val moduleName = if (gc.currentTheory.isRoot) TOP_LEVEL_STRUCT_NAME else gc.currentTheory.toString
     // Recursively traverse other declarations
     // We need to do this before traversing all expression declarations in the current module to prevent inner
     // modules from messing with the function context
@@ -516,124 +506,81 @@ private class IRGenerator {
     case d => compileDeclaration(d)(gc)
     }
 
-    val exprDecls = module.df.decls.collect { case d: ExprDecl => d }
-    val struct = IrStruct(moduleName, exprDecls.map { d => llvmType(d.tp) })
+    val storedExprDecls = module.df.decls.collect(STORED_EXPRESSIONS)
+    val struct = IrStruct(moduleName, storedExprDecls.map { d => llvmType(d.tp) })
     structs += struct
 
-    if (module.closed) { // Function to initialize all struct fields
-      ctx = new FunctionContext
-      val structArg = IrArgument(IrPtrType(struct), "__instance")
-      ctx.insertBlock(ctx.newBlock("entry"))
-
-      // TODO do not store if the field is defined and immutable
-      module.df.decls.foreach { case e@ExprDecl(_, _, _, Some(exp), _, _) => val fieldIndex = exprDecls.indexOf(e)
-        storeField(struct, structArg, compileExpression(exp)(gc), fieldIndex)
-      case _ =>
+    module.df.decls.collect(INLINED_EXPRESSIONS).foreach { expr =>
+      inNewFunctionCtx {
+        val result = compileExpression(expr.dfO.get)
+        ctx.emit(IrReturn(result))
+        val fun = IrFun(s"${moduleName}_${expr.name}", IrFunType(result.tp, Nil), Nil, ctx.buildBlocks())
+        functions += fun
+        IrFunctionRef(fun)
       }
-      ctx.emit(IrReturnVoid)
-      val initializeFun = IrFun(s"${moduleName}_initialize", IrFunType(IrVoidType, Nil), List(structArg), ctx
-        .buildBlocks())
-      functions += initializeFun
-
-    } else { // The initialized field indicates whether the module has been initialized
-      // Fields will be initialized on first module access
-      val initializedGlobal = IrGlobal(s"${moduleName}_initialized", IrIntType.I1)
-      val structGlobal = IrGlobal(moduleName, struct)
-      globals += initializedGlobal
-      globals += structGlobal
-
-      // Function to initialize all struct fields
-      ctx = new FunctionContext
-      ctx.insertBlock(ctx.newBlock("entry"))
-
-      module.df.decls.foreach { case e@ExprDecl(_, _, _, Some(exp), _, _) => val fieldIndex = exprDecls.indexOf(e)
-        storeField(struct, structGlobal, compileExpression(exp)(gc), fieldIndex)
-      case _ =>
-      }
-      ctx.emit(IrReturnVoid)
-      val initializeFun = IrFun(s"${moduleName}_initialize", IrFunType(IrVoidType, Nil), Nil, ctx.buildBlocks())
-      functions += initializeFun
-
-      // ensure_initialized is invoked before every field access. It initializes the module if it has not been
-      // initialized yet.
-      ctx = new FunctionContext
-      ctx.insertBlock(ctx.newBlock("entry"))
-      val initB = ctx.newBlock("init")
-      val endB = ctx.newBlock("end")
-      val initialized = IrVar(IrIntType.I1, fresh("initialized"))
-      ctx.emit(IrLoad(initialized, initializedGlobal))
-      ctx.emit(IrCondBranch(initialized, endB.label, initB.label))
-      ctx.insertBlock(initB)
-      ctx.emit(IrStore(IrConst(true), initializedGlobal))
-      ctx.emit(IrCall(None, IrFunctionRef(initializeFun), Nil))
-      ctx.emit(IRBranch(endB.label))
-
-      ctx.insertBlock(endB)
-      ctx.emit(IrReturnVoid)
-      functions += IrFun(s"${moduleName}_ensure_initialized", IrFunType(IrVoidType, Nil), Nil, ctx.buildBlocks())
     }
   }
 
-  private def loadClosedRef(r: ClosedRef)(implicit gc: GlobalContext): IrVar = {
-    val theoryPath = gc.currentParent
+  private def loadClosedRef(r: ClosedRef)(implicit gc: GlobalContext): IrValue = {
+    val theoryPath = gc.currentTheory
     val module = gc.lookupGlobal(theoryPath).get.asInstanceOf[Module]
-    val exprDecls = module.decls.collect { case d: ExprDecl => d }
-    val fieldIndex = exprDecls.indexWhere(_.name == r.name)
-    val struct = IrStruct(theoryPath.toString, exprDecls.map(d => llvmType(d.tp)))
-    getFieldPointer(struct, IrArgument(IrPtrType(struct), "__instance"), fieldIndex)
+    val struct = IrStruct(theoryPath.toString, module.decls.collect(STORED_EXPRESSIONS).map(d => llvmType(d.tp)))
+
+    loadRef(module.decls, struct, IrArgument(IrPtrType(struct), "__instance"), r.name, gc => gc)
   }
 
-  private def loadOwnedExpr(o: OwnedExpr)(implicit gc: GlobalContext): IrVar = {
+  private def loadOwnedExpr(o: OwnedExpr)(implicit gc: GlobalContext): IrValue = {
     o match {
       case OwnedExpr(owner, ownerDom, ClosedRef(name)) =>
         val theoryPath = mainTheoryPath(ownerDom)
-        val abstrTheory = TypeExpansion(gc, gc.lookupGlobal(theoryPath).get).asInstanceOf[Module]
-        val abstrExprDecls = abstrTheory.decls.collect { case d: ExprDecl => d }
+        val theory = TypeExpansion(GlobalContext(gc.voc), gc.lookupGlobal(theoryPath).get).asInstanceOf[Module]
+        val struct = IrStruct(theoryPath.toString, theory.decls.collect(STORED_EXPRESSIONS).map(d => llvmType(d.tp)))
 
-        val (abstrExprDecl, fieldIndex) = abstrExprDecls.zipWithIndex.find { case (d, _) => d.name == name }.get
-
-        val struct = IrStruct(theoryPath.toString, abstrExprDecls.map(d => llvmType(d.tp)))
-        val fieldPtr = getFieldPointer(struct, compileExpression(owner), fieldIndex)
-
-        val concreteTp = TypeExpansion(gc.push(ownerDom, Some(owner)), abstrExprDecl.tp)
-
-        if (concreteTp != abstrExprDecl.tp) {
-          // The type of the theory was not concrete. The actual type of the instance is different.
-          // We stored the value as a pointer in the struct. This means we now have to dereference it.
-          val deReferenced = loadFromPointer(fieldPtr, fresh(s"de_reference"))
-          // Now that we know the type of the expression, we can set the type of the pointer to the concrete type
-          deReferenced.copy(tp = IrPtrType(llvmType(concreteTp)))
-        } else {
-          fieldPtr
-        }
+        loadRef(theory.decls, struct, compileExpression(owner), name, gc => gc.push(ownerDom, Some(owner)))
     }
   }
 
   private def loadOpenRef(o: OpenRef)(implicit gc: GlobalContext): IrValue = {
-    val field = gc.lookupRef(o).get.asInstanceOf[ExprDecl]
     val path = o.path
     val modulePath = path.up
-    val moduleName = if (modulePath.isRoot) {
-      TOP_LEVEL_STRUCT_NAME
-    } else {
-      modulePath.toString
-    }
-    val initFun = IrDeclFun(s"${moduleName}_ensure_initialized", IrFunType(IrVoidType, Nil))
-    ctx.emit(IrCall(None, IrFunctionRef(initFun), Nil))
-
-    val module = gc.lookupGlobal(modulePath).get.asInstanceOf[Module]
-    val exprDecls = module.decls.collect { case d: ExprDecl => d }
-    val struct = IrStruct(moduleName, exprDecls.map { d => llvmType(d.tp) })
-    val fieldIndex = exprDecls.indexOf(field)
-    val structGlobal = IrGlobal(moduleName, struct)
     //special case: generate IR for builtins
-    if (module.name == "Uniformal"){
+    if (path.head == "Uniformal") {
       val builtin = loadBuiltin(path.names(1))
       //builtin.signature
       return IrFunctionRef(builtin)
     }
 
-    loadField(struct, structGlobal, fieldIndex)
+    val module = gc.lookupGlobal(modulePath).get.asInstanceOf[Module]
+
+    val exprDecl = module.decls.collect(INLINED_EXPRESSIONS).find(_.name == path.name).get
+    val moduleName = if (modulePath.isRoot) TOP_LEVEL_STRUCT_NAME else modulePath.toString
+    applyField(IrFunctionRef(IrDeclFun(s"${moduleName}_${path.name}", IrFunType(llvmType(exprDecl.tp), Nil))), Nil)
+  }
+
+  private def loadRef(decls: List[Declaration], struct: IrStruct, structPtr: IrValue, exprName: String, gcF: GlobalContext => GlobalContext)(implicit gc: GlobalContext): IrValue = {
+    val storedExprDecls = decls.collect(STORED_EXPRESSIONS)
+
+    val fieldIndex = storedExprDecls.indexWhere(_.name == exprName)
+    if (fieldIndex == -1) {
+      // the field is not stored in the struct and needs to be inlined
+      val exprDecl = decls.collect { case d: ExprDecl => d }.find(_.name == exprName).get
+      return applyField(IrFunctionRef(IrDeclFun(s"${struct.name}_$exprName", IrFunType(llvmType(exprDecl.tp), Nil))), Nil)
+    }
+    val exprDecl = storedExprDecls(fieldIndex)
+
+    val fieldPtr = getFieldPointer(struct, structPtr, fieldIndex)
+
+    val concreteTp = TypeExpansion(gcF(gc), exprDecl.tp)
+
+    loadFromPointer(if (concreteTp != exprDecl.tp) {
+      // The type of the theory was not concrete. The actual type of the instance is different.
+      // We stored the value as a pointer in the struct. This means we now have to dereference it.
+      val deReferenced = loadFromPointer(fieldPtr, fresh(s"${struct.name}_${exprName}_dereference"))
+      // Now that we know the type of the expression, we can set the type of the pointer to the concrete type
+      deReferenced.copy(tp = IrPtrType(llvmType(concreteTp)))
+    } else {
+      fieldPtr
+    }, fresh(s"${struct.name}_$exprName"))
   }
 
   private def loadVarRef(o: VarRef)(implicit gc: GlobalContext): IrValue = {
@@ -664,7 +611,7 @@ private class IRGenerator {
   }
 
 
-  private def llvmType(tp: Type): IrType = {
+  private def llvmType(tp: Type)(implicit gc: GlobalContext): IrType = {
     tp match {
       case BoolType => IrIntType.I1
       case _: NumberType => IrIntType.I64
@@ -680,7 +627,7 @@ private class IRGenerator {
         case Some(value) => value
         case None => IrPtrType(IrUnknownType)
       }
-      case OpenRef(path) => getAllocatedTypeVariable(path.names.last)
+      case o: OpenRef => llvmType(gc.lookupRef(o).get.asInstanceOf[TypeDecl].dfO.get)
       case _ => throw new IllegalArgumentException(s"Unsupported type: $tp")
     }
   }
@@ -706,9 +653,20 @@ private class IRGenerator {
     IrStruct(name, types)
   }
 
-  private def mainTheoryPath(theory: Theory): Path = { // The first include of a theory should always be the 'class
-    // type'
-    theory.decls.head.asInstanceOf[Include].dom.asInstanceOf[OpenRef].path
+  private def mainTheoryPath(theory: Theory): Path = {
+    // The first include of a theory should always be the 'class type'
+    theory.decls match {
+      case ::(Include(OpenRef(p), _, _), _) => p
+      case _ =>  throw new IllegalArgumentException(s"Theory declarations doesn't start with include")
+    }
+  }
+
+  private def inNewFunctionCtx[A](a: => A) = {
+    val prevCtx = ctx
+    ctx = new FunctionContext
+    ctx.insertBlock(ctx.newBlock("entry"))
+    try {a}
+    finally {ctx = prevCtx}
   }
 
   private case class BlockBuilder(label: String, instructions: mutable.ArrayBuffer[IrInstr] = mutable.ArrayBuffer()) {

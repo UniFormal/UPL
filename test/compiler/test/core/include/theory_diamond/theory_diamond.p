@@ -3,7 +3,7 @@ theory A {
 }
 theory B {
   include A
-  b: int
+  b: int = 2
   a: int
   c: int
   d: int
@@ -15,8 +15,8 @@ theory C {
 theory D {
   include B
   include C
-  b = 2
   c = 3
   d: int = 5
 }
-inst = D { }
+b = B { c = 4, d = 7 }
+d = D { }
