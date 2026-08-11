@@ -474,11 +474,14 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
     */
   def parseName = {
     trim
-    if (atEnd || !isNameStart(next)) "" else {
+    // trim prefix underscores, so they don't become the Unicode script of the identifier
+    val prefixUnderscores = parseWhile(isNameConnector)
+    val name = if (atEnd || !isNameStart(next)) "" else {
       // identifiers end when the script changes; that allows eg sinα or λx without space
       val script = Unicode.scriptOf(next)
       parseWhile(c => isNameChar(c) && (!Character.isLetter(c) || Unicode.scriptOf(c) == script))
     }
+    prefixUnderscores ++ name
   }
   /** Parse an extended name.
     * Extended names may switch to non-alphanumeric (and back) after an underscore ("_")
