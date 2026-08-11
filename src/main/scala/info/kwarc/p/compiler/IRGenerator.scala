@@ -2,13 +2,14 @@ package info.kwarc.p.compiler
 
 import info.kwarc.p._
 import info.kwarc.p.compiler.Condition.{EQUAL, NOT_EQUAL, SIGNED_GREATER_EQUAL, SIGNED_GREATER_THAN, SIGNED_LESS_EQUAL, SIGNED_LESS_THAN}
-import info.kwarc.p.compiler.IRGenerator.{INLINED_EXPRESSIONS, STORED_EXPRESSIONS, TOP_LEVEL_STRUCT_NAME}
+import info.kwarc.p.compiler.IRGenerator.{INLINED_EXPRESSIONS, INSTANCE_ARGUMENT_NAME, STORED_EXPRESSIONS, TOP_LEVEL_STRUCT_NAME}
 import info.kwarc.p.compiler.Operation.{IADD, IAND, IDIV, IMUL, ISUB}
 
 import scala.collection.mutable
 
 object IRGenerator {
   private val TOP_LEVEL_STRUCT_NAME = "__top_level"
+  private val INSTANCE_ARGUMENT_NAME = "__instance"
   private val NEEDS_STORING: ExprDecl => Boolean = d => d.dfO.isEmpty || d.modifiers.mutable
   private val STORED_EXPRESSIONS: PartialFunction[Declaration, ExprDecl] = { case d: ExprDecl if NEEDS_STORING(d) => d }
   private val INLINED_EXPRESSIONS: PartialFunction[Declaration, ExprDecl] = { case d: ExprDecl if !NEEDS_STORING(d) => d }
@@ -108,11 +109,12 @@ private class IRGenerator {
       case ApproxReal(value) => IrConst(value.toInt)
       case Rat(enu, deno) => IrConst(enu.toInt / deno.toInt)
     } // Booleans are represented using i1 integers.
-    case BoolValue(value) => IrConst(value) // Unit value is represented as a special constant to make it easy to
+    case BoolValue(value) => IrConst(value)
     case StringValue(value) =>
       val v = IrGlobal(fresh("name"), IrConstChar(value.length), Some(s"c\"$value\\00\""))
       globals.append(v)
       v
+    // Unit value is represented as a special constant to make it easy to
     // spot when debugging
     case Unit.Value => IrConst(0xdeadbeef) // note that Unit.Value is defined
     case IfThenElse(cond, thn, Some(els)) => // Based on ideas from
@@ -282,10 +284,12 @@ private class IRGenerator {
     case Assign(target, value) =>
       compileAssignment(target, compileExpression(value))
       compileExpression(Unit.Value)
-    case Instance(concreteTheory) => val theoryPath = mainTheoryPath(concreteTheory)
-      val theory = TypeExpansion(GlobalContext(gc.voc), gc.lookupGlobal(theoryPath).get).asInstanceOf[Module]
+    case Instance(concreteTheory) =>
+      val gcI = gc.enter(concreteTheory)
+      val theoryPath = mainTheoryPath(concreteTheory)
+      val theory = TypeExpansion(GlobalContext(gcI.voc), gcI.lookupGlobal(theoryPath).get).asInstanceOf[Module]
       val storedExprDecls = theory.decls.collect(STORED_EXPRESSIONS)
-      val struct = IrStruct(theoryPath.toString, storedExprDecls.map { d => llvmType(d.tp) })
+      val struct = IrStruct(theoryPath.toString, storedExprDecls.map { d => llvmType(d.tp)(gcI) })
       val size = IrVar(IrIntType.I64, fresh(s"${theoryPath.toString}_size"))
       ctx.emit(IrComputeSize(size, struct))
 
@@ -296,8 +300,8 @@ private class IRGenerator {
       concreteTheory.decls.foreach { case ExprDecl(name, _, _, Some(concreteExprDecl), _, _) =>
         storedExprDecls.zipWithIndex.find { case (d, _) => d.name == name } match {
           case Some((abstrExprDecl, fieldIndex)) =>
-            val concreteTp = TypeExpansion(gc.push(concreteTheory, Some(concreteExprDecl)), abstrExprDecl.tp)
-            val compiledExpr = compileExpression(concreteExprDecl)
+            val concreteTp = TypeExpansion(gcI.push(concreteTheory, Some(concreteExprDecl)), abstrExprDecl.tp)
+            val compiledExpr = compileExpression(concreteExprDecl)(gcI)
 
             if (concreteTp != abstrExprDecl.tp) {
               storeField(struct, structPtr, boxValue(compiledExpr, s"boxed_value_$name"), fieldIndex)
@@ -514,7 +518,9 @@ private class IRGenerator {
       inNewFunctionCtx {
         val result = compileExpression(expr.dfO.get)
         ctx.emit(IrReturn(result))
-        val fun = IrFun(s"${moduleName}_${expr.name}", IrFunType(result.tp, Nil), Nil, ctx.buildBlocks())
+        val params = if (module.closed) List(IrPtrType(struct)) else Nil
+        val args = if (module.closed) List(IrArgument(IrPtrType(struct), INSTANCE_ARGUMENT_NAME)) else Nil
+        val fun = IrFun(s"${moduleName}_${expr.name}", IrFunType(result.tp, params), args, ctx.buildBlocks())
         functions += fun
         IrFunctionRef(fun)
       }
@@ -526,7 +532,7 @@ private class IRGenerator {
     val module = gc.lookupGlobal(theoryPath).get.asInstanceOf[Module]
     val struct = IrStruct(theoryPath.toString, module.decls.collect(STORED_EXPRESSIONS).map(d => llvmType(d.tp)))
 
-    loadRef(module.decls, struct, IrArgument(IrPtrType(struct), "__instance"), r.name, gc => gc)
+    loadRef(module.decls, struct, IrArgument(IrPtrType(struct), INSTANCE_ARGUMENT_NAME), r.name, gc => gc)
   }
 
   private def loadOwnedExpr(o: OwnedExpr)(implicit gc: GlobalContext): IrValue = {
