@@ -505,6 +505,7 @@ case class TheoryValue(override val decls: List[Declaration]) extends Theory wit
   override def toString = {
     this match {
       case PhysicalTheory(p, ds) => p.toString + (if (ds.isEmpty) "" else ds.mkString("{", ", ", "}"))
+      case TheoryValue(ds) if ds.lengthCompare(2) > 0 => "{\n" + decls.mkString("\n").indent(2) + "}"
       case _ => decls.mkString("{", ", ", "}")
     }
   }
