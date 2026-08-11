@@ -113,7 +113,7 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
       if (eh.hasErrors) return le.checked
       val ip = new Interpreter(vocR)
       val leR = le.checked.decls.map(ip.interpretDeclaration)
-      le.result = TheoryValue(leR)
+      le.result = TheoryValue(leR).copyFrom(le.checked)
       le.result
     } else {
       le.checked

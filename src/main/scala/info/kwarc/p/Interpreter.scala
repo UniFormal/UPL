@@ -152,7 +152,7 @@ class Interpreter(vocInit: TheoryValue) {
   def interpretExpression(exp: Expression): Expression = {
     if (debug) println("interpreting: " + exp)
     implicit val cause = exp
-    exp match {
+    matchC (exp) {
       case _: BaseValue => exp
       case _: BaseOperator => exp
       case AppliedRef(r,_,_) => interpretExpression(r) // type arguments can be ignored; terms do not have term arguments
@@ -221,7 +221,7 @@ class Interpreter(vocInit: TheoryValue) {
                     sd.dfO.getOrElse(fail("no definiens"))
                   case Some(incl) =>
                     // execute inherited definition and then apply delegate
-                    OwnedExpr(incl.dfO.get, incl.dom, sd.toRef)
+                    OwnedExpr(incl.dfO.get, incl.dom, sd.toRef).copyFrom(sd)
                 }
                 val dfI = interpretExpression(df)
                 // we keep all fields that are local (i.e., a constructor argument),
@@ -232,12 +232,10 @@ class Interpreter(vocInit: TheoryValue) {
                 }
               case incl: Include =>
                 // execute inherited field initializers if necessary
-                val delegateO = incl.dfO match {
-                  case Some(df) =>
-                    // execute and remember delegate
-                    val dfI = interpretExpression(df)
-                    Some(incl.copy(dfO = Some(dfI)))
-                  case _ => None
+                val delegateO = incl.dfO map { df =>
+                  // execute and remember delegate
+                  val dfI = interpretExpression(df)
+                  incl.copy(dfO = Some(dfI))
                 }
                 // append at the end so that constructor fields are executed before inherited fields
                 // TODO: this does not find regional modules

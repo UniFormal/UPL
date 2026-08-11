@@ -153,5 +153,5 @@ case class Location(origin: SourceOrigin, from: Int, to: Int) {
 
 object Location {
   def single(o: SourceOrigin, p: Int) = Location(o,p,p+1)
-  def covering(sfs: List[SyntaxFragment]): Option[Location] = sfs.map(_.loc).reduceOption(_ union _)
+  def covering(sfs: List[SyntaxFragment]): Option[Location] = sfs.map(_.loc).filterNot(_ == null).reduceOption(_ union _)
 }
