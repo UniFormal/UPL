@@ -17,7 +17,7 @@ import js.JSConverters._
 object FrameIT_Backend {
   implicit val debug: Boolean = false
   implicit var proj: FrameITProject = FrameITProject("","")
-  implicit def gc: GlobalContext = proj.makeGlobalContext()
+  implicit def gc: GlobalContext = LoWo.gc
   def LoWo = proj.LoWo
   //def LoWo = proj.LoWo.asModule
 
@@ -64,7 +64,7 @@ object FrameIT_Backend {
       }
       .orUndefined
   }
-  //def lookup(name:String): js.UndefOr[js.Object] = LoWo.lookupExp(name).orUndefined
+  def lookup(name:String): js.UndefOr[js.Object] = LoWo.lookup(name).orUndefined
 
   def lookupNum(name:String): js.UndefOr[Double] = LoWo.lookupNum(name).orUndefined
   def evalNum(exprS: String): js.UndefOr[Double] = {
@@ -321,11 +321,9 @@ object AssertionFact {
   }
 
   /**  */
-  def unapply(expr: Expression)(implicit gc: GlobalContext): Option[Expression] = {
-    expr match {
+  val fromExpression: Expression => Option[Expression] = {
       case UndefinedValue(ProofType(formula)) => Option(formula)
       case EVarDecl(_, ProofType(formula), _, _, _) => Option(formula)
       case _ => None
-    }
   }
 }

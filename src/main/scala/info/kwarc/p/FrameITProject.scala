@@ -65,21 +65,16 @@ class FrameITProject private extends Project(Nil,None){
     def errors: ErrorCollector = if(isDirty) currentStage.errors else container.errors
 
     /** Lookup the definiens of a [[Declaration]] in the [[LoWo]] */
-    def lookupExp(name: String): Option[Expression] =
-      LoWo.lookupO(name).flatMap(_.dfO).collect{ case e:Expression => e }
+    def lookup[T<:Object,A](name: String,f: T => Option[A] = Option.apply _): Option[A] =
+      LoWo.lookupO(name).flatMap(_.dfO).collect{ case t:T => t }.flatMap(f)
+    def lookupWithPF[T<:Object,A](name: String, f: PartialFunction[T,A]): Option[A] =
+      lookup(name,f.lift)
 
     def lookupValueFact(name:String): Option[(Ref, List[Expression], Double)] =
-      lookupExp(name+"_P").flatMap(ValueFact.unapply)
+      lookup(name+"_P", ValueFact.unapply _)
 
     def lookupNum(name:String): Option[Double] =
-      lookupExp(name).collect{ case RealValue(re) => re.approx.value }
-
-    /** A curried helper.
-      * Scala's type inference is sadly not cooperative, and this doesn't eliminate any Boilerplate
-      */
-    @unused
-    def lookupAndApply[A](f: Object => Option[A]): String => Option[A] =
-      (lookupExp _).unlift.andThen(f)
+      lookup(name, RealValue.unapply).map(_.approx.value)
 
     def eval(input:String): Option[Expression] = evalTyped(input).map(_._1)
     def evalTyped(input: String): Option[(Expression, Type)] = {
