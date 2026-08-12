@@ -22,6 +22,13 @@ class ProjectEntry(val source: SourceOrigin) {
     checkedIsDirty = true
     parsed
   }
+  def clear(): Unit = {
+    parsed = Theory.empty
+    checked = Theory.empty
+    result = Theory.empty
+    errors.clear
+    depInter.clear()
+  }
 }
 object ProjectEntry{
   /** Create and initialize a ProjectEntry */
@@ -93,14 +100,18 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     le.parsed
   }
 
-  def updateAndCheck(so: SourceOrigin, src: String): TheoryValue = {
-    update(so, src)
-    check(so, false)
+  @inline
+  /** [[update]] and [[check]](don't run) in one swoop; Traverses [[entries]] only once */
+  def updateAndCheck(so: SourceOrigin, src: String): TheoryValue = updateAndCheck(get(so), src)
+  def updateAndCheck(le: ProjectEntry, src: String): TheoryValue = {
+    le.update(src)
+    check(le, false)
   }
 
-  def check(so: SourceOrigin, alsoRun: Boolean): TheoryValue = {
-    val le = get(so)
-    val (vocC,vocR) = makeGlobalContext(so)
+  @inline
+  def check(so: SourceOrigin, alsoRun: Boolean): TheoryValue = check(get(so), alsoRun)
+  def check(le: ProjectEntry, alsoRun: Boolean): TheoryValue = {
+    val (vocC,vocR) = makeGlobalContext(le.source)
     val eh = le.errors
     if (le.checkedIsDirty) {
       if (eh.hasErrors) return le.parsed
@@ -120,6 +131,12 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     }
   }
 
+  /** Check the whole project
+    * @note Doesn't check any individual [[ProjectEntry]]
+    *
+    * @param stopOnError
+    * @return
+    */
   def check(stopOnError: Boolean) = {
     val ds = entries.flatMap(_.parsed.decls)
     val voc = TheoryValue(ds)

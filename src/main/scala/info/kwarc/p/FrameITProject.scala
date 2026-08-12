@@ -2,110 +2,148 @@ package info.kwarc.p
 
 import info.kwarc.p.File.readAsSource
 
+import scala.annotation.unused
 import scala.collection.mutable
 import scala.util.Try
 
 /**
-  * A FrameIT SituationTheory (SiTh) is semantically a mutable UPL theory (i.e. a closed [[Module]]),
-  * used to store and deduce knowledge about the game-world. In practice, Modules are essentially an immutable
-  * `List[Declaration]`, so a [[SiTh_handler]] provides the necessary functionality to pretend access to a
-  * mutable [[Module]], while also ensuring nothing contradictory happens when mutating.
-  *
-  * This is more of an API specification, than an abstraction.
-  */
-//trait SiTh_handler {
-//  def getSiTh: Module
-//  def getSiThErrors: List[SError]
-//  def add(decls_String: String): Boolean
-//  def add(decls: List[Declaration]): Boolean = add(decls.mkString("\n"))
-//  def reset(): Unit
-//  def SiThDecls: List[Declaration]
-//  //def remove(fact_name: String): Either[List[SError], Module]
-//  //def eval: TheoryValue
-//}
-
-/**
-  * A FrameIT Project has a "SituationTheory" (SiTh), a UPL theory (i.e. a closed [[Module]]) which can grow over time.
-  * This is implemented via a special [[ProjectEntry]]
-  * Its current value is accessible as [[SiTh]], and new declarations can be added via [[Stage.add]]
+  * A FrameIT Project has a logical world [[LoWo(LoWo)]], which can grow over time.
+  * This is implemented via a series of theories, each including the previous one.
   */
 class FrameITProject private extends Project(Nil,None){
   final val debug: Boolean = false
+  private var _background: TheoryValue = Theory.empty
+  def bg: TheoryValue = _background
+
+  private var stageCounter = 0
+  private var currentStage: Stage = Stage(0)
+  private var previousStage: Stage = Stage(-1)
 
   /** The current logical world
     *
-    * This is essentially a constant handle for the latest [[Stage]], with interface sugar
-    */
-  object SiTh{
-    private val proj = FrameITProject.this
-
-    /** Set the [[SiTh]] to the combination of all [[Declaration Declarations]] of all [[Stage Stages]] */
-    //def update(): TheoryValue = update(s"theory SiTh{include ${Stage.current}}")
-
-    /** @throws NoSuchElementException if SiTh cannot be found or is not a theory.
-      *
-      * Which should not be possible
-      */
-    def get: Module = {
-      val voc = proj.check(Stage.Origin.current,false)
-      voc.lookup(Stage.name_curr) match {
-        case m:Module => m
-        case _ => throw new NoSuchElementException("SiTh is not a Theory")
-      }
-    }
-
-    def lookup(name:String): Declaration = {
-      get.lookup(name)
-    }
-
-    def decls: List[Declaration] = get.decls
-    override def toString: String =
-      s"{\n ${decls.mkString("\n").indent(1)} \n}"
-
-    def errors: ErrorCollector = Stage.current.errors
-  }
-
-  /** Intermediate Stages of the Situation
+    * This is essentially an interface for the latest Stage (the [[Module]] and the [[ProjectEntry]]),
+    * with a lot of additional sugar.
     *
-    * There might be a point in having the Stages encapsulated in their own "Project", the Frame
+    * Use the various [[lookupDecl lookup*(name)]] methods to lookup declarations, and [[add]] to add them.
+    * [[asModule]] produces the entire LoWo
     */
-  case class Stage(num: Int = Stage.counter) extends ProjectEntry(Stage.Origin(num))
-  object Stage {
-    var counter = 0
-    def current: Stage = get(Origin(counter)).asInstanceOf[Stage]
-    def name_curr: String = makeName(counter)
-    def name_prev: String = makeName(counter - 1)
-    private def makeName(num: Int) = s"Stage$num"
-    /** Extractor, because [[SourceOrigin]] is a case class and cannot be extended */
-    object Origin {
-      def current: SourceOrigin = apply(counter)
-      def apply(num: Int): SourceOrigin = SourceOrigin(makeName(num))
+  object LoWo {
+    implicit def gc: GlobalContext = GlobalContext(voc)
+    def voc: TheoryValue = LoWo.add(bg.decls) // TheoryValue.add prepends
+    var isDirty: Boolean = true
+    /** The [[ProjectEntry]] holding the LoWo
+      *
+      * @note It is *not* in [[entries]], because its contents are not supposed to be in context
+      *       for any of the other entries.
+      */
+    val container =  new ProjectEntry(SourceOrigin("LoWo"))
 
-      def unapply(so: SourceOrigin): Option[Int] = so match {
-        case SourceOrigin(s"Stage$num", null) => num.toIntOption
-        case _ => None
+    private def LoWo: TheoryValue = {
+      if (isDirty){
+        val newDecls = currentStage.getVocabulary.decls.collectFirst {
+          case Module(_,_,TheoryValue(ds)) => ds.mkString("\n")
+          //case m:Module => m.copy(name= label,closed = false).toString
+        }.getOrElse("")
+        val checked = updateAndCheck(container,newDecls)
+        //if (errors.hasErrors) return checked
+        val ip = new Interpreter(bg)
+        val resDecls = for { decl <- checked.decls }
+          yield Try(ip.interpretDeclaration(decl)).getOrElse(decl)
+        container.result = TheoryValue(resDecls).copyFrom(checked)
+        isDirty = false
       }
+      container.result
     }
 
-    def add(decls_String: String): Boolean = {
-      counter += 1
-      val stageString = s"theory $name_curr{\ninclude $name_prev\n$decls_String\n}"
-      val checked = updateAndCheck(Origin(counter), stageString)
-      // Remove the 'Include's
+    def asModule: Module = {
+      Module("LoWo",closed=false,LoWo)
+    }
+
+    def decls: List[Declaration] = LoWo.decls
+    override def toString: String = asModule.toString
+
+    def errors: ErrorCollector = if(isDirty) currentStage.errors else container.errors
+
+    /** Lookup the definiens of a [[Declaration]] in the [[LoWo]] */
+    def lookupExp(name: String): Option[Expression] =
+      LoWo.lookupO(name).flatMap(_.dfO).collect{ case e:Expression => e }
+
+    def lookupValueFact(name:String): Option[(Ref, List[Expression], Double)] =
+      lookupExp(name+"_P").flatMap(ValueFact.unapply)
+
+    def lookupNum(name:String): Option[Double] =
+      lookupExp(name).collect{ case RealValue(re) => re.approx.value }
+
+    /** A curried helper.
+      * Scala's type inference is sadly not cooperative, and this doesn't eliminate any Boilerplate
+      */
+    @unused
+    def lookupAndApply[A](f: Object => Option[A]): String => Option[A] =
+      (lookupExp _).unlift.andThen(f)
+
+    def eval(input:String): Option[Expression] = evalTyped(input).map(_._1)
+    def evalTyped(input: String): Option[(Expression, Type)] = {
+      Try{
+        val parsed = Parser.expression(SourceOrigin.anonymous, input, ErrorThrower)
+        val (checked, tp) = ThrowingChecker.checkAndInferExpression(gc, parsed)
+        val (_, r) = Interpreter.run(Program(voc, checked))
+        (r,tp)
+      }.toOption
+    }
+
+    @inline
+    def add(decls_String: String): Boolean = add(Seq(decls_String))
+    def add(decls_String: Seq[String]): Boolean = {
+      step()
+      val stageString = s"theory ${currentStage.label}{\ninclude ${previousStage.label}\n${decls_String.mkString("\n")}\n}"
+      val checked = updateAndCheck(currentStage, stageString)
+      // Remove the Includes
       val filtered = checked.decls.collect{
         case m:Module => m.copyBody(_.filterNot(_.isInstanceOf[Include]))
       }
-      get(Origin(counter)).checked = checked.copy(filtered)
-      val err = hasErrors
-      if (err) undo()
+      currentStage.checked = checked.copy(decls = filtered)
+      val err = currentStage.errors.hasErrors
+      if (err) unstep()
       !err
     }
 
-    def add(decls: Iterable[Declaration]): Boolean = add(decls.mkString("\n"))
+    private def step(): Unit ={
+      stageCounter += 1
+      previousStage = currentStage
+      currentStage = get(Stage.origin()).asInstanceOf[Stage]
+      isDirty = true
+    }
+    def unstep(): Unit ={
+      stageCounter -= 1
+      currentStage.clear()
+      currentStage = previousStage
+      previousStage = get(Stage.origin(stageCounter-1)).asInstanceOf[Stage]
+      isDirty = true
+    }
 
-    def undo(): Unit = {
-      entries = entries.init
-      counter -= 1
+    def reset(): Unit = {
+      stageCounter = 0
+      currentStage = Stage(0)
+      previousStage = Stage(-1)
+      entries = entries.filterNot(_.isInstanceOf[Stage])
+    }
+  }
+
+  /** Intermediate Stages of the Situation
+    * For convenience, Stage0 is not in
+    */
+  case class Stage(num: Int) extends ProjectEntry(SourceOrigin("Stage", num.toString)) {
+    val label: String = source.container ++ source.fragment
+    def df: TheoryValue = checked.decls.collectFirst{case Module(name,_,df) => df}.get
+  }
+  object Stage {
+    def origin(num: Int=stageCounter): SourceOrigin = SourceOrigin("Stage", num.toString)
+
+    /** Extractor for the [[SourceOrigin]] of a [[Stage]],
+      * because [[SourceOrigin]] is a case class and cannot be extended */
+    def unapply(so: SourceOrigin): Option[Int] = so match {
+      case SourceOrigin("Stage", num) => num.toIntOption
+      case _ => None
     }
   }
 
@@ -117,6 +155,11 @@ class FrameITProject private extends Project(Nil,None){
     */
   case class Schema(name: String, dataNeededToGenerateSchemaApplication: Nothing) extends ProjectEntry(SourceOrigin(name)) {
     //def apply(stage: Stage, data: Nothing): Stage = ???
+    def df: Module = checked.decls.collectFirst{case Module(`name`,_,_) => df}.get
+  }
+  object Schema {
+    /** constant entry for applications */
+    val appEntry: ProjectEntry = get(SourceOrigin("Stage","SchemaApplication"))
   }
 
   /** Apply [[Schema]] to deduce the resulting Facts from the required ones.
@@ -134,10 +177,14 @@ class FrameITProject private extends Project(Nil,None){
                   requiredFactsAssignment: collection.Map[String, String],
                   resultingFactsAssignment: collection.Map[String, String])
   : Boolean = {
-    val (apOrigin,apName) = (SourceOrigin.anonymous,"Application")
-    val reqDecls = requiredFactsAssignment map {case (n, d) => s"$n = $d"} mkString "\n"
-    val apCode = s"theory $apName{\ninclude ${Stage.name_curr}\n$reqDecls\nrealize $schema}"
-    val apRaw = updateAndCheck(apOrigin, apCode).lookup(apName).asInstanceOf[Module]
+    val appLabel = "Application"
+    var reqDecls = requiredFactsAssignment map {case (n, d) => s"$n = $d"} mkString "\n"
+    reqDecls += requiredFactsAssignment collect {case (n, d) if currentStage.df.declares(s"${n}_P") => s"${n}_P = ${d}_P"} mkString "\n"
+    val apCode = s"theory $appLabel{\ninclude ${currentStage.label}\n$reqDecls\nrealize $schema}"
+    val apRaw = updateAndCheck(Schema.appEntry, apCode).lookup(appLabel).asInstanceOf[Module]
+    if (Schema.appEntry.errors.hasErrors) {
+      return false
+    }
     //val apRaw = Solver.solve(makeGlobalContext(),OpenRef(Path(s"$apName")))
     val gc = GlobalContext(apRaw)
     val sub: Substitution = Substitution(
@@ -156,17 +203,12 @@ class FrameITProject private extends Project(Nil,None){
       _.filterNot(d => d.nameO.exists(assignedNames.contains) || d.isInstanceOf[Include])
       ++: resDecls
     )
-    Stage.add(resDecls)
+    LoWo.add(resDecls.map(_.toString))
   }
 
   @inline
   private def findSchema(name: String): Option[Module] = {
     entries.collectFirst({e:ProjectEntry => e.checked.lookupO(name).asInstanceOf[Module]})
-  }
-
-  def reset(): Unit = {
-    Stage.counter = 0
-    entries = entries.filterNot(e => e.isInstanceOf[Stage])
   }
 
   /** Find the corresponding [[ProjectEntry]] in [[entries]].
@@ -175,7 +217,7 @@ class FrameITProject private extends Project(Nil,None){
     */
   override def get(so: SourceOrigin): ProjectEntry = entries.find(_.source == so).getOrElse {
     val e = so match {
-      case Stage.Origin(n) => Stage(n)
+      case Stage(n) => Stage(n)
       case _ => new ProjectEntry(so)
     }
     entries = entries :+ e
@@ -185,8 +227,8 @@ class FrameITProject private extends Project(Nil,None){
 //    }
     e
   }
-  def tryEval(input:String) = tryEvalTyped(input).map(_._1)
-  def tryEvalTyped(input: String) = {
+  def tryEval(input:String): Try[Expression] = tryEvalTyped(input).map(_._1)
+  def tryEvalTyped(input: String): Try[(Expression, Type)] = {
     Try{
       val parsed = Parser.expression(SourceOrigin.anonymous, input, ErrorThrower)
       val gc = makeGlobalContext()
@@ -196,10 +238,19 @@ class FrameITProject private extends Project(Nil,None){
     }
   }
 
-  def checkAll()= {
-    val (dirty,checked) = entries.view.filter(_.global).partition(_.checkedIsDirty)
+  /** Check all unchecked entries
+    *
+    * Has the same side effects as `entries.foreach(check(_,false))`, but is significantly more efficient.
+    * @return The entire Project as one [[TheoryValue]]. Similar to [[check check(stopOnError)]],
+    *         but the entry-order is more resistant to accidental forward-declarations, and
+    *         only global entries are included
+    */
+  def checkAll(): TheoryValue = {
+    val (d,c) = entries.view.partition(_.checkedIsDirty)
+    val checked = c.filter(_.global)
+    val (dirtyG,dirtyL) = d.partition(_.global)
     val voc: mutable.Queue[Declaration] = mutable.Queue.from(checked.flatMap(_.checked.decls))
-    dirty.foreach{ le =>
+    dirtyG.foreach{ le =>
       if(!le.errors.hasErrors) {
         val ch = new Checker(le.errors)
         le.checked = ch.checkVocabulary(GlobalContext(TheoryValue(voc.toList)), le.parsed, true)(le.parsed)
@@ -207,6 +258,7 @@ class FrameITProject private extends Project(Nil,None){
       }
       voc ++= le.getVocabulary.decls
     }
+    dirtyL.foreach(le => check(le,false))
     TheoryValue(voc.toList)
   }
 
@@ -216,7 +268,6 @@ class FrameITProject private extends Project(Nil,None){
 object FrameITProject {
   /**
     * Create a FrameIT project from an unfolded UPL project-file
-    * Using LazyLists means we don't need to keep all file contents in Memory.
     *
     * This implementation avoids using files explicitly, so it can be exported via scala.js
     *
@@ -227,31 +278,38 @@ object FrameITProject {
     *   - "stageInit" the first listed file is used as content for [[FrameITProject.Stage]]0. All others are ignored
     * @return A fully set up FrameIt project
     */
-  def apply(fileContents: Map[String, LazyList[(SourceOrigin, String)]]): FrameITProject = {
-    val saveFileContents =  fileContents.withDefaultValue(LazyList.empty)
-    val sourceKinds = List("background", "source", "schemata").view // List because we need the order for `entries`
-    val entries = for {
+  def apply(fileContents: Map[String, Seq[(SourceOrigin, String)]]): FrameITProject = {
+    val saveFileContents =  fileContents.withDefaultValue(Seq.empty)
+    // Seq because we need the order for `entries`, View because we want the entries only on demand
+    val sourceKinds = Seq("background", "source", "schemata").view
+    val bgEntries = for {
       k <- sourceKinds
       (source, content) <- saveFileContents(k)
     } yield ProjectEntry(source, content)
     val project = new FrameITProject()
-    project.entries = entries ++: project.entries // prepend the background, SiTh remains last element
-    val siO = for {
+    val emptyStage = ProjectEntry(SourceOrigin("Stage","Origin"),s"theory ${project.currentStage.label}{}")
+    project.entries = bgEntries ++: emptyStage +: project.entries
+    project.checkAll() // check all background entries in one go
+    saveFileContents("background").foreach{ case (source,_) =>
+      project._background = project._background.add(
+        project.get(source).checked.decls
+      )
+    }
+    // Add the initial stage (if it exists)
+    for {
       l <- fileContents get "stageInit"
-      (_ , c) <- l.headOption
-    } yield c
-    val stageInitCode = s"theory ${project.Stage.name_curr}{${siO.getOrElse("")}}"
-    project.update(SourceOrigin("InitialStage"), stageInitCode)
-    project.checkAll()
+      (_ , init) <- l.headOption
+      _ <- init.headOption // tests if `init` is empty
+    } project.LoWo.add(init)
     project
   }
 
   /** Convenience method for providing a single background, ect. in code  */
   def apply(backgroundContent: String, schemataContent:String, initialStageContent:String=""): FrameITProject = {
-    val contents: Map[String, LazyList[(SourceOrigin, String)]] = Map(
-      ("background", LazyList((SourceOrigin("Background"), backgroundContent))),
-      ("schemata",   LazyList((SourceOrigin("Background"), schemataContent))),
-      ("stageInit",  LazyList((SourceOrigin("InitialStage"), initialStageContent)))
+    val contents: Map[String, Seq[(SourceOrigin, String)]] = Map(
+      ("background", Seq((SourceOrigin("Background"), backgroundContent))),
+      ("schemata",   Seq((SourceOrigin("Schemata"), schemataContent))),
+      ("stageInit",  Seq((SourceOrigin("InitialStage"), initialStageContent)))
     )
     FrameITProject(contents)
   }
@@ -272,30 +330,25 @@ object FrameITProject {
 
   /** Kinda chimera of [[File.readPropertiesFromString]] and [[Project.fromFile]],
     * because both aren't quite flexible enough to be used here.  */
-  private def unfoldProjectFile(projFile: File): Map[String, LazyList[(SourceOrigin, String)]] = {
-    if (!(projFile.getExtension contains "pp")) {
-      return Map(("background", LazyList.from(Project.pFiles(projFile).map(readAsSource))))
+  private def unfoldProjectFile(projFile: File): Map[String, Seq[(SourceOrigin, String)]] = {
+    if (!(projFile.getExtension contains "pp")) { // code file => interpret as background
+      return Map(("background", Project.pFiles(projFile).map(readAsSource)))
     }
     val r = scala.io.Source.fromFile(projFile.toJava)
-    val props = new mutable.HashMap[String, LazyList[(SourceOrigin, String)]].withDefaultValue(LazyList.empty)
-    r.getLines()
-      .map(_.strip())
-      .filter(!_.startsWith("//"))
-      .foreach { line =>
-        val p +: v = LazyList from line.split(":", 2)
-        if (p.nonEmpty && v.nonEmpty) { // make sure line contains colon and the key is non-empty
-          val key = p.strip()
-          val value = v
-            .flatMap(_.split("\\s"))
-            .filter(_.nonEmpty)
-            .flatMap(s => Project.pFiles(projFile.up.resolve(s)))
-            .map{f => readAsSource(f)}
-          props.updateWith(key) {
-            case None => Option(value)
-            case Some(old) => Option(old #::: value)
-          }
-        }
-      }
-    props.map{ case (k, v) => (k,v) }.toMap
+    val props = new mutable.HashMap[String, Seq[(SourceOrigin, String)]].withDefaultValue(Seq.empty)
+    for {
+      lineRaw <- r.getLines()
+      line = lineRaw.strip()
+      if !line.startsWith("//")
+      splitIndex = line.indexOf(":")
+      if splitIndex > 0
+      (key, vals) = ((line take splitIndex).strip(), (line drop (splitIndex+1)).strip())
+      if key.nonEmpty && vals.nonEmpty
+      v <- vals.split("\\s").reverseIterator
+      if v.nonEmpty
+      f <- Project.pFiles(projFile.up.resolve(v))
+      value = readAsSource(f)
+    } props(key) +:= value
+    props.toMap // make props immutable
   }
 }
