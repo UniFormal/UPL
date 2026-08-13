@@ -613,6 +613,15 @@ class Interpreter(vocInit: TheoryValue) {
         } else {
           (e.elems zip vA.elems).forall {case (e,v) => assign(e,v)}
         }
+      case (OwnedExpr(own, _, e), _) =>
+        interpretExpression(own) match {
+          case inst: Instance if inst.isRuntime =>
+            val fr = RegionalEnvironment(own.toString,Some(inst), parent = None)
+            env.inFrame(fr) {
+              assign(e, value)
+            }
+          case _ => assignFail("owner not a runtime instance")
+        }
       case (Application(r: Ref, es), Application(s: Ref, vs)) if r == s =>
         (es zip vs) forall {case (e,v) => assign(e,v)}
       case (Application(BaseOperator(op,_),args), r) =>

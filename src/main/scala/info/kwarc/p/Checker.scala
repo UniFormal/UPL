@@ -1991,7 +1991,7 @@ class Checker(errorHandler: ErrorHandler) {
         es flatMap check
       case OwnedExpr(o,d,e) =>
         o match {
-          case _: Ref | _: VarRef =>
+          case _: Ref =>
             checkAssignable(gc.push(d,Some(o)),e).map(OwnedExpr(o,d,_))
           case _ => fail("owner in pattern must be atomic")
         }
