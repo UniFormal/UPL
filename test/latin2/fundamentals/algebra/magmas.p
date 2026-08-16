@@ -1,44 +1,37 @@
-module meta_magmas {
-    include .sfol.SFOLEQND
-    
+module meta_magmas {    
     theory Magma {
-        include .sets.Set
-        op: (U, U) -> U # infix ∘
-
-        // divisibility: .relations.Relation {
-        //     type carrier = U
-        //     // rel = (x, z) -> texist universe (y -> tequal(universe, x∘y, z))
-        // }
+        include .relations.EqualityType
+        op: (carrier, carrier) -> carrier # infix ∘
     }
 
-    theory MagmaHom {
-        include .sets.SetHom
-        domain : Magma
-        codomain : Magma
+    // theory MagmaHom {
+    //     include .sets.SetHom
+    //     domain : Magma
+    //     codomain : Magma
 
-        op: ??? // (x) -> tequal(codomain.U, U domain.op(x, y), codomain.op(U x, U y))
-    }
+    //     op: ??? // (x) -> tequal(codomain.U, U domain.op(x, y), codomain.op(U x, U y))
+    // }
 
-    theory SubMagma {
-        include .sets.SubSet
-        parent: Magma
-        op: ???
-    }
+    // theory SubMagma {
+    //     include .sets.SubSet
+    //     parent: Magma
+    //     op: ???
+    // }
 
     theory Commutative {
         include Magma
         comm: ??? // (x) -> x∘y == y∘x
     }
 
-    OppositeMagma: Magma -> Magma = m -> Magma {
-        universe = m.universe
-        // type U = m.U
-        op = (x, y) -> m.op(y,x)
-    }
+    // OppositeMagma: Magma -> Magma = m -> Magma {
+    //     universe = m.universe
+    //     // type U = m.U
+    //     op = (x, y) -> m.op(y,x)
+    // }
 
     theory Idempotent {
         include Magma
-        idem: ??? // (x) -> x∘x == x
+        idem:--- (x∘x) == x
     }
 
     theory PowerAssociative {

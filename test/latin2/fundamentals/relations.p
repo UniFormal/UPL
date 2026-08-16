@@ -58,8 +58,8 @@ module relations {
         // cong: (x, y) -> rel(x, y) -> (A: carrier -> bool) -> |- A x -> |- A y
         cong: (x, y) -> rel(x, y) -> (A: carrier -> bool) -> |- A x -> |- A y
 
-        realize Congruence
-        congT = (x, y) -> p -> T -> cong(x,y) p (u -> inhabited@(rel(T x, T u))) refl
+        // realize Congruence
+        // congT = (x, y) -> p -> T -> cong(x,y) p (u -> inhabited@(rel(T x, T u))) refl
     }
 
     theory EqualityType {
