@@ -152,7 +152,7 @@ class Interpreter(vocInit: TheoryValue) {
   def interpretExpression(exp: Expression): Expression = {
     if (debug) println("interpreting: " + exp)
     implicit val cause = exp
-    matchC (exp) {
+    (exp match {
       case _: BaseValue => exp
       case _: BaseOperator => exp
       case AppliedRef(r,_,_) => interpretExpression(r) // type arguments can be ignored; terms do not have term arguments
@@ -458,7 +458,7 @@ class Interpreter(vocInit: TheoryValue) {
         }
       case u: UndefinedValue => u
       case u: UnknownExpr => abort("unsolved unknown")
-    } // end match
+    }).withLocation(exp.loc) // end match
   }
 
   /** expressions that are fully evaluated; they evaluate to themselves and are equal iff identical */
