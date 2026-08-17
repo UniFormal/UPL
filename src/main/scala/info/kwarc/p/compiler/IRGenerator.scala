@@ -1,9 +1,9 @@
 package info.kwarc.p.compiler
 
 import info.kwarc.p._
-import info.kwarc.p.compiler.Condition.{EQUAL, NOT_EQUAL, SIGNED_GREATER_EQUAL, SIGNED_GREATER_THAN, SIGNED_LESS_EQUAL, SIGNED_LESS_THAN}
+import info.kwarc.p.compiler.Condition._
 import info.kwarc.p.compiler.IRGenerator.{INLINED_EXPRESSIONS, INSTANCE_ARGUMENT_NAME, STORED_EXPRESSIONS, TOP_LEVEL_STRUCT_NAME}
-import info.kwarc.p.compiler.Operation.{IADD, IAND, IDIV, IMUL, ISUB}
+import info.kwarc.p.compiler.Operation._
 
 import scala.collection.mutable
 
@@ -26,8 +26,9 @@ object IRGenerator {
 }
 
 case class Variable(name: String, irValue: IrVar)
-case class TypeVariable(name: String, irValue: IrType)
-case class VariableScope(var variables: List[Variable] = Nil, var typeVariable: List[TypeVariable] = Nil)
+case class VariableScope(var variables: List[Variable] = Nil)
+
+case class RegionalEnvironment(name: String, region: Option[IrVar] = None)
 
 object SpecialFunctions {
   val mallocFun = IrDeclFun("malloc", IrFunType(IrPtrType(IrIntType.I64), List(IrIntType.I64)))
@@ -69,30 +70,19 @@ private class IRGenerator {
   private val nameCount: mutable.Map[String, Int] = mutable.Map().withDefaultValue(0)
   private val prodStructName: mutable.Map[List[IrType], String] = mutable.Map()
   private var scopes: List[VariableScope] = List(VariableScope(List()))
+  private var regions = List(RegionalEnvironment("toplevel"))
+  private def frame = regions.head
 
   private var ctx: FunctionContext = _
 
   private def getAllocatedVariable(n: String): IrVar = scopes.find(_.variables.exists(_.name == n)).map(_.variables.find(_.name == n).get).getOrElse(throw new RuntimeException(s"Variable $n not found")).irValue
-  private def getAllocatedTypeVariableO(n: String): Option[IrType] = scopes.find(_.typeVariable.exists(_.name == n)).map(_.typeVariable.find(_.name == n).get).map(_.irValue)
 
   def compileMain(exp: Expression)(implicit gc: GlobalContext): Unit = {
     inNewFunctionCtx {
-      var value = compileExpression(exp)(gc)
-      value = value match {
-        // Boxed values need to be unboxed before returning.
-        // We currently assume that the main expression always evaluates to a 64-bit integer.
-        case v@IrVar(IrPtrType(IrUnknownType), _) => loadFromPointer(v.copy(tp = IrPtrType(IrIntType.I64)), fresh("result"))
-        case _ => value
-      }
+      val value = compileExpression(exp)(gc)
+      ctx.emit(IrReturn(value))
 
-      val ret = value.tp match {
-        //not every code statement returns a value => behave like C; default to 0
-        case IrVoidType => IrReturn(IrConst(IrIntType.I64, 0))
-        case _ => IrReturn(value)
-      }
-      ctx.emit(ret)
-
-      // We currently assume that the main expression evaluates to a 64-bit integer.
+      // We require that the main expression evaluates to a 64-bit integer.
       val mainFun = IrFun("main", IrFunType(IrIntType.I64, Nil), Nil, ctx.buildBlocks())
       functions += mainFun
     }
@@ -233,16 +223,21 @@ private class IRGenerator {
             op_result
           }
       }
-      case r => applyField(compileExpression(r), args)
+      case r => applyField(compileExpression(r), args.map(compileExpression))
     }
     case o: OpenRef => loadOpenRef(o)
     case r: ClosedRef => loadClosedRef(r)
-    case o: OwnedExpr => loadOwnedExpr(o)
+    case OwnedExpr(own, dom, e) =>
+      val instPtr = compileExpression(own)
+      val re = RegionalEnvironment(own.toString, Some(instPtr.asInstanceOf[IrVar]))
+      inFrame(re) {
+        compileExpression(e)(gc.push(dom, Some(own)))
+      }
     case o: VarRef => loadVarRef(o)
     case Lambda(ins, body, _) =>
       inNewFunctionCtx {
         val params = ins.variables.reverse
-        val arguments = params.map(v => IrArgument(llvmType(v.tp), v.name))
+        val arguments = params.map(v => IrVar(llvmType(v.tp), v.name))
 
         scopes ::= VariableScope()
         arguments.foreach { a =>
@@ -287,9 +282,11 @@ private class IRGenerator {
     case Instance(concreteTheory) =>
       val gcI = gc.enter(concreteTheory)
       val theoryPath = mainTheoryPath(concreteTheory)
-      val theory = TypeExpansion(GlobalContext(gcI.voc), gcI.lookupGlobal(theoryPath).get).asInstanceOf[Module]
+      // We want to expand all types that are already declared in the theory
+      val theory = TypeExpansion(GlobalContext(gc.voc), gc.lookupGlobal(theoryPath).get).asInstanceOf[Module]
       val storedExprDecls = theory.decls.collect(STORED_EXPRESSIONS)
-      val struct = IrStruct(theoryPath.toString, storedExprDecls.map { d => llvmType(d.tp)(gcI) })
+
+      val struct = IrStruct(theoryPath.toString, storedExprDecls.map { d => llvmType(d.tp) })
       val size = IrVar(IrIntType.I64, fresh(s"${theoryPath.toString}_size"))
       ctx.emit(IrComputeSize(size, struct))
 
@@ -297,21 +294,22 @@ private class IRGenerator {
       ctx.emit(IrCall(Some(structPtr), IrFunctionRef(SpecialFunctions.mallocFun), List(size)))
 
       // Initializes the expression declared by this instance
-      concreteTheory.decls.foreach { case ExprDecl(name, _, _, Some(concreteExprDecl), _, _) =>
-        storedExprDecls.zipWithIndex.find { case (d, _) => d.name == name } match {
-          case Some((abstrExprDecl, fieldIndex)) =>
-            val concreteTp = TypeExpansion(gcI.push(concreteTheory, Some(concreteExprDecl)), abstrExprDecl.tp)
-            val compiledExpr = compileExpression(concreteExprDecl)(gcI)
+      val re = RegionalEnvironment("new instance", Some(structPtr))
+      inFrame(re) {
+        concreteTheory.decls.foreach { case ExprDecl(name, _, _, Some(concreteExprDecl), _, _) =>
+          storedExprDecls.zipWithIndex.find { case (d, _) => d.name == name } match {
+            case Some((abstrExprDecl, fieldIndex)) =>
+              val compiledExpr = compileExpression(concreteExprDecl)(gcI)
 
-            if (concreteTp != abstrExprDecl.tp) {
-              storeField(struct, structPtr, boxValue(compiledExpr, s"boxed_value_$name"), fieldIndex)
-            } else {
-              storeField(struct, structPtr, compiledExpr, fieldIndex)
-            }
-          case None =>
+              abstrExprDecl.tp match {
+                case _: Ref => storeField(struct, structPtr, boxValue(compiledExpr, s"boxed_value_$name"), fieldIndex)
+                case _ => storeField(struct, structPtr, compiledExpr, fieldIndex)
+              }
+            case None =>
             // the expression was already declared in a parent theory
-        }
+          }
         case _ =>
+        }
       }
 
       structPtr
@@ -437,7 +435,7 @@ private class IRGenerator {
     case _ => ???
   }
 
-  private def applyField(fieldVar: IrValue, args: List[Expression])(implicit gc: GlobalContext): IrVar = {
+  private def applyField(fieldVar: IrValue, args: List[IrValue])(implicit gc: GlobalContext): IrVar = {
     val result = IrVar(fieldVar.tp.asInstanceOf[IrFunType].ret, fresh("result"))
 
     val option = result.tp match {
@@ -445,16 +443,15 @@ private class IRGenerator {
       case _ => Some(result)
     }
 
-    ctx.emit(IrCall(option, fieldVar, args.map(a => compileExpression(a))))
+    ctx.emit(IrCall(option, fieldVar, args))
     result
   }
 
   private def compileDeclaration(d: Declaration)(implicit gc: GlobalContext): Unit = {
     d match {
-      case TypeDecl(name, _, _, Some(tp), _) =>
-        scopes.head.typeVariable ::= TypeVariable(name, llvmType(tp))
       case _: TypeDecl =>
-      case m: Module => compileModule(m)(gc.enter(m))
+      case m: Module =>
+        compileModule(m)(gc.enter(m))
     }
   }
 
@@ -499,15 +496,14 @@ private class IRGenerator {
   }
 
   private def compileModule(module: Module)(implicit gc: GlobalContext): Unit = {
-    val moduleName = if (gc.currentTheory.isRoot) TOP_LEVEL_STRUCT_NAME else gc.currentTheory.toString
+    val theory = mainTheoryPath(gc.theory)
+    val moduleName = if (theory.isRoot) TOP_LEVEL_STRUCT_NAME else theory.toString
     // Recursively traverse other declarations
     // We need to do this before traversing all expression declarations in the current module to prevent inner
     // modules from messing with the function context
     module.df.decls.foreach { case _: ExprDecl =>
     case _: Include =>
-    case TypeDecl(name, _, _, Some(tp), _) =>
-      scopes.head.typeVariable ::= TypeVariable(name, llvmType(tp))
-    case d => compileDeclaration(d)(gc)
+    case d => compileDeclaration(d)
     }
 
     val storedExprDecls = module.df.decls.collect(STORED_EXPRESSIONS)
@@ -515,34 +511,55 @@ private class IRGenerator {
     structs += struct
 
     module.df.decls.collect(INLINED_EXPRESSIONS).foreach { expr =>
-      inNewFunctionCtx {
-        val result = compileExpression(expr.dfO.get)
-        ctx.emit(IrReturn(result))
-        val params = if (module.closed) List(IrPtrType(struct)) else Nil
-        val args = if (module.closed) List(IrArgument(IrPtrType(struct), INSTANCE_ARGUMENT_NAME)) else Nil
-        val fun = IrFun(s"${moduleName}_${expr.name}", IrFunType(result.tp, params), args, ctx.buildBlocks())
-        functions += fun
-        IrFunctionRef(fun)
+      val region = if (module.closed) Some(IrVar(IrPtrType(struct), fresh(INSTANCE_ARGUMENT_NAME))) else None
+      val re = RegionalEnvironment(module.toString, region)
+      inFrame(re) {
+        inNewFunctionCtx {
+          val result = compileExpression(expr.dfO.get)
+          ctx.emit(IrReturn(result))
+          val (params, args) = frame.region match {
+            case Some(value) => (List(IrPtrType(struct)), List(value))
+            case None => (Nil, Nil)
+          }
+          val fun = IrFun(s"${moduleName}_${expr.name}", IrFunType(result.tp, params), args, ctx.buildBlocks())
+          functions += fun
+          IrFunctionRef(fun)
+        }
       }
     }
   }
 
   private def loadClosedRef(r: ClosedRef)(implicit gc: GlobalContext): IrValue = {
-    val theoryPath = gc.currentTheory
-    val module = gc.lookupGlobal(theoryPath).get.asInstanceOf[Module]
-    val struct = IrStruct(theoryPath.toString, module.decls.collect(STORED_EXPRESSIONS).map(d => llvmType(d.tp)))
+    val theoryPath = mainTheoryPath(gc.theory)
+    // We want to expand all types that are already declared in the theory
+    val theory = TypeExpansion(GlobalContext(gc.voc), gc.lookupGlobal(theoryPath).get).asInstanceOf[Module]
+    val storedExprDecls = theory.decls.collect(STORED_EXPRESSIONS)
+    val struct = IrStruct(theoryPath.toString, storedExprDecls.map(d => llvmType(d.tp)))
 
-    loadRef(module.decls, struct, IrArgument(IrPtrType(struct), INSTANCE_ARGUMENT_NAME), r.name, gc => gc)
-  }
+    frame.region match {
+      case Some(structPtr) =>
+        val fieldIndex = storedExprDecls.indexWhere(_.name == r.name)
+        if (fieldIndex == -1) {
+          // the field is not stored in the struct and needs to be inlined
+          val exprDecl = theory.decls.collect(INLINED_EXPRESSIONS).find(_.name == r.name).get
+          return applyField(IrFunctionRef(IrDeclFun(s"${struct.name}_${r.name}", IrFunType(llvmType(exprDecl.tp), List(structPtr.tp)))), List(structPtr))
+        }
+        val exprDeclTp = storedExprDecls(fieldIndex).tp
+        val fieldPtr = getFieldPointer(struct, structPtr, fieldIndex)
 
-  private def loadOwnedExpr(o: OwnedExpr)(implicit gc: GlobalContext): IrValue = {
-    o match {
-      case OwnedExpr(owner, ownerDom, ClosedRef(name)) =>
-        val theoryPath = mainTheoryPath(ownerDom)
-        val theory = TypeExpansion(GlobalContext(gc.voc), gc.lookupGlobal(theoryPath).get).asInstanceOf[Module]
-        val struct = IrStruct(theoryPath.toString, theory.decls.collect(STORED_EXPRESSIONS).map(d => llvmType(d.tp)))
+        val exprPtr = exprDeclTp match {
+          case _: Ref =>
+            // The type of the theory was not concrete. The actual type of the instance is different.
+            // We stored the value as a pointer in the struct. This means we now have to dereference it.
+            val deReferenced = loadFromPointer(fieldPtr, fresh(s"${struct.name}_${r.name}_dereference"))
+            deReferenced
+          case _ => fieldPtr
+        }
+        // Now that we know the type of the expression, we can set the type of the pointer to the concrete type
+        val concreteTp = TypeExpansion(gc, exprDeclTp)
+        loadFromPointer(exprPtr.copy(tp = IrPtrType(llvmType(concreteTp))), fresh(s"${struct.name}_$r.name"))
 
-        loadRef(theory.decls, struct, compileExpression(owner), name, gc => gc.push(ownerDom, Some(owner)))
+      case None => throw new IllegalArgumentException("ClosedRef must be in a region")
     }
   }
 
@@ -561,32 +578,6 @@ private class IRGenerator {
     val exprDecl = module.decls.collect(INLINED_EXPRESSIONS).find(_.name == path.name).get
     val moduleName = if (modulePath.isRoot) TOP_LEVEL_STRUCT_NAME else modulePath.toString
     applyField(IrFunctionRef(IrDeclFun(s"${moduleName}_${path.name}", IrFunType(llvmType(exprDecl.tp), Nil))), Nil)
-  }
-
-  private def loadRef(decls: List[Declaration], struct: IrStruct, structPtr: IrValue, exprName: String, gcF: GlobalContext => GlobalContext)(implicit gc: GlobalContext): IrValue = {
-    val storedExprDecls = decls.collect(STORED_EXPRESSIONS)
-
-    val fieldIndex = storedExprDecls.indexWhere(_.name == exprName)
-    if (fieldIndex == -1) {
-      // the field is not stored in the struct and needs to be inlined
-      val exprDecl = decls.collect { case d: ExprDecl => d }.find(_.name == exprName).get
-      return applyField(IrFunctionRef(IrDeclFun(s"${struct.name}_$exprName", IrFunType(llvmType(exprDecl.tp), Nil))), Nil)
-    }
-    val exprDecl = storedExprDecls(fieldIndex)
-
-    val fieldPtr = getFieldPointer(struct, structPtr, fieldIndex)
-
-    val concreteTp = TypeExpansion(gcF(gc), exprDecl.tp)
-
-    loadFromPointer(if (concreteTp != exprDecl.tp) {
-      // The type of the theory was not concrete. The actual type of the instance is different.
-      // We stored the value as a pointer in the struct. This means we now have to dereference it.
-      val deReferenced = loadFromPointer(fieldPtr, fresh(s"${struct.name}_${exprName}_dereference"))
-      // Now that we know the type of the expression, we can set the type of the pointer to the concrete type
-      deReferenced.copy(tp = IrPtrType(llvmType(concreteTp)))
-    } else {
-      fieldPtr
-    }, fresh(s"${struct.name}_$exprName"))
   }
 
   private def loadVarRef(o: VarRef)(implicit gc: GlobalContext): IrValue = {
@@ -629,10 +620,7 @@ private class IRGenerator {
       case ProdType(c) => IrPtrType(findProdStruct(c.variables.reverse.map(v => llvmType(v.tp))))
       case OwnedType(_, _, owned) =>
         llvmType(owned)
-      case ClosedRef(n) => getAllocatedTypeVariableO(n) match {
-        case Some(value) => value
-        case None => IrPtrType(IrUnknownType)
-      }
+      case _: ClosedRef => IrPtrType(IrUnknownType)
       case o: OpenRef => llvmType(gc.lookupRef(o).get.asInstanceOf[TypeDecl].dfO.get)
       case _ => throw new IllegalArgumentException(s"Unsupported type: $tp")
     }
@@ -665,6 +653,12 @@ private class IRGenerator {
       case ::(Include(OpenRef(p), _, _), _) => p
       case _ =>  throw new IllegalArgumentException(s"Theory declarations doesn't start with include")
     }
+  }
+
+  private def inFrame[A](f: RegionalEnvironment)(a: => A) = {
+    regions ::= f
+    try {a}
+    finally {regions = regions.tail}
   }
 
   private def inNewFunctionCtx[A](a: => A) = {

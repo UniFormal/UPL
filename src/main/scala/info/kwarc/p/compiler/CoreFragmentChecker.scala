@@ -54,11 +54,6 @@ object CoreFragmentChecker extends Traverser[CoreFragmentContext] {
   override def apply(decl: Declaration)(implicit gc: GlobalContext, ctx: CoreFragmentContext): Declaration = {
     val nCtx = ctx.copy(declared = true, inLambda = false)
     matchC(decl) { case _: Module => applyDefault(decl)(gc, nCtx.copy(inModule = true))
-    case ExprDecl(_, _, ClassType(theory1), Some(Instance(theory2)), _, _) =>
-      if (theory1 != theory2) {
-        throw fail(s"Type lowering from $theory2 to $theory1: '$decl'")
-      }
-      applyDefault(decl)(gc, nCtx)
     case _ => applyDefault(decl)(gc, nCtx)
     }
   }

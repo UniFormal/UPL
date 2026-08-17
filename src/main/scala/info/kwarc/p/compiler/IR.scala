@@ -24,7 +24,7 @@ trait IrFunctionLike {
 
 case class IrDeclFun(name: String, signature: IrFunType) extends IrFunctionLike
 
-case class IrFun(name: String, signature: IrFunType, params: List[IrArgument], blocks: List[IrBlock]) extends
+case class IrFun(name: String, signature: IrFunType, params: List[IrVar], blocks: List[IrBlock]) extends
   IrFunctionLike {
 
   def renderFun(): String =
@@ -214,10 +214,6 @@ case class IrVar(override val tp: IrType, name: String) extends IrSSAValue {
   override def render(): String = s"%$name"
 }
 
-case class IrArgument(tp: IrType, name: String) extends IrSSAValue {
-  override def render(): String = s"%$name"
-}
-
 case class IrNullValue() extends IrValue {
 
   override def render(): String = "null"
@@ -279,7 +275,7 @@ case class IrSimpleBuiltin(override val name: String, override val retType: IrTy
     val decl = IrDeclFun(llvmBuiltin, IrFunType(retType, param))
     var i = 0
     val params = param.map(x => {
-      val arg = IrArgument(x, s"param$i")
+      val arg = IrVar(x, s"param$i")
       i = i +1
       arg
     })

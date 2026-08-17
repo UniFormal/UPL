@@ -1,6 +1,6 @@
 package info.kwarc.p.compiler
 
-import info.kwarc.p.{File, GlobalContext, Program}
+import info.kwarc.p.{Checker, ErrorThrower, File, GlobalContext, NumberType, Program}
 
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
@@ -16,6 +16,11 @@ object LLVMCompiler {
     }
 
     CoreFragmentChecker(p.main)(gc, CoreFragmentContext())
+
+    // Ensure the main expression returns an integer
+    val ch = new Checker(ErrorThrower)
+    val gcC = GlobalContext(p.voc)
+    ch.checkExpression(gcC, p.main, NumberType.Int)
 
     val llvmIr = compile(p)
 
