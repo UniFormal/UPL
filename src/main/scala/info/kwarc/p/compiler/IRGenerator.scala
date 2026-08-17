@@ -281,9 +281,7 @@ private class IRGenerator {
       compileExpression(Unit.Value)
     case Instance(concreteTheory) =>
       val gcI = gc.enter(concreteTheory)
-      val theoryPath = mainTheoryPath(concreteTheory)
-      // We want to expand all types that are already declared in the theory
-      val theory = TypeExpansion(GlobalContext(gc.voc), gc.lookupGlobal(theoryPath).get).asInstanceOf[Module]
+      val (theoryPath, theory) = currentTheory()(gcI)
       val storedExprDecls = theory.decls.collect(STORED_EXPRESSIONS)
 
       val struct = IrStruct(theoryPath.toString, storedExprDecls.map { d => llvmType(d.tp) })
@@ -296,19 +294,30 @@ private class IRGenerator {
       // Initializes the expression declared by this instance
       val re = RegionalEnvironment("new instance", Some(structPtr))
       inFrame(re) {
-        concreteTheory.decls.foreach { case ExprDecl(name, _, _, Some(concreteExprDecl), _, _) =>
-          storedExprDecls.zipWithIndex.find { case (d, _) => d.name == name } match {
-            case Some((abstrExprDecl, fieldIndex)) =>
+        var todo = concreteTheory.decls
+
+        while (todo.nonEmpty) {
+          val d :: ds = todo
+          todo = ds
+          d match {
+            case ExprDecl(name, _, _, Some(concreteExprDecl), _, _) =>
               val compiledExpr = compileExpression(concreteExprDecl)(gcI)
 
-              abstrExprDecl.tp match {
-                case _: Ref => storeField(struct, structPtr, boxValue(compiledExpr, s"boxed_value_$name"), fieldIndex)
-                case _ => storeField(struct, structPtr, compiledExpr, fieldIndex)
+              storedExprDecls.zipWithIndex.find { case (d, _) => d.name == name } match {
+                case Some((abstrExprDecl, fieldIndex)) =>
+
+                  abstrExprDecl.tp match {
+                    case _: Ref => storeField(struct, structPtr, boxValue(compiledExpr, s"boxed_value_$name"), fieldIndex)
+                    case _ => storeField(struct, structPtr, compiledExpr, fieldIndex)
+                  }
+                case None =>
+                // the expression was already declared in a parent theory
               }
-            case None =>
-            // the expression was already declared in a parent theory
+            case incl: Include =>
+              val decls = Checker.evaluateTheory(gc, incl.dom).decls
+              todo = todo ::: decls
+            case _ =>
           }
-        case _ =>
         }
       }
 
@@ -376,6 +385,25 @@ private class IRGenerator {
   private def compileAssignment(target: Expression, value: IrValue)(implicit gc: GlobalContext): Unit = target match {
     case VarRef(name) => ctx.emit(IrStore(value, getAllocatedVariable(name)))
     case vd: EVarDecl => bindDeclaration(vd, Some(value))
+    case ClosedRef(n) =>
+      frame.region match {
+        case Some(structPtr) =>
+          val (theoryPath, theory) = currentTheory()
+          val storedExprDecls = theory.decls.collect(STORED_EXPRESSIONS)
+          val struct = IrStruct(theoryPath.toString, storedExprDecls.map { d => llvmType(d.tp) })
+          val fieldIndex = storedExprDecls.indexWhere(_.name == n)
+          storedExprDecls(fieldIndex).tp match {
+            case _: Ref => storeField(struct, structPtr, boxValue(value, s"boxed_value_$n"), fieldIndex)
+            case _ => storeField(struct, structPtr, value, fieldIndex)
+          }
+        case None => throw new IllegalArgumentException("ClosedRef must be in a region")
+      }
+    case OwnedExpr(own, dom, e) =>
+      val instPtr = compileExpression(own)
+      val re = RegionalEnvironment(own.toString, Some(instPtr.asInstanceOf[IrVar]))
+      inFrame(re) {
+        compileAssignment(e, value)(gc.push(dom, Some(own)))
+      }
     case Tuple(components) =>
       val struct = tupleStruct(value)
       components.zipWithIndex.foreach { case (component, index) =>
@@ -530,9 +558,7 @@ private class IRGenerator {
   }
 
   private def loadClosedRef(r: ClosedRef)(implicit gc: GlobalContext): IrValue = {
-    val theoryPath = mainTheoryPath(gc.theory)
-    // We want to expand all types that are already declared in the theory
-    val theory = TypeExpansion(GlobalContext(gc.voc), gc.lookupGlobal(theoryPath).get).asInstanceOf[Module]
+    val (theoryPath, theory) = currentTheory()
     val storedExprDecls = theory.decls.collect(STORED_EXPRESSIONS)
     val struct = IrStruct(theoryPath.toString, storedExprDecls.map(d => llvmType(d.tp)))
 
@@ -653,6 +679,12 @@ private class IRGenerator {
       case ::(Include(OpenRef(p), _, _), _) => p
       case _ =>  throw new IllegalArgumentException(s"Theory declarations doesn't start with include")
     }
+  }
+
+  private def currentTheory()(implicit gc: GlobalContext): (Path, Module) = {
+    val theoryPath = mainTheoryPath(gc.theory)
+    // We want to expand all types that are already declared in the theory
+    (theoryPath, TypeExpansion(GlobalContext(gc.voc), gc.lookupGlobal(theoryPath).get).asInstanceOf[Module])
   }
 
   private def inFrame[A](f: RegionalEnvironment)(a: => A) = {
