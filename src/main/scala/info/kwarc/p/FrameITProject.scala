@@ -2,7 +2,6 @@ package info.kwarc.p
 
 import info.kwarc.p.File.readAsSource
 
-import scala.annotation.unused
 import scala.collection.mutable
 import scala.util.Try
 
@@ -17,71 +16,67 @@ class FrameITProject private extends Project(Nil,None){
 
   private var stageCounter = 0
   private var currentStage: Stage = Stage(0)
-  private var previousStage: Stage = Stage(-1)
 
   /** The current logical world
     *
     * This is essentially an interface for the latest Stage (the [[Module]] and the [[ProjectEntry]]),
     * with a lot of additional sugar.
     *
-    * Use the various [[lookupDecl lookup*(name)]] methods to lookup declarations, and [[add]] to add them.
+    * Use the various [[lookup lookup*(name)]] methods to lookup facts, and [[add]] to add them.
     * [[asModule]] produces the entire LoWo
     */
   object LoWo {
-    implicit def gc: GlobalContext = GlobalContext(voc)
-    def voc: TheoryValue = LoWo.add(bg.decls) // TheoryValue.add prepends
-    var isDirty: Boolean = true
-    /** The [[ProjectEntry]] holding the LoWo
-      *
-      * @note It is *not* in [[entries]], because its contents are not supposed to be in context
-      *       for any of the other entries.
+    implicit def gc: GlobalContext = GlobalContext(bg).enter(currentStage.module.df)
+
+    @inline def asModule: Module = currentStage.module.copy(name = "LoWo")
+    @inline def decls: List[Declaration] = asModule.decls
+    @inline override def toString: String = asModule.toString
+    @inline def errors: ErrorCollector = currentStage.errors
+
+    /** Lookup a fact in the [[LoWo]]
+      * @param name The name of the fact
+      * @param extractor The function used to extract the fact from the interpreted definiens.
+      *                  Can be an extractor in the scala sense, but doesn't need to.
+      * @return The value of the fact, interpreted and extracted.
       */
-    val container =  new ProjectEntry(SourceOrigin("LoWo"))
-
-    private def LoWo: TheoryValue = {
-      if (isDirty){
-        val newDecls = currentStage.getVocabulary.decls.collectFirst {
-          case Module(_,_,TheoryValue(ds)) => ds.mkString("\n")
-          //case m:Module => m.copy(name= label,closed = false).toString
-        }.getOrElse("")
-        val checked = updateAndCheck(container,newDecls)
-        //if (errors.hasErrors) return checked
-        val ip = new Interpreter(bg)
-        val resDecls = for { decl <- checked.decls }
-          yield Try(ip.interpretDeclaration(decl)).getOrElse(decl)
-        container.result = TheoryValue(resDecls).copyFrom(checked)
-        isDirty = false
-      }
-      container.result
+    def lookup[T<:Expression,A](name: String, extractor: T => Option[A] = Option.apply _): Option[A] = {
+      Interpreter
+        .quickRun(OwnedExpr(currentStage.asInstance,null,ClosedRef(name)))
+        .collect{ case t: T => t }
+        .flatMap(extractor)
     }
 
-    def asModule: Module = {
-      Module("LoWo",closed=false,LoWo)
-    }
-
-    def decls: List[Declaration] = LoWo.decls
-    override def toString: String = asModule.toString
-
-    def errors: ErrorCollector = if(isDirty) currentStage.errors else container.errors
-
-    /** Lookup the definiens of a [[Declaration]] in the [[LoWo]] */
-    def lookup[T<:Object,A](name: String,f: T => Option[A] = Option.apply _): Option[A] =
-      LoWo.lookupO(name).flatMap(_.dfO).collect{ case t:T => t }.flatMap(f)
+    /** Lookup a fact in the [[LoWo]]
+      * @param name The name of the fact
+      * @param f A [[PartialFunction]] used to extract the fact from the interpreted definiens.
+      *                  Can be an extractor in the scala sense, but doesn't need to.
+      * @see [[lookup]]
+      */
+    @inline
     def lookupWithPF[T<:Object,A](name: String, f: PartialFunction[T,A]): Option[A] =
       lookup(name,f.lift)
 
+    /** Lookup a [[ValueFact]]
+      * @see [[lookup]]
+      */
+    @inline
     def lookupValueFact(name:String): Option[(Ref, List[Expression], Double)] =
       lookup(name+"_P", ValueFact.unapply _)
 
+    /** Lookup a Number
+      * @see [[lookup]]
+      */
+    @inline
     def lookupNum(name:String): Option[Double] =
       lookup(name, RealValue.unapply).map(_.approx.value)
 
-    def eval(input:String): Option[Expression] = evalTyped(input).map(_._1)
-    def evalTyped(input: String): Option[(Expression, Type)] = {
+    @inline
+    def eval(name:String): Option[Expression] = evalTyped(name).map(_._1)
+    def evalTyped(name: String): Option[(Expression, Type)] = {
       Try{
-        val parsed = Parser.expression(SourceOrigin.anonymous, input, ErrorThrower)
-        val (checked, tp) = ThrowingChecker.checkAndInferExpression(gc, parsed)
-        val (_, r) = Interpreter.run(Program(voc, checked))
+        val parsed = OwnedExpr(currentStage.asInstance,null,ClosedRef(name))
+        val (checked, tp) = ThrowingChecker.checkAndInferExpression(gc,parsed)
+        val (_, r) = Interpreter.run(Program(bg,checked))
         (r,tp)
       }.toOption
     }
@@ -89,13 +84,14 @@ class FrameITProject private extends Project(Nil,None){
     @inline
     def add(decls_String: String): Boolean = add(Seq(decls_String))
     def add(decls_String: Seq[String]): Boolean = {
+      val prev = currentStage.label
       step()
-      val stageString = s"theory ${currentStage.label}{\ninclude ${previousStage.label}\n${decls_String.mkString("\n")}\n}"
+      val curr = currentStage.label
+      val stageString =
+        s"theory $curr{\ninclude $prev \n${decls_String.mkString("\n")}\n}"
       val checked = updateAndCheck(currentStage, stageString)
-      // Remove the Includes
-      val filtered = checked.decls.collect{
-        case m:Module => m.copyBody(_.filterNot(_.isInstanceOf[Include]))
-      }
+      // Remove the Include; It is always the first Declaration, because that's how stageString is built
+      val filtered = checked.decls.collect{ case m:Module => m.copyBody(_.drop(1)) }
       currentStage.checked = checked.copy(decls = filtered)
       val err = currentStage.errors.hasErrors
       if (err) unstep()
@@ -104,34 +100,45 @@ class FrameITProject private extends Project(Nil,None){
 
     private def step(): Unit ={
       stageCounter += 1
-      previousStage = currentStage
       currentStage = get(Stage.origin()).asInstanceOf[Stage]
-      isDirty = true
     }
     def unstep(): Unit ={
       stageCounter -= 1
       currentStage.clear()
-      currentStage = previousStage
-      previousStage = get(Stage.origin(stageCounter-1)).asInstanceOf[Stage]
-      isDirty = true
+      currentStage = get(Stage.origin()).asInstanceOf[Stage]
     }
 
+    /** Reset the state of the LoWo
+      * @todo Preserve the initial stage content
+      */
     def reset(): Unit = {
-      stageCounter = 0
-      currentStage = Stage(0)
-      previousStage = Stage(-1)
       entries = entries.filterNot(_.isInstanceOf[Stage])
+      stageCounter = 0
+      currentStage = Stage.empty
+      updateAndCheck(currentStage.source,s"theory ${currentStage.label}{}")
     }
   }
 
-  /** Intermediate Stages of the Situation
-    * For convenience, Stage0 is not in
-    */
+  /** Intermediate Stages of the Situation */
   case class Stage(num: Int) extends ProjectEntry(SourceOrigin("Stage", num.toString)) {
     val label: String = source.container ++ source.fragment
-    def df: TheoryValue = checked.decls.collectFirst{case Module(name,_,df) => df}.get
+
+    /** Checked context */
+    def cxt =  GlobalContext(checked)
+
+    def module: Module = cxt.lookupModule(OpenRef(Path(label)))
+
+    def asInstance: Instance = {
+      Instance(Theory(
+        module.decls.mapConserve {
+          case d: ExprDecl if d.dfO.isEmpty => d.copy(dfO = Option(UndefinedValue(d.tp)))
+          case d => d
+        }
+      ))
+    }
   }
   object Stage {
+    val empty = Stage(0)
     def origin(num: Int=stageCounter): SourceOrigin = SourceOrigin("Stage", num.toString)
 
     /** Extractor for the [[SourceOrigin]] of a [[Stage]],
@@ -173,8 +180,11 @@ class FrameITProject private extends Project(Nil,None){
                   resultingFactsAssignment: collection.Map[String, String])
   : Boolean = {
     val appLabel = "Application"
+//    var reqDecls = requiredFactsAssignment map {case (n, d) => s"$n = .${currentStage.label}.$d"} mkString "\n"
+//    reqDecls += requiredFactsAssignment collect {case (n, d) if currentStage.pDecls.declares(s"${n}_P") => s"${n}_P = ${d}_P"} mkString "\n"
+//    val apCode = s"theory $appLabel{\n$reqDecls\nrealize $schema}"
     var reqDecls = requiredFactsAssignment map {case (n, d) => s"$n = $d"} mkString "\n"
-    reqDecls += requiredFactsAssignment collect {case (n, d) if currentStage.df.declares(s"${n}_P") => s"${n}_P = ${d}_P"} mkString "\n"
+    reqDecls += requiredFactsAssignment collect {case (n, d) if currentStage.cxt.declares(s"${n}_P") => s"${n}_P = ${d}_P"} mkString "\n"
     val apCode = s"theory $appLabel{\ninclude ${currentStage.label}\n$reqDecls\nrealize $schema}"
     val apRaw = updateAndCheck(Schema.appEntry, apCode).lookup(appLabel).asInstanceOf[Module]
     if (Schema.appEntry.errors.hasErrors) {
@@ -216,10 +226,6 @@ class FrameITProject private extends Project(Nil,None){
       case _ => new ProjectEntry(so)
     }
     entries = entries :+ e
-//    entries = entries match {
-//      case es :+ sith => es :+ e :+ sith
-//      case _ => List(e)
-//    }
     e
   }
   def tryEval(input:String): Try[Expression] = tryEvalTyped(input).map(_._1)
@@ -257,7 +263,12 @@ class FrameITProject private extends Project(Nil,None){
     TheoryValue(voc.toList)
   }
 
-  def debugPrintVerbose(): Unit = println (entries.map(_.getVocabulary).mkString("\n"))
+  def toStringVerbose: String = entries.flatMap(e => List
+    (
+      s"// ${e.source}",
+      e.getVocabulary.decls.mkString("\n"))
+    )
+    .mkString("\n\n")
 }
 
 object FrameITProject {
@@ -282,19 +293,16 @@ object FrameITProject {
       (source, content) <- saveFileContents(k)
     } yield ProjectEntry(source, content)
     val project = new FrameITProject()
-    val emptyStage = ProjectEntry(SourceOrigin("Stage","Origin"),s"theory ${project.currentStage.label}{}")
-    project.entries = bgEntries ++: emptyStage +: project.entries
-    project.checkAll() // check all background entries in one go
-    saveFileContents("background").foreach{ case (source,_) =>
-      project._background = project._background.add(
-        project.get(source).checked.decls
-      )
-    }
-    // Add the initial stage (if it exists)
+    project.entries = bgEntries.toList
+    val bg = project.checkAll() // check all background entries in one go
+    project._background = bg
+    // Set up the initial empty stage
+    project.LoWo.reset()
+    // Add any initial level content
     for {
       l <- fileContents get "stageInit"
-      (_ , init) <- l.headOption
-      _ <- init.headOption // tests if `init` is empty
+      (_ , init) <- l
+      _ <- init.headOption // Skip if empty
     } project.LoWo.add(init)
     project
   }

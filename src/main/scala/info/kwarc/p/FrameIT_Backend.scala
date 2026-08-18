@@ -97,7 +97,7 @@ object FrameIT_Backend {
     proj.applySchema(schema, assignReq, assignRes)
   }
 
-  def debugPrintVerbose() = proj.debugPrintVerbose()
+  def debugPrintVerbose(): Unit = println(proj.toStringVerbose)
 }
 
 object BackendTests {
@@ -151,12 +151,12 @@ object BackendTests {
   val s1 =
     """tip: point; foot: point; ground: point; p: point
       |q: point
-      |ground_dist_small = 42
-      |ground_dist_small_P:  |- dist(ground)(q) == ground_dist_small = ???
-      |apparent_height = 42
+      |are_similar: |- similar((ground, foot, tip))((ground, q, p)) = ???
+      |apparent_height = 36
       |apparent_height_P: |- dist(q)(p) == apparent_height = ???
-      |are_similar: |- similar((tip,ground,foot))((p, ground, q)) = ???;
-      |ground_dist_large = 420
+      |ground_dist_small = 50
+      |ground_dist_small_P:  |- dist(ground)(q) == ground_dist_small = ???;
+      |ground_dist_large = 48.25
       |ground_dist_large_P:  |- dist(ground)(foot) == ground_dist_large = ???""".stripMargin
 
   val assignments = collection.mutable.Map(
@@ -256,7 +256,7 @@ object ValueFact {
     }
   }
 
-  def unapply(expr: Object)(implicit gc: GlobalContext): Option[(Ref, List[Expression], Double)] = {
+  def unapply(expr: Expression)(implicit gc: GlobalContext): Option[(Ref, List[Expression], Double)] = {
     expr match {
       case UndefinedValue(ValueFactType(f,as,v)) => Option(f,as,v)
       case EVarDecl(_, ValueFactType(f,as,v), _, _, _) => Option(f,as,v)
