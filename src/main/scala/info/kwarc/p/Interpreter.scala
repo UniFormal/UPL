@@ -111,6 +111,14 @@ object Interpreter {
     val r = ip.interpretExpression(p.main)
     (ip,r)
   }
+
+  def quickRun(e:Expression)(implicit gc:GlobalContext = GlobalContext("")) = {
+    scala.util.Try {
+      val checked = ThrowingChecker.checkProgram(Program(gc.voc.df, e))
+      val (_,r) = run(checked)
+      r
+    }.toOption
+  }
 }
 
 class Interpreter(vocInit: TheoryValue) {

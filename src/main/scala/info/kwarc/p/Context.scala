@@ -429,8 +429,8 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   /** lookup a module that is known to exist */
   def lookupModule(r: Ref) = lookupRef(r) match {
     case Some(m: Module) => m
-    case Some(_) => throw ASTError("not a module")
-    case None => throw ASTError("not a name")
+    case Some(_) => throw ASTError(r.label ++ " is not a module")
+    case None => throw ASTError(r.label ++ " is not a name")
   }
 
   // updates to stack of regional contexts
