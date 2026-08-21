@@ -1,0 +1,1372 @@
+[
+  {
+    "id": 1,
+    "polynomial": "-1 - 3x",
+    "degree": 1,
+    "coefficients": [
+      -1,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": -1,
+    "sum_of_coefficients": -4
+  },
+  {
+    "id": 2,
+    "polynomial": "-1 - 4x - 5x^2 + x^3 + 2x^4",
+    "degree": 4,
+    "coefficients": [
+      -1,
+      -4,
+      -5,
+      1,
+      2
+    ],
+    "leading_coefficient": 2,
+    "constant_term": -1,
+    "sum_of_coefficients": -7
+  },
+  {
+    "id": 3,
+    "polynomial": "-5x - 3x^2 - 2x^3",
+    "degree": 3,
+    "coefficients": [
+      0,
+      -5,
+      -3,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": 0,
+    "sum_of_coefficients": -10
+  },
+  {
+    "id": 4,
+    "polynomial": "3 - 2x^2 - 2x^3",
+    "degree": 3,
+    "coefficients": [
+      3,
+      0,
+      -2,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": 3,
+    "sum_of_coefficients": -1
+  },
+  {
+    "id": 5,
+    "polynomial": "1 - 3x",
+    "degree": 1,
+    "coefficients": [
+      1,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": 1,
+    "sum_of_coefficients": -2
+  },
+  {
+    "id": 6,
+    "polynomial": "-4 - 5x + 2x^3 - 3x^4",
+    "degree": 4,
+    "coefficients": [
+      -4,
+      -5,
+      0,
+      2,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": -4,
+    "sum_of_coefficients": -10
+  },
+  {
+    "id": 7,
+    "polynomial": "-4 + 3x",
+    "degree": 1,
+    "coefficients": [
+      -4,
+      3
+    ],
+    "leading_coefficient": 3,
+    "constant_term": -4,
+    "sum_of_coefficients": -1
+  },
+  {
+    "id": 8,
+    "polynomial": "-3 - 5x - x^2",
+    "degree": 2,
+    "coefficients": [
+      -3,
+      -5,
+      -1
+    ],
+    "leading_coefficient": -1,
+    "constant_term": -3,
+    "sum_of_coefficients": -9
+  },
+  {
+    "id": 9,
+    "polynomial": "4 + 2x - x^2 + 2x^3 - 3x^4",
+    "degree": 4,
+    "coefficients": [
+      4,
+      2,
+      -1,
+      2,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": 4,
+    "sum_of_coefficients": 4
+  },
+  {
+    "id": 10,
+    "polynomial": "3x + 2x^2 - 2x^3",
+    "degree": 3,
+    "coefficients": [
+      0,
+      3,
+      2,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": 0,
+    "sum_of_coefficients": 3
+  },
+  {
+    "id": 11,
+    "polynomial": "-5 + x + 5x^2 + 2x^3",
+    "degree": 3,
+    "coefficients": [
+      -5,
+      1,
+      5,
+      2
+    ],
+    "leading_coefficient": 2,
+    "constant_term": -5,
+    "sum_of_coefficients": 3
+  },
+  {
+    "id": 12,
+    "polynomial": "5 + 3x + 5x^2 + 5x^3 + 2x^4",
+    "degree": 4,
+    "coefficients": [
+      5,
+      3,
+      5,
+      5,
+      2
+    ],
+    "leading_coefficient": 2,
+    "constant_term": 5,
+    "sum_of_coefficients": 20
+  },
+  {
+    "id": 13,
+    "polynomial": "3 + 5x + x^2 + 2x^4",
+    "degree": 4,
+    "coefficients": [
+      3,
+      5,
+      1,
+      0,
+      2
+    ],
+    "leading_coefficient": 2,
+    "constant_term": 3,
+    "sum_of_coefficients": 11
+  },
+  {
+    "id": 14,
+    "polynomial": "5 - 2x",
+    "degree": 1,
+    "coefficients": [
+      5,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": 5,
+    "sum_of_coefficients": 3
+  },
+  {
+    "id": 15,
+    "polynomial": "2 + 3x",
+    "degree": 1,
+    "coefficients": [
+      2,
+      3
+    ],
+    "leading_coefficient": 3,
+    "constant_term": 2,
+    "sum_of_coefficients": 5
+  },
+  {
+    "id": 16,
+    "polynomial": "-3 + 2x^3",
+    "degree": 3,
+    "coefficients": [
+      -3,
+      0,
+      0,
+      2
+    ],
+    "leading_coefficient": 2,
+    "constant_term": -3,
+    "sum_of_coefficients": -1
+  },
+  {
+    "id": 17,
+    "polynomial": "-4 + 2x + x^2 + 4x^3 - x^4",
+    "degree": 4,
+    "coefficients": [
+      -4,
+      2,
+      1,
+      4,
+      -1
+    ],
+    "leading_coefficient": -1,
+    "constant_term": -4,
+    "sum_of_coefficients": 2
+  },
+  {
+    "id": 18,
+    "polynomial": "-2 + 2x",
+    "degree": 1,
+    "coefficients": [
+      -2,
+      2
+    ],
+    "leading_coefficient": 2,
+    "constant_term": -2,
+    "sum_of_coefficients": 0
+  },
+  {
+    "id": 19,
+    "polynomial": "5 - x",
+    "degree": 1,
+    "coefficients": [
+      5,
+      -1
+    ],
+    "leading_coefficient": -1,
+    "constant_term": 5,
+    "sum_of_coefficients": 4
+  },
+  {
+    "id": 20,
+    "polynomial": "-2x",
+    "degree": 1,
+    "coefficients": [
+      0,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": 0,
+    "sum_of_coefficients": -2
+  },
+  {
+    "id": 21,
+    "polynomial": "3 + 3x - 5x^2 + 5x^3 - x^4",
+    "degree": 4,
+    "coefficients": [
+      3,
+      3,
+      -5,
+      5,
+      -1
+    ],
+    "leading_coefficient": -1,
+    "constant_term": 3,
+    "sum_of_coefficients": 5
+  },
+  {
+    "id": 22,
+    "polynomial": "5 - 2x + 3x^2 + 2x^3 - 2x^4",
+    "degree": 4,
+    "coefficients": [
+      5,
+      -2,
+      3,
+      2,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": 5,
+    "sum_of_coefficients": 6
+  },
+  {
+    "id": 23,
+    "polynomial": "3 + 2x + x^2",
+    "degree": 2,
+    "coefficients": [
+      3,
+      2,
+      1
+    ],
+    "leading_coefficient": 1,
+    "constant_term": 3,
+    "sum_of_coefficients": 6
+  },
+  {
+    "id": 24,
+    "polynomial": "-5 - 5x - 3x^2 + 2x^3 - 2x^4",
+    "degree": 4,
+    "coefficients": [
+      -5,
+      -5,
+      -3,
+      2,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": -5,
+    "sum_of_coefficients": -13
+  },
+  {
+    "id": 25,
+    "polynomial": "-1 - x",
+    "degree": 1,
+    "coefficients": [
+      -1,
+      -1
+    ],
+    "leading_coefficient": -1,
+    "constant_term": -1,
+    "sum_of_coefficients": -2
+  },
+  {
+    "id": 26,
+    "polynomial": "1 + 5x + x^2 - 3x^3",
+    "degree": 3,
+    "coefficients": [
+      1,
+      5,
+      1,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": 1,
+    "sum_of_coefficients": 4
+  },
+  {
+    "id": 27,
+    "polynomial": "4 - 3x",
+    "degree": 1,
+    "coefficients": [
+      4,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": 4,
+    "sum_of_coefficients": 1
+  },
+  {
+    "id": 28,
+    "polynomial": "-4 - 4x + x^2 - 3x^3",
+    "degree": 3,
+    "coefficients": [
+      -4,
+      -4,
+      1,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": -4,
+    "sum_of_coefficients": -10
+  },
+  {
+    "id": 29,
+    "polynomial": "-4 + 3x + 5x^2 + x^3 - 3x^4",
+    "degree": 4,
+    "coefficients": [
+      -4,
+      3,
+      5,
+      1,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": -4,
+    "sum_of_coefficients": 2
+  },
+  {
+    "id": 30,
+    "polynomial": "-1 + 2x - 5x^2 + 2x^3",
+    "degree": 3,
+    "coefficients": [
+      -1,
+      2,
+      -5,
+      2
+    ],
+    "leading_coefficient": 2,
+    "constant_term": -1,
+    "sum_of_coefficients": -2
+  },
+  {
+    "id": 31,
+    "polynomial": "1 - 5x^2 + 3x^3",
+    "degree": 3,
+    "coefficients": [
+      1,
+      0,
+      -5,
+      3
+    ],
+    "leading_coefficient": 3,
+    "constant_term": 1,
+    "sum_of_coefficients": -1
+  },
+  {
+    "id": 32,
+    "polynomial": "1 - 4x + 3x^2",
+    "degree": 2,
+    "coefficients": [
+      1,
+      -4,
+      3
+    ],
+    "leading_coefficient": 3,
+    "constant_term": 1,
+    "sum_of_coefficients": 0
+  },
+  {
+    "id": 33,
+    "polynomial": "5x - 2x^2",
+    "degree": 2,
+    "coefficients": [
+      0,
+      5,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": 0,
+    "sum_of_coefficients": 3
+  },
+  {
+    "id": 34,
+    "polynomial": "5 - 3x",
+    "degree": 1,
+    "coefficients": [
+      5,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": 5,
+    "sum_of_coefficients": 2
+  },
+  {
+    "id": 35,
+    "polynomial": "3 - x - 3x^2 + 5x^3 - x^4",
+    "degree": 4,
+    "coefficients": [
+      3,
+      -1,
+      -3,
+      5,
+      -1
+    ],
+    "leading_coefficient": -1,
+    "constant_term": 3,
+    "sum_of_coefficients": 3
+  },
+  {
+    "id": 36,
+    "polynomial": "-3x + 3x^2 + 2x^4",
+    "degree": 4,
+    "coefficients": [
+      0,
+      -3,
+      3,
+      0,
+      2
+    ],
+    "leading_coefficient": 2,
+    "constant_term": 0,
+    "sum_of_coefficients": 2
+  },
+  {
+    "id": 37,
+    "polynomial": "5 - 2x",
+    "degree": 1,
+    "coefficients": [
+      5,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": 5,
+    "sum_of_coefficients": 3
+  },
+  {
+    "id": 38,
+    "polynomial": "1 - 5x - 3x^2 + 2x^3 + 3x^4",
+    "degree": 4,
+    "coefficients": [
+      1,
+      -5,
+      -3,
+      2,
+      3
+    ],
+    "leading_coefficient": 3,
+    "constant_term": 1,
+    "sum_of_coefficients": -2
+  },
+  {
+    "id": 39,
+    "polynomial": "x",
+    "degree": 1,
+    "coefficients": [
+      0,
+      1
+    ],
+    "leading_coefficient": 1,
+    "constant_term": 0,
+    "sum_of_coefficients": 1
+  },
+  {
+    "id": 40,
+    "polynomial": "-1 + x - 5x^2 - 3x^3 + 2x^4",
+    "degree": 4,
+    "coefficients": [
+      -1,
+      1,
+      -5,
+      -3,
+      2
+    ],
+    "leading_coefficient": 2,
+    "constant_term": -1,
+    "sum_of_coefficients": -6
+  },
+  {
+    "id": 41,
+    "polynomial": "3 + 3x + 3x^2 - 2x^3",
+    "degree": 3,
+    "coefficients": [
+      3,
+      3,
+      3,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": 3,
+    "sum_of_coefficients": 7
+  },
+  {
+    "id": 42,
+    "polynomial": "3 - 4x + 3x^2 + 3x^3",
+    "degree": 3,
+    "coefficients": [
+      3,
+      -4,
+      3,
+      3
+    ],
+    "leading_coefficient": 3,
+    "constant_term": 3,
+    "sum_of_coefficients": 5
+  },
+  {
+    "id": 43,
+    "polynomial": "-2 + 4x - 3x^3",
+    "degree": 3,
+    "coefficients": [
+      -2,
+      4,
+      0,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": -2,
+    "sum_of_coefficients": -1
+  },
+  {
+    "id": 44,
+    "polynomial": "3 - 2x - 2x^2 - x^3",
+    "degree": 3,
+    "coefficients": [
+      3,
+      -2,
+      -2,
+      -1
+    ],
+    "leading_coefficient": -1,
+    "constant_term": 3,
+    "sum_of_coefficients": -2
+  },
+  {
+    "id": 45,
+    "polynomial": "1 - 5x + 3x^2 - 3x^3",
+    "degree": 3,
+    "coefficients": [
+      1,
+      -5,
+      3,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": 1,
+    "sum_of_coefficients": -4
+  },
+  {
+    "id": 46,
+    "polynomial": "3 - 2x - 3x^2",
+    "degree": 2,
+    "coefficients": [
+      3,
+      -2,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": 3,
+    "sum_of_coefficients": -2
+  },
+  {
+    "id": 47,
+    "polynomial": "-1 + 4x - 2x^2",
+    "degree": 2,
+    "coefficients": [
+      -1,
+      4,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": -1,
+    "sum_of_coefficients": 1
+  },
+  {
+    "id": 48,
+    "polynomial": "4 - x",
+    "degree": 1,
+    "coefficients": [
+      4,
+      -1
+    ],
+    "leading_coefficient": -1,
+    "constant_term": 4,
+    "sum_of_coefficients": 3
+  },
+  {
+    "id": 49,
+    "polynomial": "2x",
+    "degree": 1,
+    "coefficients": [
+      0,
+      2
+    ],
+    "leading_coefficient": 2,
+    "constant_term": 0,
+    "sum_of_coefficients": 2
+  },
+  {
+    "id": 50,
+    "polynomial": "3 - 3x + x^2",
+    "degree": 2,
+    "coefficients": [
+      3,
+      -3,
+      1
+    ],
+    "leading_coefficient": 1,
+    "constant_term": 3,
+    "sum_of_coefficients": 1
+  },
+  {
+    "id": 51,
+    "polynomial": "1 - 5x - x^2 + 4x^3 + x^4",
+    "degree": 4,
+    "coefficients": [
+      1,
+      -5,
+      -1,
+      4,
+      1
+    ],
+    "leading_coefficient": 1,
+    "constant_term": 1,
+    "sum_of_coefficients": 0
+  },
+  {
+    "id": 52,
+    "polynomial": "1 - 2x + 3x^2 - 2x^3",
+    "degree": 3,
+    "coefficients": [
+      1,
+      -2,
+      3,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": 1,
+    "sum_of_coefficients": 0
+  },
+  {
+    "id": 53,
+    "polynomial": "4 + 2x",
+    "degree": 1,
+    "coefficients": [
+      4,
+      2
+    ],
+    "leading_coefficient": 2,
+    "constant_term": 4,
+    "sum_of_coefficients": 6
+  },
+  {
+    "id": 54,
+    "polynomial": "4x - 4x^2 - 5x^3 - x^4",
+    "degree": 4,
+    "coefficients": [
+      0,
+      4,
+      -4,
+      -5,
+      -1
+    ],
+    "leading_coefficient": -1,
+    "constant_term": 0,
+    "sum_of_coefficients": -6
+  },
+  {
+    "id": 55,
+    "polynomial": "5x + x^2 - x^4",
+    "degree": 4,
+    "coefficients": [
+      0,
+      5,
+      1,
+      0,
+      -1
+    ],
+    "leading_coefficient": -1,
+    "constant_term": 0,
+    "sum_of_coefficients": 5
+  },
+  {
+    "id": 56,
+    "polynomial": "2 - 2x^2",
+    "degree": 2,
+    "coefficients": [
+      2,
+      0,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": 2,
+    "sum_of_coefficients": 0
+  },
+  {
+    "id": 57,
+    "polynomial": "1 - 5x + x^2",
+    "degree": 2,
+    "coefficients": [
+      1,
+      -5,
+      1
+    ],
+    "leading_coefficient": 1,
+    "constant_term": 1,
+    "sum_of_coefficients": -3
+  },
+  {
+    "id": 58,
+    "polynomial": "3 - x - 3x^2 + 3x^3 + x^4",
+    "degree": 4,
+    "coefficients": [
+      3,
+      -1,
+      -3,
+      3,
+      1
+    ],
+    "leading_coefficient": 1,
+    "constant_term": 3,
+    "sum_of_coefficients": 3
+  },
+  {
+    "id": 59,
+    "polynomial": "-4 - x - 4x^2 - x^3",
+    "degree": 3,
+    "coefficients": [
+      -4,
+      -1,
+      -4,
+      -1
+    ],
+    "leading_coefficient": -1,
+    "constant_term": -4,
+    "sum_of_coefficients": -10
+  },
+  {
+    "id": 60,
+    "polynomial": "-5 + x - 5x^2 + 2x^3",
+    "degree": 3,
+    "coefficients": [
+      -5,
+      1,
+      -5,
+      2
+    ],
+    "leading_coefficient": 2,
+    "constant_term": -5,
+    "sum_of_coefficients": -7
+  },
+  {
+    "id": 61,
+    "polynomial": "-1 - 4x + 2x^2 + 4x^3 + 3x^4",
+    "degree": 4,
+    "coefficients": [
+      -1,
+      -4,
+      2,
+      4,
+      3
+    ],
+    "leading_coefficient": 3,
+    "constant_term": -1,
+    "sum_of_coefficients": 4
+  },
+  {
+    "id": 62,
+    "polynomial": "-2 + 5x + 2x^2 - x^3",
+    "degree": 3,
+    "coefficients": [
+      -2,
+      5,
+      2,
+      -1
+    ],
+    "leading_coefficient": -1,
+    "constant_term": -2,
+    "sum_of_coefficients": 4
+  },
+  {
+    "id": 63,
+    "polynomial": "4 + 4x - 2x^3 + 3x^4",
+    "degree": 4,
+    "coefficients": [
+      4,
+      4,
+      0,
+      -2,
+      3
+    ],
+    "leading_coefficient": 3,
+    "constant_term": 4,
+    "sum_of_coefficients": 9
+  },
+  {
+    "id": 64,
+    "polynomial": "3 + 4x - x^2 - 3x^4",
+    "degree": 4,
+    "coefficients": [
+      3,
+      4,
+      -1,
+      0,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": 3,
+    "sum_of_coefficients": 3
+  },
+  {
+    "id": 65,
+    "polynomial": "-4 - 5x + x^2",
+    "degree": 2,
+    "coefficients": [
+      -4,
+      -5,
+      1
+    ],
+    "leading_coefficient": 1,
+    "constant_term": -4,
+    "sum_of_coefficients": -8
+  },
+  {
+    "id": 66,
+    "polynomial": "-3 + 2x + 3x^2 - 5x^3 + x^4",
+    "degree": 4,
+    "coefficients": [
+      -3,
+      2,
+      3,
+      -5,
+      1
+    ],
+    "leading_coefficient": 1,
+    "constant_term": -3,
+    "sum_of_coefficients": -2
+  },
+  {
+    "id": 67,
+    "polynomial": "-2x^2",
+    "degree": 2,
+    "coefficients": [
+      0,
+      0,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": 0,
+    "sum_of_coefficients": -2
+  },
+  {
+    "id": 68,
+    "polynomial": "2 + 2x",
+    "degree": 1,
+    "coefficients": [
+      2,
+      2
+    ],
+    "leading_coefficient": 2,
+    "constant_term": 2,
+    "sum_of_coefficients": 4
+  },
+  {
+    "id": 69,
+    "polynomial": "4 - 5x + 3x^3",
+    "degree": 3,
+    "coefficients": [
+      4,
+      -5,
+      0,
+      3
+    ],
+    "leading_coefficient": 3,
+    "constant_term": 4,
+    "sum_of_coefficients": 2
+  },
+  {
+    "id": 70,
+    "polynomial": "-2 - 4x - x^2 - x^3 - 2x^4",
+    "degree": 4,
+    "coefficients": [
+      -2,
+      -4,
+      -1,
+      -1,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": -2,
+    "sum_of_coefficients": -10
+  },
+  {
+    "id": 71,
+    "polynomial": "x - 5x^2 + 4x^3 - 3x^4",
+    "degree": 4,
+    "coefficients": [
+      0,
+      1,
+      -5,
+      4,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": 0,
+    "sum_of_coefficients": -3
+  },
+  {
+    "id": 72,
+    "polynomial": "5 - 3x - 2x^2 - 5x^3 - x^4",
+    "degree": 4,
+    "coefficients": [
+      5,
+      -3,
+      -2,
+      -5,
+      -1
+    ],
+    "leading_coefficient": -1,
+    "constant_term": 5,
+    "sum_of_coefficients": -6
+  },
+  {
+    "id": 73,
+    "polynomial": "3 - 2x - x^2",
+    "degree": 2,
+    "coefficients": [
+      3,
+      -2,
+      -1
+    ],
+    "leading_coefficient": -1,
+    "constant_term": 3,
+    "sum_of_coefficients": 0
+  },
+  {
+    "id": 74,
+    "polynomial": "2 - 2x - x^2 + 3x^3 - 3x^4",
+    "degree": 4,
+    "coefficients": [
+      2,
+      -2,
+      -1,
+      3,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": 2,
+    "sum_of_coefficients": -1
+  },
+  {
+    "id": 75,
+    "polynomial": "2 + 2x",
+    "degree": 1,
+    "coefficients": [
+      2,
+      2
+    ],
+    "leading_coefficient": 2,
+    "constant_term": 2,
+    "sum_of_coefficients": 4
+  },
+  {
+    "id": 76,
+    "polynomial": "-2 + 3x - 4x^2 + 3x^3",
+    "degree": 3,
+    "coefficients": [
+      -2,
+      3,
+      -4,
+      3
+    ],
+    "leading_coefficient": 3,
+    "constant_term": -2,
+    "sum_of_coefficients": 0
+  },
+  {
+    "id": 77,
+    "polynomial": "1 + 2x - 4x^2 - 5x^3 + 2x^4",
+    "degree": 4,
+    "coefficients": [
+      1,
+      2,
+      -4,
+      -5,
+      2
+    ],
+    "leading_coefficient": 2,
+    "constant_term": 1,
+    "sum_of_coefficients": -4
+  },
+  {
+    "id": 78,
+    "polynomial": "5 + x + 3x^2 - 2x^4",
+    "degree": 4,
+    "coefficients": [
+      5,
+      1,
+      3,
+      0,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": 5,
+    "sum_of_coefficients": 7
+  },
+  {
+    "id": 79,
+    "polynomial": "-3 - 2x - 2x^2 - 2x^3 - 3x^4",
+    "degree": 4,
+    "coefficients": [
+      -3,
+      -2,
+      -2,
+      -2,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": -3,
+    "sum_of_coefficients": -12
+  },
+  {
+    "id": 80,
+    "polynomial": "-2 - 4x + x^2",
+    "degree": 2,
+    "coefficients": [
+      -2,
+      -4,
+      1
+    ],
+    "leading_coefficient": 1,
+    "constant_term": -2,
+    "sum_of_coefficients": -5
+  },
+  {
+    "id": 81,
+    "polynomial": "-5 + x",
+    "degree": 1,
+    "coefficients": [
+      -5,
+      1
+    ],
+    "leading_coefficient": 1,
+    "constant_term": -5,
+    "sum_of_coefficients": -4
+  },
+  {
+    "id": 82,
+    "polynomial": "3 - 5x - 5x^2 - 2x^3",
+    "degree": 3,
+    "coefficients": [
+      3,
+      -5,
+      -5,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": 3,
+    "sum_of_coefficients": -9
+  },
+  {
+    "id": 83,
+    "polynomial": "-1 - 3x - x^2 - 4x^3 - x^4",
+    "degree": 4,
+    "coefficients": [
+      -1,
+      -3,
+      -1,
+      -4,
+      -1
+    ],
+    "leading_coefficient": -1,
+    "constant_term": -1,
+    "sum_of_coefficients": -10
+  },
+  {
+    "id": 84,
+    "polynomial": "-2 + 3x - 5x^2 + 3x^3",
+    "degree": 3,
+    "coefficients": [
+      -2,
+      3,
+      -5,
+      3
+    ],
+    "leading_coefficient": 3,
+    "constant_term": -2,
+    "sum_of_coefficients": -1
+  },
+  {
+    "id": 85,
+    "polynomial": "-3 + 2x - 2x^2 + x^3",
+    "degree": 3,
+    "coefficients": [
+      -3,
+      2,
+      -2,
+      1
+    ],
+    "leading_coefficient": 1,
+    "constant_term": -3,
+    "sum_of_coefficients": -2
+  },
+  {
+    "id": 86,
+    "polynomial": "3 + 5x + x^2",
+    "degree": 2,
+    "coefficients": [
+      3,
+      5,
+      1
+    ],
+    "leading_coefficient": 1,
+    "constant_term": 3,
+    "sum_of_coefficients": 9
+  },
+  {
+    "id": 87,
+    "polynomial": "3 - 2x + x^2 - 4x^3 + x^4",
+    "degree": 4,
+    "coefficients": [
+      3,
+      -2,
+      1,
+      -4,
+      1
+    ],
+    "leading_coefficient": 1,
+    "constant_term": 3,
+    "sum_of_coefficients": -1
+  },
+  {
+    "id": 88,
+    "polynomial": "-1 - 2x",
+    "degree": 1,
+    "coefficients": [
+      -1,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": -1,
+    "sum_of_coefficients": -3
+  },
+  {
+    "id": 89,
+    "polynomial": "-4 - 3x - 4x^2 + 2x^3 - x^4",
+    "degree": 4,
+    "coefficients": [
+      -4,
+      -3,
+      -4,
+      2,
+      -1
+    ],
+    "leading_coefficient": -1,
+    "constant_term": -4,
+    "sum_of_coefficients": -10
+  },
+  {
+    "id": 90,
+    "polynomial": "2 + 2x",
+    "degree": 1,
+    "coefficients": [
+      2,
+      2
+    ],
+    "leading_coefficient": 2,
+    "constant_term": 2,
+    "sum_of_coefficients": 4
+  },
+  {
+    "id": 91,
+    "polynomial": "-1 - 2x^2 + x^3",
+    "degree": 3,
+    "coefficients": [
+      -1,
+      0,
+      -2,
+      1
+    ],
+    "leading_coefficient": 1,
+    "constant_term": -1,
+    "sum_of_coefficients": -2
+  },
+  {
+    "id": 92,
+    "polynomial": "-4 + 2x",
+    "degree": 1,
+    "coefficients": [
+      -4,
+      2
+    ],
+    "leading_coefficient": 2,
+    "constant_term": -4,
+    "sum_of_coefficients": -2
+  },
+  {
+    "id": 93,
+    "polynomial": "4 + 3x",
+    "degree": 1,
+    "coefficients": [
+      4,
+      3
+    ],
+    "leading_coefficient": 3,
+    "constant_term": 4,
+    "sum_of_coefficients": 7
+  },
+  {
+    "id": 94,
+    "polynomial": "-4 + 5x - 2x^2 + x^3",
+    "degree": 3,
+    "coefficients": [
+      -4,
+      5,
+      -2,
+      1
+    ],
+    "leading_coefficient": 1,
+    "constant_term": -4,
+    "sum_of_coefficients": 0
+  },
+  {
+    "id": 95,
+    "polynomial": "1 - 3x + x^2",
+    "degree": 2,
+    "coefficients": [
+      1,
+      -3,
+      1
+    ],
+    "leading_coefficient": 1,
+    "constant_term": 1,
+    "sum_of_coefficients": -1
+  },
+  {
+    "id": 96,
+    "polynomial": "-5 - 3x - 3x^2",
+    "degree": 2,
+    "coefficients": [
+      -5,
+      -3,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": -5,
+    "sum_of_coefficients": -11
+  },
+  {
+    "id": 97,
+    "polynomial": "-5 - 4x - 3x^2 - 2x^3",
+    "degree": 3,
+    "coefficients": [
+      -5,
+      -4,
+      -3,
+      -2
+    ],
+    "leading_coefficient": -2,
+    "constant_term": -5,
+    "sum_of_coefficients": -14
+  },
+  {
+    "id": 98,
+    "polynomial": "1 - 2x + 5x^2 + x^3 - 3x^4",
+    "degree": 4,
+    "coefficients": [
+      1,
+      -2,
+      5,
+      1,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": 1,
+    "sum_of_coefficients": 2
+  },
+  {
+    "id": 99,
+    "polynomial": "-3 - 3x",
+    "degree": 1,
+    "coefficients": [
+      -3,
+      -3
+    ],
+    "leading_coefficient": -3,
+    "constant_term": -3,
+    "sum_of_coefficients": -6
+  },
+  {
+    "id": 100,
+    "polynomial": "-4 - 3x + 5x^2 - 5x^3 - x^4",
+    "degree": 4,
+    "coefficients": [
+      -4,
+      -3,
+      5,
+      -5,
+      -1
+    ],
+    "leading_coefficient": -1,
+    "constant_term": -4,
+    "sum_of_coefficients": -8
+  }
+]

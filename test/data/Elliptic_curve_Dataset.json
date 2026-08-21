@@ -1,0 +1,1352 @@
+[
+    {
+        "lmfdb_label": "414.c2",
+        "lmfdb_iso": "414.c",
+        "conductor": 414,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 1, -5180, -142189]"
+    },
+    {
+        "lmfdb_label": "689.a2",
+        "lmfdb_iso": "689.a",
+        "conductor": 689,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 0, -9, 34]"
+    },
+    {
+        "lmfdb_label": "285.c1",
+        "lmfdb_iso": "285.c",
+        "conductor": 285,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 0, -6007, -181724]"
+    },
+    {
+        "lmfdb_label": "330.e5",
+        "lmfdb_iso": "330.e",
+        "conductor": 330,
+        "rank": 0,
+        "torsion_structure": "[4]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 0, 5, 17]"
+    },
+    {
+        "lmfdb_label": "102.b2",
+        "lmfdb_iso": "102.b",
+        "conductor": 102,
+        "rank": 0,
+        "torsion_structure": "[6]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 1, -256, 1550]"
+    },
+    {
+        "lmfdb_label": "464.c2",
+        "lmfdb_iso": "464.c",
+        "conductor": 464,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, 36, 76]"
+    },
+    {
+        "lmfdb_label": "890.a1",
+        "lmfdb_iso": "890.a",
+        "conductor": 890,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 1, -109, -444]"
+    },
+    {
+        "lmfdb_label": "158.e1",
+        "lmfdb_iso": "158.e",
+        "conductor": 158,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 1, -9, 5]"
+    },
+    {
+        "lmfdb_label": "784.e3",
+        "lmfdb_iso": "784.e",
+        "conductor": 784,
+        "rank": 0,
+        "torsion_structure": "[2, 2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 0, -931, 10290]"
+    },
+    {
+        "lmfdb_label": "890.d1",
+        "lmfdb_iso": "890.d",
+        "conductor": 890,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 1, -13, 16]"
+    },
+    {
+        "lmfdb_label": "610.b2",
+        "lmfdb_iso": "610.b",
+        "conductor": 610,
+        "rank": 1,
+        "torsion_structure": "[2, 2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 0, -244, 0]"
+    },
+    {
+        "lmfdb_label": "930.h1",
+        "lmfdb_iso": "930.h",
+        "conductor": 930,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 1, -2013, -12344]"
+    },
+    {
+        "lmfdb_label": "440.d1",
+        "lmfdb_iso": "440.d",
+        "conductor": 440,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 0, -67, -226]"
+    },
+    {
+        "lmfdb_label": "544.b2",
+        "lmfdb_iso": "544.b",
+        "conductor": 544,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, -6, -8]"
+    },
+    {
+        "lmfdb_label": "291.a1",
+        "lmfdb_iso": "291.a",
+        "conductor": 291,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 1, -2174, 151262]"
+    },
+    {
+        "lmfdb_label": "171.a1",
+        "lmfdb_iso": "171.a",
+        "conductor": 171,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 1, -914, -10402]"
+    },
+    {
+        "lmfdb_label": "624.d3",
+        "lmfdb_iso": "624.d",
+        "conductor": 624,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, -7, -2]"
+    },
+    {
+        "lmfdb_label": "880.g1",
+        "lmfdb_iso": "880.g",
+        "conductor": 880,
+        "rank": 1,
+        "torsion_structure": "[4]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 0, -7547, 12986]"
+    },
+    {
+        "lmfdb_label": "960.l5",
+        "lmfdb_iso": "960.l",
+        "conductor": 960,
+        "rank": 0,
+        "torsion_structure": "[2, 2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, -641, -3105]"
+    },
+    {
+        "lmfdb_label": "700.i2",
+        "lmfdb_iso": "700.i",
+        "conductor": 700,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, 2, -3]"
+    },
+    {
+        "lmfdb_label": "635.b2",
+        "lmfdb_iso": "635.b",
+        "conductor": 635,
+        "rank": 1,
+        "torsion_structure": "[3]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 1, 5, 6]"
+    },
+    {
+        "lmfdb_label": "880.c1",
+        "lmfdb_iso": "880.c",
+        "conductor": 880,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, -1416, -20240]"
+    },
+    {
+        "lmfdb_label": "906.c2",
+        "lmfdb_iso": "906.c",
+        "conductor": 906,
+        "rank": 1,
+        "torsion_structure": "[3]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 1, -1715, 27182]"
+    },
+    {
+        "lmfdb_label": "153.d1",
+        "lmfdb_iso": "153.d",
+        "conductor": 153,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 1, -27, -61]"
+    },
+    {
+        "lmfdb_label": "897.f2",
+        "lmfdb_iso": "897.f",
+        "conductor": 897,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 1, 130884, -59725523]"
+    },
+    {
+        "lmfdb_label": "504.b3",
+        "lmfdb_iso": "504.b",
+        "conductor": 504,
+        "rank": 1,
+        "torsion_structure": "[4]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 0, -66, 205]"
+    },
+    {
+        "lmfdb_label": "786.j1",
+        "lmfdb_iso": "786.j",
+        "conductor": 786,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 1, -861, 9267]"
+    },
+    {
+        "lmfdb_label": "762.c1",
+        "lmfdb_iso": "762.c",
+        "conductor": 762,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 1, -17677, -9208]"
+    },
+    {
+        "lmfdb_label": "840.j5",
+        "lmfdb_iso": "840.j",
+        "conductor": 840,
+        "rank": 0,
+        "torsion_structure": "[4]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, -15, 90]"
+    },
+    {
+        "lmfdb_label": "435.d2",
+        "lmfdb_iso": "435.d",
+        "conductor": 435,
+        "rank": 0,
+        "torsion_structure": "[2, 2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 1, -33, 31]"
+    },
+    {
+        "lmfdb_label": "539.d1",
+        "lmfdb_iso": "539.d",
+        "conductor": 539,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 1, -2525, -45279]"
+    },
+    {
+        "lmfdb_label": "874.a1",
+        "lmfdb_iso": "874.a",
+        "conductor": 874,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 0, -13189, 575701]"
+    },
+    {
+        "lmfdb_label": "640.f2",
+        "lmfdb_iso": "640.f",
+        "conductor": 640,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 0, -2, -4]"
+    },
+    {
+        "lmfdb_label": "730.f1",
+        "lmfdb_iso": "730.f",
+        "conductor": 730,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 0, -2, -4]"
+    },
+    {
+        "lmfdb_label": "936.b1",
+        "lmfdb_iso": "936.b",
+        "conductor": 936,
+        "rank": 1,
+        "torsion_structure": "[4]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 0, -7491, 249550]"
+    },
+    {
+        "lmfdb_label": "402.a1",
+        "lmfdb_iso": "402.a",
+        "conductor": 402,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 0, -2, -12]"
+    },
+    {
+        "lmfdb_label": "106.b1",
+        "lmfdb_iso": "106.b",
+        "conductor": 106,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 0, -27, -67]"
+    },
+    {
+        "lmfdb_label": "522.h1",
+        "lmfdb_iso": "522.h",
+        "conductor": 522,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 1, -509, 4677]"
+    },
+    {
+        "lmfdb_label": "240.b8",
+        "lmfdb_iso": "240.b",
+        "conductor": 240,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, 24, -144]"
+    },
+    {
+        "lmfdb_label": "630.i3",
+        "lmfdb_iso": "630.i",
+        "conductor": 630,
+        "rank": 0,
+        "torsion_structure": "[4]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 1, -32, 51]"
+    },
+    {
+        "lmfdb_label": "110.b1",
+        "lmfdb_iso": "110.b",
+        "conductor": 110,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 1, -5940, -178685]"
+    },
+    {
+        "lmfdb_label": "574.j1",
+        "lmfdb_iso": "574.j",
+        "conductor": 574,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 1, -37, 85]"
+    },
+    {
+        "lmfdb_label": "981.b1",
+        "lmfdb_iso": "981.b",
+        "conductor": 981,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 0, 36, 81]"
+    },
+    {
+        "lmfdb_label": "120.a4",
+        "lmfdb_iso": "120.a",
+        "conductor": 120,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, 4, 0]"
+    },
+    {
+        "lmfdb_label": "660.c3",
+        "lmfdb_iso": "660.c",
+        "conductor": 660,
+        "rank": 1,
+        "torsion_structure": "[6]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, -41, 120]"
+    },
+    {
+        "lmfdb_label": "144.a1",
+        "lmfdb_iso": "144.a",
+        "conductor": 144,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": -12,
+        "ainvs": "[0, 0, 0, -135, 594]"
+    },
+    {
+        "lmfdb_label": "402.b1",
+        "lmfdb_iso": "402.b",
+        "conductor": 402,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 1, -10255, -438718]"
+    },
+    {
+        "lmfdb_label": "646.a2",
+        "lmfdb_iso": "646.a",
+        "conductor": 646,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 0, -85, -867]"
+    },
+    {
+        "lmfdb_label": "792.g1",
+        "lmfdb_iso": "792.g",
+        "conductor": 792,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 0, -36, -108]"
+    },
+    {
+        "lmfdb_label": "715.a1",
+        "lmfdb_iso": "715.a",
+        "conductor": 715,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 1, 43, -2088]"
+    },
+    {
+        "lmfdb_label": "819.f1",
+        "lmfdb_iso": "819.f",
+        "conductor": 819,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 1, 9, -7]"
+    },
+    {
+        "lmfdb_label": "973.a2",
+        "lmfdb_iso": "973.a",
+        "conductor": 973,
+        "rank": 1,
+        "torsion_structure": "[3]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 1, -253, 441]"
+    },
+    {
+        "lmfdb_label": "629.c1",
+        "lmfdb_iso": "629.c",
+        "conductor": 629,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 0, 11, -18]"
+    },
+    {
+        "lmfdb_label": "210.b3",
+        "lmfdb_iso": "210.b",
+        "conductor": 210,
+        "rank": 0,
+        "torsion_structure": "[4]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 1, -20353, -1443724]"
+    },
+    {
+        "lmfdb_label": "910.g3",
+        "lmfdb_iso": "910.g",
+        "conductor": 910,
+        "rank": 0,
+        "torsion_structure": "[6]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 0, -20356, 876120]"
+    },
+    {
+        "lmfdb_label": "270.b1",
+        "lmfdb_iso": "270.b",
+        "conductor": 270,
+        "rank": 0,
+        "torsion_structure": "[3]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 0, -159, 813]"
+    },
+    {
+        "lmfdb_label": "906.a1",
+        "lmfdb_iso": "906.a",
+        "conductor": 906,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 0, 3395, -211907]"
+    },
+    {
+        "lmfdb_label": "885.d1",
+        "lmfdb_iso": "885.d",
+        "conductor": 885,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 1, -126, 587]"
+    },
+    {
+        "lmfdb_label": "768.c2",
+        "lmfdb_iso": "768.c",
+        "conductor": 768,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, -3, -9]"
+    },
+    {
+        "lmfdb_label": "882.i1",
+        "lmfdb_iso": "882.i",
+        "conductor": 882,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 1, -1204160, -508296477]"
+    },
+    {
+        "lmfdb_label": "608.c1",
+        "lmfdb_iso": "608.c",
+        "conductor": 608,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 0, -8, -16]"
+    },
+    {
+        "lmfdb_label": "615.a1",
+        "lmfdb_iso": "615.a",
+        "conductor": 615,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 1, -6, -6]"
+    },
+    {
+        "lmfdb_label": "252.a2",
+        "lmfdb_iso": "252.a",
+        "conductor": 252,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 0, -12, 65]"
+    },
+    {
+        "lmfdb_label": "784.e2",
+        "lmfdb_iso": "784.e",
+        "conductor": 784,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 0, -2891, -47334]"
+    },
+    {
+        "lmfdb_label": "240.d3",
+        "lmfdb_iso": "240.d",
+        "conductor": 240,
+        "rank": 0,
+        "torsion_structure": "[4]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, -1760, 52788]"
+    },
+    {
+        "lmfdb_label": "609.a1",
+        "lmfdb_iso": "609.a",
+        "conductor": 609,
+        "rank": 1,
+        "torsion_structure": "[4]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 1, -204624, 35542050]"
+    },
+    {
+        "lmfdb_label": "462.c3",
+        "lmfdb_iso": "462.c",
+        "conductor": 462,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 0, -1444, 410800]"
+    },
+    {
+        "lmfdb_label": "960.j1",
+        "lmfdb_iso": "960.j",
+        "conductor": 960,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, -12801, 553215]"
+    },
+    {
+        "lmfdb_label": "714.f6",
+        "lmfdb_iso": "714.f",
+        "conductor": 714,
+        "rank": 0,
+        "torsion_structure": "[4]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 1, 349916, 20936165]"
+    },
+    {
+        "lmfdb_label": "784.a1",
+        "lmfdb_iso": "784.a",
+        "conductor": 784,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 0, -343, 2401]"
+    },
+    {
+        "lmfdb_label": "876.b1",
+        "lmfdb_iso": "876.b",
+        "conductor": 876,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, -61, 191]"
+    },
+    {
+        "lmfdb_label": "774.i1",
+        "lmfdb_iso": "774.i",
+        "conductor": 774,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 1, -131, -601]"
+    },
+    {
+        "lmfdb_label": "768.f1",
+        "lmfdb_iso": "768.f",
+        "conductor": 768,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, -93, 315]"
+    },
+    {
+        "lmfdb_label": "768.g1",
+        "lmfdb_iso": "768.g",
+        "conductor": 768,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, -23, -51]"
+    },
+    {
+        "lmfdb_label": "720.j1",
+        "lmfdb_iso": "720.j",
+        "conductor": 720,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 0, -768027, -259067446]"
+    },
+    {
+        "lmfdb_label": "594.g1",
+        "lmfdb_iso": "594.g",
+        "conductor": 594,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 1, -164, -809]"
+    },
+    {
+        "lmfdb_label": "238.e2",
+        "lmfdb_iso": "238.e",
+        "conductor": 238,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 1, -18, -37]"
+    },
+    {
+        "lmfdb_label": "975.i1",
+        "lmfdb_iso": "975.i",
+        "conductor": 975,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 0, -3250000, -2256492875]"
+    },
+    {
+        "lmfdb_label": "325.e1",
+        "lmfdb_iso": "325.e",
+        "conductor": 325,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 1, -2458, 42369]"
+    },
+    {
+        "lmfdb_label": "490.c1",
+        "lmfdb_iso": "490.c",
+        "conductor": 490,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 1, -1594, -26708]"
+    },
+    {
+        "lmfdb_label": "850.e3",
+        "lmfdb_iso": "850.e",
+        "conductor": 850,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 0, -1075, 13125]"
+    },
+    {
+        "lmfdb_label": "965.a2",
+        "lmfdb_iso": "965.a",
+        "conductor": 965,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 0, -95, 450]"
+    },
+    {
+        "lmfdb_label": "530.b2",
+        "lmfdb_iso": "530.b",
+        "conductor": 530,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 0, 16, -12]"
+    },
+    {
+        "lmfdb_label": "435.c1",
+        "lmfdb_iso": "435.c",
+        "conductor": 435,
+        "rank": 0,
+        "torsion_structure": "[3]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 1, -11, 11]"
+    },
+    {
+        "lmfdb_label": "976.c1",
+        "lmfdb_iso": "976.c",
+        "conductor": 976,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, 40, -16]"
+    },
+    {
+        "lmfdb_label": "570.e3",
+        "lmfdb_iso": "570.e",
+        "conductor": 570,
+        "rank": 1,
+        "torsion_structure": "[2, 2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 1, -68, -142]"
+    },
+    {
+        "lmfdb_label": "471.a1",
+        "lmfdb_iso": "471.a",
+        "conductor": 471,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 1, 1, 2]"
+    },
+    {
+        "lmfdb_label": "345.e4",
+        "lmfdb_iso": "345.e",
+        "conductor": 345,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 1, 456, 2401]"
+    },
+    {
+        "lmfdb_label": "588.f1",
+        "lmfdb_iso": "588.f",
+        "conductor": 588,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, 6403, 44463]"
+    },
+    {
+        "lmfdb_label": "680.a1",
+        "lmfdb_iso": "680.a",
+        "conductor": 680,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, 0, -20]"
+    },
+    {
+        "lmfdb_label": "592.b1",
+        "lmfdb_iso": "592.b",
+        "conductor": 592,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, -5, -1]"
+    },
+    {
+        "lmfdb_label": "960.h1",
+        "lmfdb_iso": "960.h",
+        "conductor": 960,
+        "rank": 0,
+        "torsion_structure": "[4]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, -1985, 19617]"
+    },
+    {
+        "lmfdb_label": "840.f2",
+        "lmfdb_iso": "840.f",
+        "conductor": 840,
+        "rank": 0,
+        "torsion_structure": "[2, 2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, -1720, -16100]"
+    },
+    {
+        "lmfdb_label": "116.c1",
+        "lmfdb_iso": "116.c",
+        "conductor": 116,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, -9, 14]"
+    },
+    {
+        "lmfdb_label": "816.c2",
+        "lmfdb_iso": "816.c",
+        "conductor": 816,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, -8, 336]"
+    },
+    {
+        "lmfdb_label": "390.d1",
+        "lmfdb_iso": "390.d",
+        "conductor": 390,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 1, -872578, -313799212]"
+    },
+    {
+        "lmfdb_label": "192.b5",
+        "lmfdb_iso": "192.b",
+        "conductor": 192,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, 3, -3]"
+    },
+    {
+        "lmfdb_label": "704.c2",
+        "lmfdb_iso": "704.c",
+        "conductor": 704,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, -41, 199]"
+    },
+    {
+        "lmfdb_label": "462.d2",
+        "lmfdb_iso": "462.d",
+        "conductor": 462,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 1, -1676, 5058506]"
+    },
+    {
+        "lmfdb_label": "700.h2",
+        "lmfdb_iso": "700.h",
+        "conductor": 700,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 0, -55, -450]"
+    },
+    {
+        "lmfdb_label": "759.a1",
+        "lmfdb_iso": "759.a",
+        "conductor": 759,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 1, -1238, -17152]"
+    },
+    {
+        "lmfdb_label": "147.c1",
+        "lmfdb_iso": "147.c",
+        "conductor": 147,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 1, -44704, -3655907]"
+    },
+    {
+        "lmfdb_label": "672.a2",
+        "lmfdb_iso": "672.a",
+        "conductor": 672,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, 210, -1764]"
+    },
+    {
+        "lmfdb_label": "209.a1",
+        "lmfdb_iso": "209.a",
+        "conductor": 209,
+        "rank": 1,
+        "torsion_structure": "[3]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 1, -27, 55]"
+    },
+    {
+        "lmfdb_label": "672.b3",
+        "lmfdb_iso": "672.b",
+        "conductor": 672,
+        "rank": 1,
+        "torsion_structure": "[2, 2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, -14, 24]"
+    },
+    {
+        "lmfdb_label": "136.a1",
+        "lmfdb_iso": "136.a",
+        "conductor": 136,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, -4, 0]"
+    },
+    {
+        "lmfdb_label": "770.f3",
+        "lmfdb_iso": "770.f",
+        "conductor": 770,
+        "rank": 1,
+        "torsion_structure": "[6]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 0, -56, 3136]"
+    },
+    {
+        "lmfdb_label": "630.f8",
+        "lmfdb_iso": "630.f",
+        "conductor": 630,
+        "rank": 0,
+        "torsion_structure": "[6]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 0, 6561, 4778595]"
+    },
+    {
+        "lmfdb_label": "848.f2",
+        "lmfdb_iso": "848.f",
+        "conductor": 848,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, 16, -64]"
+    },
+    {
+        "lmfdb_label": "258.g2",
+        "lmfdb_iso": "258.g",
+        "conductor": 258,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 0, 8, 2]"
+    },
+    {
+        "lmfdb_label": "540.a1",
+        "lmfdb_iso": "540.a",
+        "conductor": 540,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 0, -513, -4563]"
+    },
+    {
+        "lmfdb_label": "897.c2",
+        "lmfdb_iso": "897.c",
+        "conductor": 897,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 0, 0, -9]"
+    },
+    {
+        "lmfdb_label": "360.a2",
+        "lmfdb_iso": "360.a",
+        "conductor": 360,
+        "rank": 1,
+        "torsion_structure": "[2, 2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 0, -63, 162]"
+    },
+    {
+        "lmfdb_label": "777.f4",
+        "lmfdb_iso": "777.f",
+        "conductor": 777,
+        "rank": 0,
+        "torsion_structure": "[4]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 0, 84, 105]"
+    },
+    {
+        "lmfdb_label": "591.a1",
+        "lmfdb_iso": "591.a",
+        "conductor": 591,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 1, -3, 2]"
+    },
+    {
+        "lmfdb_label": "600.h1",
+        "lmfdb_iso": "600.h",
+        "conductor": 600,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, -9608, -365712]"
+    },
+    {
+        "lmfdb_label": "848.b1",
+        "lmfdb_iso": "848.b",
+        "conductor": 848,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, -17, 22]"
+    },
+    {
+        "lmfdb_label": "802.a2",
+        "lmfdb_iso": "802.a",
+        "conductor": 802,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 0, -9, -11]"
+    },
+    {
+        "lmfdb_label": "976.b1",
+        "lmfdb_iso": "976.b",
+        "conductor": 976,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, -32, -64]"
+    },
+    {
+        "lmfdb_label": "210.d4",
+        "lmfdb_iso": "210.d",
+        "conductor": 210,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 0, -2681, -53655]"
+    },
+    {
+        "lmfdb_label": "690.c1",
+        "lmfdb_iso": "690.c",
+        "conductor": 690,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 0, -3172057, -2148591611]"
+    },
+    {
+        "lmfdb_label": "427.a1",
+        "lmfdb_iso": "427.a",
+        "conductor": 427,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 0, -28, -59]"
+    },
+    {
+        "lmfdb_label": "246.f1",
+        "lmfdb_iso": "246.f",
+        "conductor": 246,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 0, -439, -3577]"
+    },
+    {
+        "lmfdb_label": "980.i1",
+        "lmfdb_iso": "980.i",
+        "conductor": 980,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 0, -7, 14]"
+    },
+    {
+        "lmfdb_label": "525.c2",
+        "lmfdb_iso": "525.c",
+        "conductor": 525,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 0, 175, 12750]"
+    },
+    {
+        "lmfdb_label": "904.a2",
+        "lmfdb_iso": "904.a",
+        "conductor": 904,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 0, 5, 246]"
+    },
+    {
+        "lmfdb_label": "595.c1",
+        "lmfdb_iso": "595.c",
+        "conductor": 595,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 1, 0, 1]"
+    },
+    {
+        "lmfdb_label": "768.a3",
+        "lmfdb_iso": "768.a",
+        "conductor": 768,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, -29, 69]"
+    },
+    {
+        "lmfdb_label": "675.d2",
+        "lmfdb_iso": "675.d",
+        "conductor": 675,
+        "rank": 0,
+        "torsion_structure": "[3]",
+        "cm_discriminant": -3,
+        "ainvs": "[0, 0, 1, 0, 6]"
+    },
+    {
+        "lmfdb_label": "888.c2",
+        "lmfdb_iso": "888.c",
+        "conductor": 888,
+        "rank": 1,
+        "torsion_structure": "[2, 2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, -444, -3744]"
+    },
+    {
+        "lmfdb_label": "630.h7",
+        "lmfdb_iso": "630.h",
+        "conductor": 630,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 1, -4478, -114163]"
+    },
+    {
+        "lmfdb_label": "690.c2",
+        "lmfdb_iso": "690.c",
+        "conductor": 690,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 0, -22777, -90852059]"
+    },
+    {
+        "lmfdb_label": "448.b2",
+        "lmfdb_iso": "448.b",
+        "conductor": 448,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, 7, 7]"
+    },
+    {
+        "lmfdb_label": "390.f4",
+        "lmfdb_iso": "390.f",
+        "conductor": 390,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 1, 1, -115, -13093]"
+    },
+    {
+        "lmfdb_label": "545.a4",
+        "lmfdb_iso": "545.a",
+        "conductor": 545,
+        "rank": 1,
+        "torsion_structure": "[4]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 0, 256, 7625]"
+    },
+    {
+        "lmfdb_label": "846.c2",
+        "lmfdb_iso": "846.c",
+        "conductor": 846,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 0, -135, -707]"
+    },
+    {
+        "lmfdb_label": "994.g1",
+        "lmfdb_iso": "994.g",
+        "conductor": 994,
+        "rank": 1,
+        "torsion_structure": "[4]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 1, -1516, 23091]"
+    },
+    {
+        "lmfdb_label": "448.a6",
+        "lmfdb_iso": "448.a",
+        "conductor": 448,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, 287, 3231]"
+    },
+    {
+        "lmfdb_label": "735.d1",
+        "lmfdb_iso": "735.d",
+        "conductor": 735,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 1, -205, 1203]"
+    },
+    {
+        "lmfdb_label": "851.a1",
+        "lmfdb_iso": "851.a",
+        "conductor": 851,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 1, -28, 48]"
+    },
+    {
+        "lmfdb_label": "680.c1",
+        "lmfdb_iso": "680.c",
+        "conductor": 680,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 0, -3540, -79900]"
+    },
+    {
+        "lmfdb_label": "890.b1",
+        "lmfdb_iso": "890.b",
+        "conductor": 890,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 1, -1138, -14844]"
+    },
+    {
+        "lmfdb_label": "888.d1",
+        "lmfdb_iso": "888.d",
+        "conductor": 888,
+        "rank": 0,
+        "torsion_structure": "[2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, -11, -18]"
+    },
+    {
+        "lmfdb_label": "906.h1",
+        "lmfdb_iso": "906.h",
+        "conductor": 906,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, 0, 0, -152, 576]"
+    },
+    {
+        "lmfdb_label": "264.b3",
+        "lmfdb_iso": "264.b",
+        "conductor": 264,
+        "rank": 0,
+        "torsion_structure": "[2, 2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 1, 0, -44, 96]"
+    },
+    {
+        "lmfdb_label": "936.h2",
+        "lmfdb_iso": "936.h",
+        "conductor": 936,
+        "rank": 0,
+        "torsion_structure": "[2, 2]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, 0, 0, -399, -1870]"
+    },
+    {
+        "lmfdb_label": "130.b2",
+        "lmfdb_iso": "130.b",
+        "conductor": 130,
+        "rank": 0,
+        "torsion_structure": "[2, 2]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 1, -87, -289]"
+    },
+    {
+        "lmfdb_label": "742.a1",
+        "lmfdb_iso": "742.a",
+        "conductor": 742,
+        "rank": 1,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[1, -1, 0, -5, 7]"
+    },
+    {
+        "lmfdb_label": "987.d1",
+        "lmfdb_iso": "987.d",
+        "conductor": 987,
+        "rank": 0,
+        "torsion_structure": "[]",
+        "cm_discriminant": 0,
+        "ainvs": "[0, -1, 1, -208, 1227]"
+    },
+    {
+        "lmfdb_label": "288.a2",
+        "lmfdb_iso": "288.a",
+        "conductor": 288,
+        "rank": 1,
+        "torsion_structure": "[2]",
+        "cm_discriminant": -4,
+        "ainvs": "[0, 0, 0, 3, 0]"
+    }
+]
