@@ -2,7 +2,7 @@ package info.kwarc.p.compiler
 
 import info.kwarc.p._
 import info.kwarc.p.compiler.Condition._
-import info.kwarc.p.compiler.IRGenerator.{INLINED_EXPRESSIONS, INSTANCE_ARGUMENT_NAME, STORED_EXPRESSIONS, TOP_LEVEL_STRUCT_NAME}
+import info.kwarc.p.compiler.IRGenerator.{INLINED_DECLARATIONS, INSTANCE_ARGUMENT_NAME, STORED_DECLARATIONS, TOP_LEVEL_STRUCT_NAME}
 import info.kwarc.p.compiler.Operation._
 
 import scala.collection.mutable
@@ -10,9 +10,10 @@ import scala.collection.mutable
 object IRGenerator {
   private val TOP_LEVEL_STRUCT_NAME = "__top_level"
   private val INSTANCE_ARGUMENT_NAME = "__instance"
-  private val NEEDS_STORING: ExprDecl => Boolean = d => d.dfO.isEmpty || d.modifiers.mutable
-  private val STORED_EXPRESSIONS: PartialFunction[Declaration, ExprDecl] = { case d: ExprDecl if NEEDS_STORING(d) => d }
-  private val INLINED_EXPRESSIONS: PartialFunction[Declaration, ExprDecl] = { case d: ExprDecl if !NEEDS_STORING(d) => d }
+  private val NEEDS_STORING_DECLARATION: ExprDecl => Boolean = d => d.dfO.isEmpty || d.modifiers.mutable
+  private val IGNORED_DECLARATION: ExprDecl => Boolean = d => d.tp match { case _: ProofType => true case _ => false }
+  private val STORED_DECLARATIONS: PartialFunction[Declaration, ExprDecl] = { case d: ExprDecl if NEEDS_STORING_DECLARATION(d) && !IGNORED_DECLARATION(d) => d }
+  private val INLINED_DECLARATIONS: PartialFunction[Declaration, ExprDecl] = { case d: ExprDecl if !NEEDS_STORING_DECLARATION(d) && !IGNORED_DECLARATION(d) => d }
 
   def run(p: Program): IrProgram = {
     val ig = new IRGenerator()
@@ -285,7 +286,7 @@ private class IRGenerator {
     case Instance(concreteTheory) =>
       val gcI = gc.enter(concreteTheory)
       val (theoryPath, theory) = currentTheory()(gcI)
-      val storedExprDecls = theory.decls.collect(STORED_EXPRESSIONS)
+      val storedExprDecls = theory.decls.collect(STORED_DECLARATIONS)
 
       val struct = IrStruct(theoryPath.toString, storedExprDecls.map { d => llvmType(d.tp) })
       val size = IrVar(IrIntType.I64, fresh(s"${theoryPath.toString}_size"))
@@ -392,7 +393,7 @@ private class IRGenerator {
       frame.region match {
         case Some(structPtr) =>
           val (theoryPath, theory) = currentTheory()
-          val storedExprDecls = theory.decls.collect(STORED_EXPRESSIONS)
+          val storedExprDecls = theory.decls.collect(STORED_DECLARATIONS)
           val struct = IrStruct(theoryPath.toString, storedExprDecls.map { d => llvmType(d.tp) })
           val fieldIndex = storedExprDecls.indexWhere(_.name == n)
           storedExprDecls(fieldIndex).tp match {
@@ -537,11 +538,11 @@ private class IRGenerator {
     case d => compileDeclaration(d)
     }
 
-    val storedExprDecls = module.df.decls.collect(STORED_EXPRESSIONS)
+    val storedExprDecls = module.df.decls.collect(STORED_DECLARATIONS)
     val struct = IrStruct(moduleName, storedExprDecls.map { d => llvmType(d.tp) })
-    structs += struct
+    if (module.closed) structs += struct
 
-    module.df.decls.collect(INLINED_EXPRESSIONS).foreach { expr =>
+    module.df.decls.collect(INLINED_DECLARATIONS).foreach { expr =>
       val region = if (module.closed) Some(IrVar(IrPtrType(struct), fresh(INSTANCE_ARGUMENT_NAME))) else None
       val re = RegionalEnvironment(module.toString, region)
       inFrame(re) {
@@ -562,7 +563,7 @@ private class IRGenerator {
 
   private def loadClosedRef(r: ClosedRef)(implicit gc: GlobalContext): IrValue = {
     val (theoryPath, theory) = currentTheory()
-    val storedExprDecls = theory.decls.collect(STORED_EXPRESSIONS)
+    val storedExprDecls = theory.decls.collect(STORED_DECLARATIONS)
     val struct = IrStruct(theoryPath.toString, storedExprDecls.map(d => llvmType(d.tp)))
 
     frame.region match {
@@ -570,7 +571,7 @@ private class IRGenerator {
         val fieldIndex = storedExprDecls.indexWhere(_.name == r.name)
         if (fieldIndex == -1) {
           // the field is not stored in the struct and needs to be inlined
-          val exprDecl = theory.decls.collect(INLINED_EXPRESSIONS).find(_.name == r.name).get
+          val exprDecl = theory.decls.collect(INLINED_DECLARATIONS).find(_.name == r.name).get
           return applyField(IrFunctionRef(IrDeclFun(s"${struct.name}_${r.name}", IrFunType(llvmType(exprDecl.tp), List(structPtr.tp)))), List(structPtr))
         }
         val exprDeclTp = storedExprDecls(fieldIndex).tp
@@ -604,7 +605,7 @@ private class IRGenerator {
 
     val module = gc.lookupGlobal(modulePath).get.asInstanceOf[Module]
 
-    val exprDecl = module.decls.collect(INLINED_EXPRESSIONS).find(_.name == path.name).get
+    val exprDecl = module.decls.collect(INLINED_DECLARATIONS).find(_.name == path.name).get
     val moduleName = if (modulePath.isRoot) TOP_LEVEL_STRUCT_NAME else modulePath.toString
     applyField(IrFunctionRef(IrDeclFun(s"${moduleName}_${path.name}", IrFunType(llvmType(exprDecl.tp), Nil))), Nil)
   }
@@ -687,7 +688,9 @@ private class IRGenerator {
   private def currentTheory()(implicit gc: GlobalContext): (Path, Module) = {
     val theoryPath = mainTheoryPath(gc.theory)
     // We want to expand all types that are already declared in the theory
-    (theoryPath, TypeExpansion(GlobalContext(gc.voc), gc.lookupGlobal(theoryPath).get).asInstanceOf[Module])
+    val module = gc.lookupGlobal(theoryPath).get.asInstanceOf[Module]
+
+    (theoryPath, module.copy(df = TheoryValue(module.decls.map{d => TypeExpansion(gc, d)})))
   }
 
   private def inFrame[A](f: RegionalEnvironment)(a: => A) = {

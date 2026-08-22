@@ -6,7 +6,3 @@ theory A {
 }
 
 inst = A { }
-
-test = {
-  inst.inc()
-}

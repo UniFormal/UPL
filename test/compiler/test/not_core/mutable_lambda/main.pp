@@ -1,1 +1,1 @@
-main: inst.a
+main: {inst.inc(); inst.a}
