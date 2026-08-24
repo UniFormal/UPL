@@ -247,7 +247,7 @@ case class IrFunctionRef(fun: IrFunctionLike) extends IrGlobalValue {
   }
 }
 
-case class IrConst(override val tp: IrType, value: Long) extends IrConstant {
+case class IrConst(override val tp: IrType, value: Any) extends IrConstant {
   override def render(): String = s"$value"
 }
 
@@ -255,6 +255,8 @@ object IrConst {
   def apply(value: Long) = new IrConst(IrIntType.I64, value)
 
   def apply(value: Boolean) = new IrConst(IrIntType.I1, if (value) 1 else 0)
+
+  def apply(value: Double) = new IrConst(IrFloat64(), value)
 
   //def apply(value: String) = new IrConst(IrConstChar, value)
 }

@@ -96,7 +96,7 @@ private class IRGenerator {
   private def compileExpression(exp: Expression)(implicit gc: GlobalContext): IrValue = exp match { // TODO Currently all numbers are
     // treated as i64 integers.
     case NumberValue(_, re, _) => re match {
-      case ApproxReal(value) => IrConst(value.toInt)
+      case ApproxReal(value) => IrConst(value)
       case Rat(enu, deno) => IrConst(enu.toInt / deno.toInt)
     } // Booleans are represented using i1 integers.
     case BoolValue(value) => IrConst(value)
@@ -200,13 +200,16 @@ private class IRGenerator {
           } else if (numArgs == 1) {
             compileExpression(args(0))
           } else {
+
+            val isFloat = (args(0).isInstanceOf[NumberValue] && args(0).asInstanceOf[NumberValue].tp == NumberType.Float)
+
             val irOp = inf match {
-              case Plus => IADD
-              case Minus => ISUB
-              case Times => IMUL
-              case Divide => IDIV
-              case _ => ???
-            }
+                  case Plus => if (isFloat) FADD else IADD
+                  case Minus => if (isFloat) FSUB else ISUB
+                  case Times => if (isFloat) FMUL else IMUL
+                  case Divide => if (isFloat) FDIV else IDIV
+                  case _ => ???
+                }
 
             val (left, right) = if (numArgs > 2) {
               if (inf.assoc == RightAssociative) {
