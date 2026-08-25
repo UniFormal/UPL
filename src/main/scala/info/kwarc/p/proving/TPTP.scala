@@ -1,5 +1,3 @@
-//> using dep org.scala-lang.modules::scala-parser-combinators:2.4.0
-
 package info.kwarc.p.proving
 
 import scala.util.parsing.combinator._
@@ -15,6 +13,7 @@ case class TPTPFile(decls: List[TPTPDecl]) extends TPTP {
 case class TPTPDecl(id: String, role: String, formula: TPTPFormula) extends TPTP {
   override def toString = s"thf($id,$role,$formula)."
 }
+
 
 case class TPTPContext(decls: List[(String,TPTPFormula)]) extends TPTP
     {
@@ -53,7 +52,7 @@ case class Quantifier(univ: Boolean, vars: TPTPContext, body: TPTPFormula) exten
   }
 }
 
-case class Lambda(vars: TPTPContext, body: TPTPFormula) extends TPTPFormula {
+case class LambdaTPTP(vars: TPTPContext, body: TPTPFormula) extends TPTPFormula {
     override def toString = s"(^ [$vars] : $body)"
 }
 
@@ -74,7 +73,7 @@ case class Disjunction( left: TPTPFormula, right: TPTPFormula) extends TPTPFormu
   override def toString = s"($left | $right)"
 }
 
-case class Equality(isEqual: Boolean, L: TPTPFormula, R: TPTPFormula) extends TPTPFormula {
+case class TPTPEquality(isEqual: Boolean, L: TPTPFormula, R: TPTPFormula) extends TPTPFormula {
     override def toString = {
         val e = if (isEqual) "=" else "!="
         s"($L $e $R)"
@@ -100,7 +99,7 @@ case class Xor(left: TPTPFormula, right: TPTPFormula) extends TPTPFormula {
     override def toString: String = s"($left <~> $right)"
 }
 
-case class IfThenElse(cond: TPTPFormula, thn: TPTPFormula, els: TPTPFormula) extends TPTPFormula {
+case class TPTPIfThenElse(cond: TPTPFormula, thn: TPTPFormula, els: TPTPFormula) extends TPTPFormula {
     override def toString: String = s"$$ite($cond, $thn, $els)"
 }
 
@@ -111,6 +110,7 @@ case class TypeQuantifier(vars: TPTPContext, body: TPTPFormula) extends TPTPForm
 //Missing UPL Syntax Knowledge for more precise Translation and search
 //Placeholder/Logical search 
 
+/*
 class UPLParser extends RegexParsers {
 
     def formula: Parser[TPTPFormula] = 
@@ -234,4 +234,4 @@ object Main extends App {
     thf(c2_type,type,c2 : $i).
     thf(c2_def,axiom,(c2 = 0)).
   */
-}
+  */
