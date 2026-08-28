@@ -113,12 +113,6 @@ case class IRBranch(dest: String) extends IrInstr {
   override def render() = s"br label %$dest"
 }
 
-case class IrPhi(result: IrValue, values: List[(IrValue, String)]) extends IrInstr {
-  override def render() = s"${result.render()} = phi ${
-    result.tp.render()
-  } ${values.map(v => s"[ ${v._1.render()}, %${v._2} ]").mkString(", ")}"
-}
-
 case class IrGetElement(result: IrVar, struct: IrStruct, ptr: IrValue, vals: List[Int]) extends IrInstr {
   override def render(): String = s"${result.render()} = getelementptr ${struct.render()}, ${
     ptr.renderWithType()
@@ -127,11 +121,7 @@ case class IrGetElement(result: IrVar, struct: IrStruct, ptr: IrValue, vals: Lis
 
 case class IrComputeSize(result: IrVar, tp: IrType) extends IrInstr {
   override def render(): String = {
-    val pointerType = tp match {
-      case _: IrPtrType => "ptr"
-      case _ => s"${tp.render()}*"
-    }
-    s"${result.render()} = ptrtoint $pointerType getelementptr (${tp.render()}, $pointerType null, i32 1) to ${result.tp.render()}"
+    s"${result.render()} = ptrtoint ptr getelementptr (${tp.render()}, ptr null, i32 1) to ${result.tp.render()}"
   }
 }
 
@@ -214,10 +204,10 @@ case class IrVar(override val tp: IrType, name: String) extends IrSSAValue {
   override def render(): String = s"%$name"
 }
 
-case class IrNullValue() extends IrValue {
+object IrNullValue extends IrValue {
 
   override def render(): String = "null"
-  override def tp: IrType = IrPtrType(null)
+  override def tp: IrType = IrPtrType(IrUnknownType)
 }
 
 sealed trait IrConstant extends IrValue
@@ -301,7 +291,7 @@ case class IrBuiltinRead()
 
     val cPtr = IrAlloca(IrVar(IrPtrType(null), "line"))
     val size = IrAlloca(IrVar(IrPtrType(null), "size"))
-    val s1 = IrStore(IrNullValue(), cPtr.result)
+    val s1 = IrStore(IrNullValue, cPtr.result)
     val s2 = IrStore(IrConst(IrIntType.I64, 0), size.result)
     val stdin = IrVar(IrPtrType(IrPtrType(null)), "stdin")
     val l1 = IrLoad(stdin, SpecialFunctions.stdin)

@@ -30,6 +30,7 @@ object LLVMCompiler {
     val proc = Process(
       Seq(
         "clang",
+        "compiler/runtime.c",
         "-x",
         "ir",
         "-",
