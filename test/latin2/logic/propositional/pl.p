@@ -6,7 +6,7 @@
 module pl {
     theory Equivalence {
         include .concepts.Propositions
-        equiv : (prop, prop) -> prop # infix ⇔
+        equiv : (prop, prop) -> prop # infix-right ⇔
     }
 
     theory EquivalenceNDI {
@@ -92,7 +92,7 @@ module pl {
 
     theory Disjunction {
         include .concepts.Propositions
-        or: (prop, prop) -> prop # infix ∨
+        or: (prop, prop) -> prop # infix-right ∨
     }
 
     theory DisjunctionNDI {
@@ -116,7 +116,7 @@ module pl {
 
     theory Conjunction {
         include .concepts.Propositions
-        and: (prop, prop) -> prop # infix ∧
+        and: (prop, prop) -> prop # infix-right ∧
     }
 
     theory ConjunctionNDI {
@@ -140,7 +140,7 @@ module pl {
 
     theory Implication {
         include .concepts.Propositions
-        impl : (prop, prop) -> prop # infix ⇒
+        impl : (prop, prop) -> prop # infix-right ⇒
     }
 
     theory ImplicationNDI {

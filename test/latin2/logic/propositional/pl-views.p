@@ -76,38 +76,38 @@ module pl_views {
         include .pl.Implication
     }
 
-    DisjNegImpl: NegationImplication -> .pl.Disjunction = ni -> .pl.Disjunction {
-        include .concepts.Propositions
-        or = (a,b) -> ni.impl(ni.not(a), b)
-    }
+    // DisjNegImpl: NegationImplication -> .pl.Disjunction = ni -> .pl.Disjunction {
+    //     include .concepts.Propositions
+    //     or = (a,b) -> ni.impl(ni.not(a), b)
+    // }
 
-    ImplNegDisj: NegationDisjunction -> .pl.Implication = nd -> .pl.Implication {
-        include .concepts.Propositions
-        impl = (a,b) -> nd.or(nd.not(a), b)
-    }
+    // ImplNegDisj: NegationDisjunction -> .pl.Implication = nd -> .pl.Implication {
+    //     include .concepts.Propositions
+    //     impl = (a,b) -> nd.or(nd.not(a), b)
+    // }
 
-    ImplNegConj: NegationConjunction -> .pl.Implication = nc -> .pl.Implication {
-        include .concepts.Propositions
-        impl = (a,b) -> nc.not(nc.and(a, nc.not(b)))
-    }
+    // ImplNegConj: NegationConjunction -> .pl.Implication = nc -> .pl.Implication {
+    //     include .concepts.Propositions
+    //     impl = (a,b) -> nc.not(nc.and(a, nc.not(b)))
+    // }
 
     theory ImplicationConjunction {
         include .pl.Implication
         include .pl.Conjunction
     }
 
-    EquivImplConj: ImplicationConjunction -> .pl.Equivalence = ic -> .pl.Equivalence {
-        include .concepts.Propositions
-        equiv = (a,b) -> ic.and(ic.impl(a,b), nc.impl(b,a))
-    }
+    // EquivImplConj: ImplicationConjunction -> .pl.Equivalence = ic -> .pl.Equivalence {
+    //     include .concepts.Propositions
+    //     equiv = (a,b) -> ic.and(ic.impl(a,b), nc.impl(b,a))
+    // }
 
     theory ImplicationFalsity {
         include .pl.Implication
         include .pl.Falsity
     }
 
-    NegImplFalsity: ImplicationFalsity -> .pl.Negation = imf -> .pl.Negation {
-        include .concepts.Propositions
-        not = (a) -> imf.impl(a, imf.falsity)
-    }
+    // NegImplFalsity: ImplicationFalsity -> .pl.Negation = imf -> .pl.Negation {
+    //     include .concepts.Propositions
+    //     not = (a) -> imf.impl(a, imf.falsity)
+    // }
 }

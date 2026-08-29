@@ -180,12 +180,15 @@ module fol {
         include .dependent_pl.DependentImplicationND
     }
 
-    TotalChoiceYieldsNonempty: TotalChoice -> .nonempty.UniverseNonEmpty = t -> .nonempty.UniverseNonEmpty {
-        univ_nonempty = (C, P) -> P (t.anyTC (x -> x≐x))
-    }
+    // TotalChoiceYieldsNonempty: TotalChoice -> .nonempty.UniverseNonEmpty = t -> .nonempty.UniverseNonEmpty {
+    //     include .base_languages.UntypedLogic
+    //     univ_nonempty = (C, P) -> P (t.anyTC (x -> x≐x))
+    // }
 
-    ChoiceYieldsDescription: (Choice, UniqueExistentialQuantificationND) -> Description = (c, u) -> Description {
-        the = ???
-        the_ax = ???
-    }
+    // ChoiceYieldsDescription: (Choice, UniqueExistentialQuantificationND) -> Description = (c, u) -> Description {
+    //     include .concepts.Logic
+    //     include UniqueExistentialQuantificationND
+    //     the = ???
+    //     the_ax = ???
+    // }
 }

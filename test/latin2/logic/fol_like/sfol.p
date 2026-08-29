@@ -63,4 +63,53 @@ module sfol {
         include ISFOLEQND
         include SFOLND
     }
+
+    theory TypedUniqueExistentialQuantification {
+        include TypedExistentialQuantification
+        include .equality.TypedEquality
+        texistsUnique: (A) -> (tm A -> prop) -> prop
+    }
+
+    theory TypedUniqueExistentialQuantificationND {
+        include TypedUniqueExistentialQuantification
+        texistsUniqueI: ???
+        texistsUniqueE: ???
+    }
+
+    theory TypedDescription {
+        include .base_languages.TypedLogic
+        include TypedUniqueExistentialQuantification
+        tthe: ???
+        tthe_ax: ???
+    }
+
+    theory TypedChoice {
+        include .base_languages.TypedLogic
+        include TypedExistentialQuantification
+        include .equality.TypedEquality
+        tsome: ???
+        tsome_ax: ???
+        tsome_eq: ???
+    }
+
+    // The variant of choice that always returns a value and whose defining axiom is relativized by existence; only sound if types are guaranteed to be non-empty.
+    theory TypedTotalChoice {
+        include .base_languages.TypedLogic
+        include TypedExistentialQuantification
+        include .equality.TypedEquality
+        tany: ???
+        tany_ax: ???
+        tany_eq: ???
+
+        realize TypedChoice
+        tsome = ???
+        tsome_ax = ???
+        tsome_eq = ???
+    }
+
+    theory BigSFOL {
+        include SFOLEQND
+        include TypedDescription
+        include .ifte.IfThenElse
+    }
 }
