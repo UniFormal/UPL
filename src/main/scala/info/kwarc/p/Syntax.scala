@@ -1625,6 +1625,12 @@ sealed class InfixOperator(val symbol: String, val assoc: Associativity = NotAss
     case Monoid(n) => Some(n)
     case _ => None
   }
+  /** folds args into one expression; one argument folds to itself, none to the neutral element */
+  def fold(args: List[Expression]): Option[Expression] = args match {
+    case Nil => neutral
+    case List(a) => Some(a)
+    case _ => Some(makeExpr(args))
+  }
 }
 
 /** operators with prefix notation */
@@ -1696,30 +1702,36 @@ case object Implies extends InfixOperator("=>", RightAssociative) with Connectiv
   override def isDynamic = true
 }
 
-trait InvertibleAssociative {self: KnownOperator =>
-  def inverseOp: KnownOperator
+trait InvertibleAssociative {self: InfixOperator =>
+  def inverseOp: InfixOperator
   override def isolatableArguments(args: List[Expression]) = args.indices.toList
+  /** a + as + b + bs == result ---> b == result - (a + as + bs) */
   override def isolate(pos: Int, args: List[Expression], result: Expression) = {
-    val (before, a::after) = args.splitAt(pos)
-    Some((a, inverseOp.makeExpr(List(result, makeExpr(before:::after)))))
+    if (!args.isDefinedAt(pos)) None
+    else {
+      val (before, a :: after) = args.splitAt(pos)
+      fold(before ::: after) map {rest => (a, inverseOp.makeExpr(List(result, rest)))}
+    }
   }
 }
-trait InverseOfAssociative {self: KnownOperator =>
-  def inverseOp: KnownOperator
+trait InverseOfAssociative {self: InfixOperator =>
+  def inverseOp: InfixOperator
   override def isolatableArguments(args: List[Expression]) = args.indices.toList
   override def isolate(pos: Int, args: List[Expression], result: Expression) = {
-    if (pos == 0) Some((args.head, inverseOp.makeExpr(result :: args.tail)))
+    if (!args.isDefinedAt(pos)) None
+    // a - as == result ---> a == result + as
+    else if (pos == 0) inverseOp.fold(result :: args.tail) map {r => (args.head, r)}
     else {
       // a - as - b - bs == result ---> b == a - as - result - bs
       val (before, b :: bs) = args.splitAt(pos)
-      Some((b, makeExpr(before ::: result :: bs)))
+      fold(before ::: result :: bs) map {r => (b, r)}
     }
   }
 }
 trait SelfInverseUnary {self: KnownOperator =>
   override def isolatableArguments(args: List[Expression]) = if (args.sizeIs == 1) List(0) else Nil
   override def isolate(pos: Int, args: List[Expression], result: Expression) = {
-    Some((args.head, makeExpr(List(result))))
+    if (pos == 0 && args.sizeIs == 1) Some((args.head, makeExpr(List(result)))) else None
   }
 }
 
@@ -1759,7 +1771,8 @@ case object Power extends InfixOperator("^", RightAssociative) {
   }
   override def isolatableArguments(args: List[Expression]) = if (args.sizeIs == 2) List(0, 1) else Nil
   override def isolate(pos: Int, args: List[Expression], result: Expression) = {
-    if (pos == 0) Some((args(0), Power(result, Divide(IntValue(1), args(1))))) // TODO args(1) != 0, result >= 0
+    if (args.sizeIs != 2) None
+    else if (pos == 0) Some((args(0), Power(result, Divide(IntValue(1), args(1))))) // TODO args(1) != 0, result >= 0
     // TODO result und args(0) >= 0
     else if (pos == 1) Some((args(1), Divide(Application(OpenRef(Path(List("Math", "ln"))), List(result)), Application(OpenRef(Path(List("Math", "ln"))), List(args(0))))))
     else None
