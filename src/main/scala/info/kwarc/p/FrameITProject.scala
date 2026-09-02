@@ -109,13 +109,12 @@ class FrameITProject private extends Project(Nil,None){
     }
 
     /** Reset the state of the LoWo
-      * @todo Preserve the initial stage content
       */
     def reset(): Unit = {
       entries = entries.filterNot(_.isInstanceOf[Stage])
       stageCounter = 0
-      currentStage = Stage.empty
-      updateAndCheck(currentStage.source,s"theory ${currentStage.label}{}")
+      currentStage = Stage.initial
+      entries :+= currentStage
     }
   }
 
@@ -138,7 +137,7 @@ class FrameITProject private extends Project(Nil,None){
     }
   }
   object Stage {
-    val empty = Stage(0)
+    val initial = Stage(0)
     def origin(num: Int=stageCounter): SourceOrigin = SourceOrigin("Stage", num.toString)
 
     /** Extractor for the [[SourceOrigin]] of a [[Stage]],
@@ -225,7 +224,7 @@ class FrameITProject private extends Project(Nil,None){
       case Stage(n) => Stage(n)
       case _ => new ProjectEntry(so)
     }
-    entries = entries :+ e
+    entries :+=  e
     e
   }
   def tryEval(input:String): Try[Expression] = tryEvalTyped(input).map(_._1)
@@ -286,8 +285,9 @@ object FrameITProject {
     */
   def apply(fileContents: Map[String, Seq[(SourceOrigin, String)]]): FrameITProject = {
     val saveFileContents =  fileContents.withDefaultValue(Seq.empty)
-    // Seq because we need the order for `entries`, View because we want the entries only on demand
-    val sourceKinds = Seq("background", "source", "schemata").view
+
+    // Add the Background knowledge
+    val sourceKinds = List("background", "source", "schemata")
     val bgEntries = for {
       k <- sourceKinds
       (source, content) <- saveFileContents(k)
@@ -296,14 +296,24 @@ object FrameITProject {
     project.entries = bgEntries.toList
     val bg = project.checkAll() // check all background entries in one go
     project._background = bg
-    // Set up the initial empty stage
-    project.LoWo.reset()
-    // Add any initial level content
+
+    // Set up the initial Stage
+    /** the initial Stage */
+    val iS = project.Stage.initial
+    // make it temporarily empty, so `include`s work
+    project.updateAndCheck(iS, s"theory ${iS.label}{}")
+    project.entries +:= iS // empty stage can safely be prepended
+    // then add any initial content
     for {
       l <- fileContents get "stageInit"
       (_ , init) <- l
       _ <- init.headOption // Skip if empty
     } project.LoWo.add(init)
+    if (project.currentStage != iS) {
+      val initialStageContent = project.LoWo.asModule.copy(name=iS.label)
+      project.updateAndCheck(iS, initialStageContent.toString)
+      project.LoWo.reset()
+    } // else: the initial Stage is indeed empty => nothing left to do
     project
   }
 
