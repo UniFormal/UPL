@@ -11,9 +11,7 @@ module subtyping {
         sub: .relations.Preorder {
             type carrier = tp
             // doesn't work 
-            type rel(c1:carrier, c2:carrier) = ded c1⪽c2
-            refl = ???
-            trans = ???
+            type rel(c1: carrier, c2: carrier) = ded c1⪽c2
         }
     }
 
@@ -39,8 +37,7 @@ module subtyping {
 
         inject: (A, B, ded A⪽B, tm A) -> tm B
         inject_irrelevant: (A,x,p) -> ded tequal(A, inject(A, A, p, x), x) 
-        // missing parts ugly without implicit args
-        inject_refl: (A,x) -> ded tequal(A, inject(A, A, ???, x), x) 
-        inject_trans: (A,B,C,x,P,Q) -> ded tequal(C, inject(B, C, Q, inject(A, B, P, x)), inject(A, C, ???, x)) 
+        inject_refl: (A,x) -> ded tequal(A, inject(A, A, sub.refl, x), x) 
+        inject_trans: (A,B,C,x,P,Q) -> ded tequal(C, inject(B, C, Q, inject(A, B, P, x)), inject(A, C, sub.trans(P,Q), x)) 
     }
 }
