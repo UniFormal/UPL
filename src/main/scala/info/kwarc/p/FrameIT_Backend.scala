@@ -1,5 +1,7 @@
 package info.kwarc.p
 
+import info.kwarc.p.File.read
+
 import scala.collection.{SeqMap, mutable}
 import scala.scalajs.js
 import js.annotation._
@@ -108,7 +110,10 @@ object BackendTests {
 
   /** private, so scala.js doesn't need to see [[File]] */
   private def gameplayTest() = {
-    proj = FrameITProject(File("test/FrameIt/Gameplay_Example/gameplay.pp"))
+    //proj = FrameITProject(File("test/FrameIt/Gameplay_Example/gameplay.pp"))
+    val bg = read(File("test/FrameIt/Gameplay_Example/background.p"))
+    val schema = read(File("test/FrameIt/Gameplay_Example/schema.p"))
+    proj = FrameITProject(bg,schema)
     LoWo.reset()
     val tests = List(
       s1.split(";").map(_.linesIterator.toSeq).map(add).mkString(" "),
@@ -176,10 +181,16 @@ object BackendTests {
   *  - More safeguards/sanity-checks, and even less traversal
   */
 object Regional_Substituter {
-  def apply(gc: GlobalContext, sub: Substitution, m: Module) = {
+  def apply(gc: GlobalContext, sub: Substitution, m: Module): Module = {
     if (sub.isIdentity || !m.closed) m
     else {val subber = new _Substituter(gc)
       m.copyBody(_.map(subber(_)(gc,sub)))
+    }
+  }
+  def apply(gc: GlobalContext, sub: Substitution, decls:Seq[Declaration]): Seq[Declaration] = {
+    if (sub.isIdentity) decls
+    else {val subber = new _Substituter(gc)
+      decls.map(subber(_)(gc,sub))
     }
   }
 

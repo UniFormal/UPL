@@ -184,7 +184,7 @@ class FrameITProject private extends Project(Nil,None){
 //    val apCode = s"theory $appLabel{\n$reqDecls\nrealize $schema}"
     var reqDecls = requiredFactsAssignment map {case (n, d) => s"$n = $d"} mkString "\n"
     reqDecls += requiredFactsAssignment collect {case (n, d) if currentStage.cxt.declares(s"${n}_P") => s"${n}_P = ${d}_P"} mkString "\n"
-    val apCode = s"theory $appLabel{\ninclude ${currentStage.label}\n$reqDecls\nrealize $schema}"
+    val apCode = s"theory $appLabel{\ninclude ${currentStage.label}\n$reqDecls\ninclude $schema}"
     val apRaw = updateAndCheck(Schema.appEntry, apCode).lookup(appLabel).asInstanceOf[Module]
     if (Schema.appEntry.errors.hasErrors) {
       return false
@@ -196,17 +196,11 @@ class FrameITProject private extends Project(Nil,None){
         map {case (n, d) => EVarDecl.sub(n,ClosedRef(d))}
     )
 
-    val subbed = Regional_Substituter(gc, sub, apRaw)
+    val subbedDecls = Regional_Substituter(gc, sub, Solver(gc, apRaw.df, false).decls)
     // take only the actual results
-    val resDecls = subbed.decls.collect { case d: ExprDecl
+    val resDecls = subbedDecls.collect { case d: ExprDecl
       if resultingFactsAssignment.contains(d.name) => d.copy(name= resultingFactsAssignment(d.name))
     }
-    // "proper" solving with editing the theory; No point in that rn
-    val assignedNames = requiredFactsAssignment.keySet ++ resultingFactsAssignment.keySet
-    val solved = subbed.copyBody(
-      _.filterNot(d => d.nameO.exists(assignedNames.contains) || d.isInstanceOf[Include])
-      ++: resDecls
-    )
     LoWo.add(resDecls.map(_.toString))
   }
 

@@ -11,7 +11,8 @@ class Solver {
   var redundant: List[String] = Nil  // axioms/theorems that we have used and that should be removed from the theory
   var redundantP: List[Property] = Nil
 
-  var gc : GlobalContext = _
+  var gc: GlobalContext = _
+  var trustUninhabitedAxioms: Boolean = true
 
   var shouldPrint : Boolean = true
 
@@ -163,7 +164,7 @@ class Solver {
       fail("nested theories not supported: " + thd.name)(thy)
     case ed: ExprDecl =>
       ed.tp match {
-        case ProofType(Equality(true,_,l,r)) =>
+        case ProofType(Equality(true,_,l,r)) if ed.defined || trustUninhabitedAxioms =>
           props ::= Property(pathifyExpression(l, pre, lpt, thy),pathifyExpression(r, pre, lpt, thy),pre)//Property(l,r,pre)//
         case ClassType(theo) =>
           // println(theo.decls.forall(d => d.defined))
@@ -184,6 +185,7 @@ class Solver {
           // nicht lösbar -> als Known hinzufügen
           // bool als return für flag für instanz, soll dann bei unknowns bleiben
       }
+    case _ =>
   }
 
   def pathifyExpression(e: Expression, p:Path, lpt:Map[String, Theory], thy : Theory) : Expression = {
@@ -248,6 +250,13 @@ class Solver {
 
   def println(arg: Any): Unit = {
     if (shouldPrint) Console.println(arg)
+  }
+}
+object Solver {
+  lazy val solver = new Solver()
+  def apply(gc: GlobalContext, thy: Theory, trustUninhabitedAxioms: Boolean = true): Theory = {
+    solver.trustUninhabitedAxioms = trustUninhabitedAxioms
+    solver.solve(gc, thy)
   }
 }
 
