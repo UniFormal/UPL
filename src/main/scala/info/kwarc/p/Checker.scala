@@ -2323,16 +2323,15 @@ class Checker(errorHandler: ErrorHandler) {
 object Checker {
   // This does not really belong here. But it feels too semantic to be part of GlobalContext
   /**
-    * normalizes a well-formed theory expression into a TheoryValue
-    * expands definitions and applied owners, but does not necessarily flatten TheoryValues
-    * Examples: Assume gc + (o2:d2) + (o1:d1) |- r ---> {ds}
-    * - then  gc |- o2.(o1.r) is (o2:d2).((o1:d1).r)
-    *   and flattens to {ds} with . for ., o1 for .., o2 for ..., .. for ...., and so on
-    * - then  gc |- (o2.o1).r is (o:d).r with o = (o2:d2).o1 and d = (o2:d2).d1
-    *   thus  gc + (o:d) |- r ---> o2.{ds}
-    *   and the expression flattens to the same result as before
+    * Normalizes a well-formed theory expression into a [[TheoryValue]].
+    * Expands definitions and applied owners, but does not necessarily flatten TheoryValues
+    * @example Assume `gc + (o2:d2) + (o1:d1) |- r ---> {ds}`
+    *   - then  `gc |- o2.(o1.r)` is `(o2:d2).((o1:d1).r)`
+    *     and flattens to `{ds}` with `.` for `.`; `o1` for `..`; `o2` for `...`; `..` for `....`, and so on
+    *   - then  `gc |- (o2.o1).r` is `(o:d).r` with `o = (o2:d2).o1` and `d = (o2:d2).d1`.
+    *     Thus,  `gc + (o:d) |- r ---> o2.{ds}`, and the expression flattens to the same result as before
     *
-    * recovers with the empty theory if ill-formed input yields errors
+    * @note recovers with the empty theory if ill-formed input yields errors
     */
   def evaluateTheory(gc: GlobalContext, thy: Theory): TheoryValue = {
     // invariants: gcI |- thyI : THEORY,  gcI = gc.push(_)....push(_)

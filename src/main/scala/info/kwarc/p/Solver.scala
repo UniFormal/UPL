@@ -16,9 +16,8 @@ class Solver {
 
   var shouldPrint : Boolean = true
 
-   /**
-    * conservatively extends a theory, trying to reduce the abstract interface
-    * e.g., by adding definitions for symbols that are determined by axioms
+  /** conservatively extend a theory, trying to reduce the abstract interface
+    * e.g. by adding definitions for symbols that are determined by axioms
     */
    def solve(gc: GlobalContext, thy: Theory) = {
      implicit val cause = thy
@@ -35,26 +34,24 @@ class Solver {
      // prepare the solving by collecting the relevant information from the theory
      thyN.decls.foreach(d => findFields(d, Path(), thyN, Map()));
 
-     // clean up duplicate unknowns
-     unknowns = unknowns.distinct
-     // clean up known unknowns (e.g. value assignment via instanciation)
-     unknowns = unknowns.filter(u => knowns.count(k => k.name == u.name) == 0)
+    // clean up duplicate unknowns
+    unknowns = unknowns.distinct
+    // clean up known unknowns (e.g. value assignment via instantiation)
+    unknowns = unknowns.filter(u => knowns.count(k => k.name == u.name) == 0)
 
+    // the actual solving
+    // TODO
+    println("Start: ")
+    printAsTheory("Unknowns", unknowns)
+    printAsTheory("Knowns", knowns)
+    printAsTheory("Properties", props)
+    //printAsTheory("Redundant", redundantP)
+    //println(thyN.decls.filter(d => !d.defined))
+    //println(thyN.decls.filter(d => d.defined))
 
-     // the actual solving
-     // TODO
-     println("Start: ")
-     printAsTheory("Unknowns", unknowns)
-     printAsTheory("Knowns", knowns)
-     printAsTheory("Properties", props)
-     //printAsTheory("Redundant", redundantP)
-     //println(thyN.decls.filter(d => !d.defined))
-     //println(thyN.decls.filter(d => d.defined))
-
-
-     var noChanges : Boolean = false
-     while(!noChanges) {
-       noChanges = true
+    var noChanges: Boolean = false
+    while (!noChanges) {
+      noChanges = true
 
        // TODO remove redundant axioms
        props.foreach(p => {
@@ -240,11 +237,11 @@ class Solver {
   }
 
   def cleanUpUnknownInstances(): Unit = {
-    // unknowns, die doch known sind entfernen
+    // remove unknowns, which are actually knowns
     val knownInstances = unknowns.filter(u => u.isInstance && unknowns.count(u2 => startsWith(u2.name, u.name)) == 1)
     unknowns = unknowns.filter(u => !knownInstances.exists(k => k.name == u.name))
     // TODO knownInstances.foreach(k => knowns ::= Known(u.name, TypeDecl()))
-    //Instance(Include(theo)::List[ExprDecl](known field und lösung)) prefix bei feldern entfernen
+    //Instance(Include(theo)::List[ExprDecl](known field ans solution)) remove prefix from fields
     //unknowns.exists(u => startsWith(u.name, pre/ed.name))) unknowns ::= Unknown(pre/ed.name, ed.tp)
   }
 

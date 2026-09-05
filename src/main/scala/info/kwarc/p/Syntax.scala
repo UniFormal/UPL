@@ -385,12 +385,12 @@ object MaybeAppliedRef {
   }
 }
 
-/** an object from a different local environment that is translated by o into the current local environment
+/** an [[Object]] `x` from a different local environment that is translated by the [[owner]] `o`
+  * into the current local environment. Written `o.x`
   *
-  * written o.x
-  * If T |- o: S and S |- t : A : type, then T |- o.t : o.A : type
-  * In particular, x must be closed and relative to the domain of o, not relative to the current lc.
-  * o must be a morphism into the current lc, and o.x can be seen as the morphism application o(t).
+  * If `T |- o: S` and `S |- t : A : type`, then `T |- o.t : o.A : type`
+  * In particular, `x` must be closed and relative to the domain of `o`, not relative to the current lc.
+  * `o` must be a morphism into the current lc, and `o.x` can be seen as the morphism application `o(t)`.
   */
 sealed trait OwnedObject extends Object {
   /** the translation, must evaluate to an [[Instance]] */
@@ -407,9 +407,9 @@ sealed trait OwnedObject extends Object {
 
 object OwnedObject {
   def unapply(o: Object) = o match {
-    case OwnedType(o,d,t) => Some((o,d,t))
-    case OwnedExpr(o,d,e) => Some((o,d,e))
-    case OwnedTheory(o,d,thy) => Some((o,d,thy))
+    case OwnedType(o,d,t) => Some(o,d,t)
+    case OwnedExpr(o,d,e) => Some(o,d,e)
+    case OwnedTheory(o,d,thy) => Some(o,d,thy)
     case _ => None
   }
 }
@@ -458,7 +458,7 @@ object OwnedReference {
 
 /** expressions translated into another regional context
   *
-  * If t is ClosedRef(n), this is the usual field access o.n known from OOP. See also [[Expression.field]]
+  * If [[owned]] is [[ClosedRef]](n), this is the usual field access [[owner]].n known from OOP. See also [[Expression.field]]
   * By allowing arbitrary terms, we can delay traversing expressions, which might have to duplicate owner.
   */
 case class OwnedExpr(owner: Expression, ownerDom: Theory, owned: Expression) extends Expression with OwnedObject
@@ -986,8 +986,14 @@ case class ProofType(formula: Expression) extends Type {
 
 // **************************** introduction/elimination forms for built-in types
 
-/** the current instance
+/** the current [[Instance]]
+ *
   * @param level 1 for 'this' (written as '.'), 2 for surrounding instance (written as '..') and so on
+  *
+  * @todo Replace this with object This
+  *       use `Eval(...(Eval(This))...)` instead of `This(n)`, parse `..c` as `Eval(c)`
+  *       checking `Eval(_)` always pops a frame - no need to substitute
+  *       Whether [[Eval]] is legal, and with which type, depends on the region, e.g., always if transparent, only [[ExprOver]] if quoted, never if owned
   */
 /*
   TODO: replace this with object This
@@ -1380,7 +1386,7 @@ object String {
 
 /** built-in operators, bundles various elimination forms for the built-in types
   * @param operator the operator
-  * @param tp its type (most operators are ad-hoc polymorphic), null if to be infered during checking
+  * @param tp its type (most operators are ad-hoc polymorphic), null if to be inferred during checking
   */
 case class BaseOperator(operator: Operator, tp: Type) extends Expression {
   override def toString = "(" + operator.symbol + ":" + tp + ")"

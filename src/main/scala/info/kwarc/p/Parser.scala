@@ -861,7 +861,7 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
           OpenRef(parsePath)
         } else {
           // . is this, .. is parent and so on
-          var l = 1 // starting a 1, because we skipped a dot already
+          var l = 1 // starting at 1, because we skipped a dot already
           while (nextIs('.')) {l += 1; skip(".")}
           // .a is this.a, ..a is parent.a, and so on; thus: if .id follows, we keep the last .
           if (!atEnd && isNameChar(next)) index-=1
