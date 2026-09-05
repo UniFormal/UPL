@@ -255,7 +255,6 @@ object ValueFact {
     //VarDecl(name, tp, dfO = None, mutable = false)
     EVarDecl(name, tp, dfO = None, mutable = false, output = false)
   }
-  */
 
   /** @param decl Has to be an [[ExprDecl]]; allows for arbitrary [[Declaration]]s, because
     *             the type is often hard to narrow beforehand
@@ -273,6 +272,12 @@ object ValueFact {
       case EVarDecl(_, ValueFactType(f,as,v), _, _, _) => Option(f,as,v)
       case _ => None
     }
+  }
+  */
+
+  def unapply(t: Typed)(implicit gc: GlobalContext): Option[(Ref, List[Expression], Double)] = t.tp match {
+    case ValueFactType(f,as,v) => Option(f,as,v)
+    case _ => None
   }
   /** Helper for readability and easier adaption.
     *
@@ -332,9 +337,10 @@ object AssertionFact {
   }
 
   /**  */
-  val fromExpression: Expression => Option[Expression] = {
-      case UndefinedValue(ProofType(formula)) => Option(formula)
-      case EVarDecl(_, ProofType(formula), _, _, _) => Option(formula)
-      case _ => None
+  val fromTyped: Typed => Option[Expression] = {
+    case Typed(ProofType(formula)) => Option(formula)
+//    case UndefinedValue(ProofType(formula)) => Option(formula)
+//    case EVarDecl(_, ProofType(formula), _, _, _) => Option(formula)
+    case _ => None
   }
 }

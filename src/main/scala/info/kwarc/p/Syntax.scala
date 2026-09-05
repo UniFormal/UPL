@@ -139,9 +139,18 @@ object Module {
   def apply(name: String, closed: Boolean, ds: List[Declaration] = Nil): Module = Module(name, closed, TheoryValue(ds))
 }
 
-/** parent of all declarations that do not nest other declarations */
-sealed trait AtomicDeclaration extends Declaration {
+/** Mixin for all [[SyntaxFragment]]s which have a field [[tp]]:[[Type]].
+  * I.e. [[TypedDeclaration]], [[AtomicDeclaration]] and many [[Expression]]s
+  * @todo It might make sense to turn this into a polymorphic `Typed[+T <: Type]`,
+  *       similar to [[HasChildren]], so the [[Type]] of subexpressions can be coerced
+  */
+sealed trait Typed {
   def tp: Type
+}
+object Typed { def unapply(arg: Typed): Option[Type] = Option(arg.tp) }
+
+/** parent of all declarations that do not nest other declarations */
+sealed trait AtomicDeclaration extends Declaration with Typed{
   def children = tp :: dfO.toList
 }
 
@@ -207,9 +216,8 @@ sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
 }
 
 /** unifies [[ExprDecl]] and [[EVarDecl]] */
-trait TypedDeclaration extends Named {
+trait TypedDeclaration extends Named with Typed {
   def params: LocalContext
-  def tp: Type
 }
 
 /** unifies TypeDecl and TVarDecl */
@@ -314,7 +322,9 @@ object Type {
   def normalize(tp: Type) = IdentityTraverser(tp)(GlobalContext(""), ())
 }
 
-/** typed expressions */
+/** typed expressions
+  * @todo Roughly half of all Expressions don't have a [[Type]]
+  */
 sealed trait Expression extends Object {
   def skipUnknown: Expression = this
   def field(dom: Theory, f: String) = OwnedExpr(this, dom, ClosedRef(f))
@@ -640,7 +650,7 @@ case class UnknownType(originalContext: GlobalContext, container: UnknownContain
     else sk.substituteInType(sub)
   }
 }
-case class UnknownExpr(originalContext: GlobalContext, container: UnknownContainer, tp: Type, sub: Substitution) extends Expression with UnknownObject {
+case class UnknownExpr(originalContext: GlobalContext, container: UnknownContainer, tp: Type, sub: Substitution) extends Expression with UnknownObject with Typed {
   override def skipUnknown = if (container.empty) this else {
     val sk = container.obj.skipUnknown.asInstanceOf[Expression]
     if (sub == null) sk
@@ -995,12 +1005,6 @@ case class ProofType(formula: Expression) extends Type {
   *       checking `Eval(_)` always pops a frame - no need to substitute
   *       Whether [[Eval]] is legal, and with which type, depends on the region, e.g., always if transparent, only [[ExprOver]] if quoted, never if owned
   */
-/*
-  TODO: replace this with object This
-  use Eval(...(Eval(This))...) instead of This(n), parse ..c as Eval(c)
-  checking Eval(_) always pops a frame - no need to substitute
-  Whether Eval is legal and with which type, depends on the region, e.g., always if transparent, only ExprOver if quoted, never if owned
- */
 case class This(level: Int) extends Expression {
   override def toString = if (level <= 0) "illegal" else Range(0,level).map(_ => '.').mkString("")
   def children = Nil
@@ -1147,18 +1151,20 @@ case class ListElem(list: Expression, position: Expression) extends Expression {
   def children = List(list, position)
 }
 
-case class Quantifier(univ: Boolean, vars: ExprContext, body: Expression) extends Expression {
+case class Quantifier(univ: Boolean, vars: ExprContext, body: Expression) extends Expression with Typed {
   override def closing = vars == null
   def label = if (univ) "forall" else "exists"
   override def toString = s"($label $vars. $body)"
   def children = vars.children ::: List(body)
   override def childrenInContext = vars.childrenInContext ::: List((None,Some(vars.toLocalContext),body))
+  val tp: Type = BoolType
 }
 object Quantifier {
   def optional(u: Boolean, vs: ExprContext, bd: Expression) = if (vs.empty) bd else Quantifier(u,vs,bd)
 }
 
-/** typed equality, possibly negated */
+/** typed equality, possibly negated
+  * @note Doesn't extend [[Typed]], because [[tp]] is the type of [[left]]/[[right]], not of this Expression */
 case class Equality(positive: Boolean, tp: Type, left: Expression, right: Expression) extends Expression {
   def label = if (positive) "equal" else "inequal"
   def op = if (positive) "==" else "!="
@@ -1169,7 +1175,7 @@ object Equality {
   def reduce(pos: Boolean): Connective = if (pos) And else Or
 }
 
-case class Assert(test: Expression, tp: Type, expected: Expression) extends Expression {
+case class Assert(test: Expression, tp: Type, expected: Expression) extends Expression with Typed {
   def asBoolean = Equality(true, tp, test, expected).copyFrom(this)
   override def toString = s"ASSERT($test, $tp, $expected)"
   def label = "assert"
@@ -1177,7 +1183,7 @@ case class Assert(test: Expression, tp: Type, expected: Expression) extends Expr
 }
 
 /** unsafe run-time cast, possibly throwing exception */
-case class Cast(exp: Expression, tp: Type) extends Expression {
+case class Cast(exp: Expression, tp: Type) extends Expression with Typed {
   override def toString = s"CAST($tp,$exp)"
   def label = "cast"
   def children = List(exp,tp)
@@ -1194,7 +1200,7 @@ case class ProofElim(elim: Expression, cases: List[List[VarDecl]]) extends Expre
 */
 
 /** base values, introduction forms of [[BaseType]] */
-sealed abstract class BaseValue(val value: Any, val tp: BaseType) extends Expression {
+sealed abstract class BaseValue(val value: Any, val tp: BaseType) extends Expression with Typed {
   def label = value.toString + "  :" + tp.toString
   def children = Nil
 }
@@ -1388,7 +1394,7 @@ object String {
   * @param operator the operator
   * @param tp its type (most operators are ad-hoc polymorphic), null if to be inferred during checking
   */
-case class BaseOperator(operator: Operator, tp: Type) extends Expression {
+case class BaseOperator(operator: Operator, tp: Type) extends Expression with Typed {
   override def toString = "(" + operator.symbol + ":" + tp + ")"
   def label = operator.symbol
   def children = Nil
@@ -1397,7 +1403,7 @@ case class BaseOperator(operator: Operator, tp: Type) extends Expression {
 /** value that is promised to exist but is not known
   * executing this is an error; but it type-checks against every type
   */
-case class UndefinedValue(tp: Type) extends Expression {
+case class UndefinedValue(tp: Type) extends Expression with Typed {
   // TODO make typed [[UndefinedValue]] parsable
   override def toString = "???"// + "[" + tp + "]"
   def label = "???"
