@@ -514,9 +514,13 @@ sealed trait ObjectOver extends Object {
 case class TheoryValue(override val decls: List[Declaration]) extends Theory with HasChildren[Declaration] {
   override def toString = {
     this match {
-      case PhysicalTheory(p, ds) => p.toString + (if (ds.isEmpty) "" else ds.mkString("{", ", ", "}"))
-      case TheoryValue(ds) if ds.lengthCompare(2) > 0 => "{\n" + decls.mkString("\n").indent(2) + "}"
-      case _ => decls.mkString("{", ", ", "}")
+      case PhysicalTheory(p, ds) => p.toString + (if (ds.isEmpty) "" else TheoryValue(ds).toString)
+      case TheoryValue(decls) =>
+        val multiLine = "{\n" + decls.mkString("\n").indent(2) + "}"
+        lazy val singleLine = decls.mkString("{", ",  ", "}")
+        if (decls.lengthCompare(1) <= 0 || multiLine.lengthCompare(50) <= 0)
+              singleLine
+        else  multiLine
     }
   }
   def label = "theory"
@@ -1013,7 +1017,11 @@ case class This(level: Int) extends Expression {
 
 /** instance of a theory, introduction form for [[ClassType]] */
 case class Instance(theory: Theory) extends Expression with MutableExpressionStore {
-  override def toString = if (isRuntime) s"instance of $theory" else theory.toString
+  override def toString = if (isRuntime) s"instance of $theory"
+    else {
+      val tS = theory.toString
+      if (tS.endsWith("}")) tS else tS+"{}"
+    }
   def label = "new"
   def children = theory.children
   override def childrenInContext =

@@ -873,7 +873,12 @@ class Parser(origin: SourceOrigin, input: String, eh: ErrorHandler) {
         trim
         skip("}")
         val thy = setRef(Theory(ds),begin)
-        if (ctxs.inType) UndefinedValue(ClassType(thy)) else Instance(thy)
+        if (ctxs.inType) UndefinedValue(ClassType(thy).copyFrom(thy)) else Instance(thy)
+      /* TODO: Would it make sense to generalise this syntax to instances of referenced theories?
+      } else if (startsWithS("§")) {
+        val thy = if (startsWithS(".")) addRef(OpenRef(parsePath)) else addRef(ClosedRef(parseName))
+        if (ctxs.inType) UndefinedValue(ClassType(thy).copyFrom(thy)) else Instance(thy)
+      */
       } else if (!ctxs.inType && startsWithS("{")) {
         var cs: List[Expression] = Nil
         var ctxL = ctxs.copy(allowStatement = true, terminators = List(";", "}"))
