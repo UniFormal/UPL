@@ -15,17 +15,23 @@ object Util {
       left = left.tail
     }
     true
+//    Todo: This should be O(n) (?)
+//    val collider = scala.collection.mutable.HashSet[A]()
+//    l.forall(collider.add)
   }
   def distinct[A](l: List[A]) = {
-    var left = l
-    var res: List[A] = Nil
-    while (left.nonEmpty) {
-      val next = left.head
-      if (!res.contains(next)) res ::= next
-      left = left.tail
-    }
-    res.reverse
+//    var left = l
+//    var res: List[A] = Nil
+//    while (left.nonEmpty) {
+//      val next = left.head
+//      if (!res.contains(next)) res ::= next
+//      left = left.tail
+//    }
+//    res.reverse
+    // TODO: why not use this?
+    l.distinct
   }
+  @inline
   def disjoint[A](l: List[A], r: List[A]) = {
     l.forall(n => !r.contains(n))
   }

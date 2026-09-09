@@ -182,6 +182,8 @@ object VarDecl {
  * represented as decls == VarDecl.sub(n_l,e_n), ...
  */
 case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
+  // TODO Question: Aren't substitutions normally applied "all at once"?
+  //      The frequent use of `reverse` and lack of a `compose`-operation suggests this is not the case here(?)
   override def toString = decls.reverseIterator.map(vd => vd.name + "/" + vd.dfO.get).mkString(", ")
   def label = "substitution"
   def children = decls.map(_.dfO.get)
@@ -190,7 +192,7 @@ case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
   /** e_1, ..., e_n */
   def defs = Util.reverseMap(decls)(_.dfO.get)
   def map(f: VarDecl => VarDecl) = Substitution(
-    Util.reverseMap(decls)(f).reverse
+    Util.reverseMap(decls)(f).reverse // Todo: Why double reverse?
   )
   def take(n: Int) = Substitution(decls.drop(decls.length-n))
 

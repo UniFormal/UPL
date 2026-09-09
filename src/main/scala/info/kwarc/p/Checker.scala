@@ -391,7 +391,7 @@ class Checker(errorHandler: ErrorHandler) {
       }
     }
     def compareOO(e1: Object, e2: Object): Result = {
-      if (e1 == e2) Identical else Clashing // TODO: be more generous, e.g., ignored domain of owned objects
+      if (e1 == e2) Identical else Clashing // TODO: be more generous, e.g., ignore domain of owned objects -- Should this be done here, or defined in the equality function of the respective SyntaxFragments?
     }
   }
 
