@@ -186,11 +186,11 @@ case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
   //      The frequent use of `reverse` and lack of a `compose`-operation suggests this is not the case here(?)
   override def toString = decls.reverseIterator.map(vd => vd.name + "/" + vd.dfO.get).mkString(", ")
   def label = "substitution"
-  def children = decls.map(_.dfO.get)
+  def children: List[Object] = decls.flatMap(_.dfO)
 
-  def apply(n: String) = lookupO(n).map(_.dfO.get)
+  def apply(n: String) = lookupO(n).flatMap(_.dfO)
   /** e_1, ..., e_n */
-  def defs = Util.reverseMap(decls)(_.dfO.get)
+  def defs: List[Object] = Util.reverse(decls)(_.flatMap(_.dfO))
   def map(f: VarDecl => VarDecl) = Substitution(
     Util.reverseMap(decls)(f).reverse // Todo: Why double reverse?
   )

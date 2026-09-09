@@ -35,10 +35,17 @@ object Util {
   def disjoint[A](l: List[A], r: List[A]) = {
     l.forall(n => !r.contains(n))
   }
+  @inline
   def sub[A](l: List[A], r: List[A]) = {
     l.forall(n => r.contains(n))
   }
-  def reverseMap[A,B](l: List[A])(f: A => B) = l.reverseIterator.map(f).toList
+  @inline
+  def reverseMap[A,B](l: List[A])(f: A => B) = reverse(l)(_.map(f))
+  @inline
+  /** Apply a function to a list in reversed order. Same result as [[l.reverse.f]], but more efficient
+    * @example {{{def reverseFlatMap[A, B](l: List[A])(f: A => List[B]): List[B] = reverse(l)(_.flatMap(f))}}}
+    */
+  def reverse[A,B](l: List[A])(@inline f: Iterator[A] => Iterator[B]): List[B] = f(l.reverseIterator).toList
 
   /** like map but drops values where f(a) == null, more efficient than l.flatMap(a => Option(f(a)).toList) */
   def partialMap[A,B](l: List[A])(f: A => B) = {

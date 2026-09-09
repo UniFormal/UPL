@@ -103,10 +103,11 @@ trait Named extends MaybeNamed {
   def nameO: Some[String] = Some(name)
   def anonymous: Boolean = name.isEmpty
 }
+object Named { def unapply(n:MaybeNamed): Option[String] = n.nameO }
 
 trait HasChildren[+A <: MaybeNamed] extends SyntaxFragment {
   def decls: List[A]
-  def domain = decls collect {case d: Named => d.name}
+  def domain = decls collect {case Named(n) => n}
   def length = decls.length
   def empty = decls.isEmpty
   def lookupO(name: String) = decls.find(_.nameO.contains(name))
@@ -117,12 +118,12 @@ trait HasChildren[+A <: MaybeNamed] extends SyntaxFragment {
 /** identifiers */
 case class Path(names: List[String]) extends SyntaxFragment {
   override def toString = names.mkString(".")
-  def head = names.head
+  def head = names.headOption.getOrElse("")
   def tail = Path(names.tail)
   def /(n: String) = Path(names ::: List(n))
   def /(p: Path) = Path(names ::: p.names)
   def up = Path(names.init)
-  def name = names.last
+  def name = names.lastOption.getOrElse("")
   def isRoot = names.isEmpty
   def isToplevel = names.length == 1
   def label = toString
@@ -153,5 +154,5 @@ case class Location(origin: SourceOrigin, from: Int, to: Int) {
 
 object Location {
   def single(o: SourceOrigin, p: Int) = Location(o,p,p+1)
-  def covering(sfs: List[SyntaxFragment]): Option[Location] = sfs.map(_.loc).filterNot(_ == null).reduceOption(_ union _)
+  def covering(sfs: List[SyntaxFragment]): Option[Location] = Util.partialMap(sfs)(_.loc).reduceOption(_ union _)
 }
