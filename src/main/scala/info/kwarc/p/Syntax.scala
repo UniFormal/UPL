@@ -691,7 +691,7 @@ case class ExprsOver(scope: Theory, tp: Type) extends Type with ObjectOver {
 }
 
 /** atomic built-in base types */
-sealed abstract class BaseType extends Type {
+sealed abstract class BaseType extends Type with Named {
   def name: String
   override def toString = name
   def label = name
@@ -1416,6 +1416,11 @@ case class UndefinedValue(tp: Type) extends Expression with Typed {
   override def toString = "???"// + "[" + tp + "]"
   def label = "???"
   def children = List(tp)
+  // TODO When should UndefinedValues be equal?
+  override def equals(obj: Any): Boolean = obj match {
+    case that:UndefinedValue => this.loc == that.loc
+    case _ => false
+  }
 }
 
 // ************************** Standard programming language objects
