@@ -62,7 +62,7 @@ nothing to see when you run it directly — it just waits for a client.
 (require 'eglot)
 
 (add-to-list 'eglot-server-programs
-             '(upl-mode . ("java" "-jar" "/home/royaleinstein/Documents/UPL/upl-lsp/target/scala-2.13/upl-lsp.jar")))
+             '(upl-mode . ("java" "-jar" "pat-to-upl-lsp/upl-lsp.jar")))
 ```
 
 Then open a `.p` file and run `M-x eglot`. You should get:
