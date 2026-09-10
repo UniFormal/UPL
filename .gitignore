@@ -1,6 +1,7 @@
 /out
 /project
 /target
+/upl-lsp/target
 scala_compiler.xml
 workspace.xml
 codeStyles
