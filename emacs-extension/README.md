@@ -88,8 +88,6 @@ whatever it declared.
 
 ## Notes for keeping this in sync with the language
 
-If your postdoc adds new keywords/operators to the compiler, the two places
-to check are:
 
 - `src/main/scala/info/kwarc/p/Parser.scala` — search for `startsWithS`/
   `startsWithAny` calls and the `Keywords` object for reserved words.
