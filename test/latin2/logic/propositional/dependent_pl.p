@@ -5,9 +5,9 @@ module dependent_pl {
         include .concepts.Logic
         dand: (F) -> (ded F -> prop) -> prop
 
-        con: .pl.Conjunction {
-            and = (F, G) -> dand F (x -> G)
-        }
+        // con: .pl.Conjunction {
+        //     and = (F, G) -> dand F (x -> G)
+        // }
     }
 
     theory DependentConjunctionND {
@@ -29,9 +29,9 @@ module dependent_pl {
         include .concepts.Logic
         dor: F -> ((ded F -> inconsistent) -> prop) -> prop
 
-        dis: .pl.Disjunction {
-            or = (F, G) -> dor F (x -> G)
-        }
+        // dis: .pl.Disjunction {
+        //     or = (F, G) -> dor F (x -> G)
+        // }
     }
 
     theory DependentDisjunctionND {
@@ -50,11 +50,12 @@ module dependent_pl {
     // Implication where the implicate's well-formedness may depend on the truth of the implicant
     // Curry-Howard analogue of Pi types
     theory DependentImplication {
-        dimpl: (F, ded F -> prop) -> prop
+        include .concepts.Logic
+        dimpl: F -> (ded F -> prop) -> prop
 
-        imp: .pl.Implication {
-            impl = (F, G) -> dimpl(F, x -> G)
-        }
+        // imp: .pl.Implication {
+        //     impl = (F, G) -> dimpl(F, x -> G)
+        // }
     }
 
     theory DependentImplicationND {

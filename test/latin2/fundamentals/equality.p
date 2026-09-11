@@ -10,15 +10,15 @@ module equality {
         urefl: x -> ded x≐x
         ucongP: (x,y) -> ded x≐y -> P -> ded (P x) -> ded (P y)
 
-        eq: .relations.EquivalenceCongruence {
-            type carrier = term
-            // doesn't work
-            // type rel(c1:carrier, c2:carrier) = ded uequal(c1, c2)
-            refl = ???
-            sym = ???
-            trans = ???
-            congT = ???
-        }
+        // eq: .relations.EquivalenceCongruence {
+        //     type carrier = term
+        //     // doesn't work
+        //     // type rel(c1:carrier, c2:carrier) = ded uequal(c1, c2)
+        //     refl = ???
+        //     sym = ???
+        //     trans = ???
+        //     congT = ???
+        // }
 
         ucongPr: (x,y) -> ded x≐y -> P -> ded (P y) -> ded (P x)
     }

@@ -82,7 +82,7 @@ module pl {
         include Negation
         include .concepts.Logic
         notE: F -> ded (¬F) -> ded F -> inconsistent
-        notE_done: (F,G) -> ded (¬F) -> ded F -> ded G
+        notE_done: (F,G) -> ded (¬F) -> ded F -> ded G = ???
     }
 
     theory NegationND {
@@ -111,7 +111,7 @@ module pl {
     theory DisjunctionND {
         include DisjunctionNDI
         include DisjunctionNDE
-        or_swap: (F,G) -> ded F∨G -> ded G∨F
+        or_swap: (F,G) -> ded F∨G -> ded G∨F = ???
     }
 
     theory Conjunction {
@@ -135,7 +135,7 @@ module pl {
     theory ConjunctionND {
         include ConjunctionNDI
         include ConjunctionNDE
-        and_swap: (F,G) -> ded F∧G -> ded G∧F
+        and_swap: (F,G) -> ded F∧G -> ded G∧F = ???
     }
 
     theory Implication {
@@ -189,9 +189,9 @@ module pl {
         include ImplicationND
         include EquivalenceND
 
-        not_or_left: (F,G) -> ded (¬(F∨G)) -> ded ((¬F))
-        not_or_right: (F,G) -> ded (¬(F∨G)) -> ded (¬G)
-        nntnd: F -> ded (¬¬(F∨(¬F)))
+        not_or_left: (F,G) -> ded (¬(F∨G)) -> ded ((¬F)) = ???
+        not_or_right: (F,G) -> ded (¬(F∨G)) -> ded (¬G) = ???
+        nntnd: F -> ded (¬¬(F∨(¬F))) = ???
 
         // impl_order : .relations.PartialOrder {
         //     type carrier = impl_preorder.carrier

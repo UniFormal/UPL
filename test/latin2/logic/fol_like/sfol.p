@@ -101,15 +101,15 @@ module sfol {
         tany_ax: ???
         tany_eq: ???
 
-        realize TypedChoice
-        tsome = ???
-        tsome_ax = ???
-        tsome_eq = ???
+        // realize TypedChoice
+        // tsome = ???
+        // tsome_ax = ???
+        // tsome_eq = ???
     }
 
-    theory BigSFOL {
-        include SFOLEQND
-        include TypedDescription
-        include .ifte.IfThenElse
-    }
+    // theory BigSFOL {
+    //     include SFOLEQND
+    //     include TypedDescription
+    //     include .ifte.IfThenElse
+    // }
 }
