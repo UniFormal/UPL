@@ -1,3 +1,4 @@
 module sequences {
-	
+	theory SequencingOps {
+	}
 }
