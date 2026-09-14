@@ -1,10 +1,10 @@
 module meta_monoids {
     theory UnitElement {
         include .magmas.Magma
-        e : univ
+        e : carrier
         realize .magmas.Pointed
         point = e
-        involution : univ -> bool = x -> (x∘x == e)
+        involution : carrier -> bool = x -> (x∘x == e)
     }
 
     theory RightUnital {
@@ -36,7 +36,7 @@ module meta_monoids {
         include .magmas.PowerAssociative
         include Unital
         include .Numbers.Nat
-        power: (univ, num) -> univ
+        power: (carrier, num) -> carrier
         power_zero:--- power(x, .Numbers.Nat.z) == e
         power_succ:--- power(x, .Numbers.Nat.s(n)) == power(x, n) ∘ x
     }
@@ -44,7 +44,7 @@ module meta_monoids {
     theory Monoid {
         include .magmas.Semigroup
         include Unital
-        inverse: (univ, univ) -> bool = (x, y) -> (x∘y == e) & (y∘x == e)
+        inverse: (carrier, carrier) -> bool = (x, y) -> (x∘y == e) & (y∘x == e)
         inverse_sym:--- inverse(x, y) => inverse(y, x)
         inverse_unique:--- inverse(x, y1) & inverse(x, y2) => (y1 == y2)
         inverse_neutral:--- inverse(e, e)

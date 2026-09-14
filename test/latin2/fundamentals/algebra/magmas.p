@@ -20,19 +20,20 @@ module meta_magmas {
 
     theory Commutative {
         include Magma
-        comm: ??? // (x) -> x∘y == y∘x
+        comm: ??? // (x:carrier,y:carrier) -> (x∘y) == (y∘x)
     }
 
-    // OppositeMagma: Magma -> Magma = m -> Magma {
-    //     universe = m.universe
-    //     // type U = m.U
-    //     op = (x, y) -> m.op(y,x)
+    // OppositeMagma: Magma -> Magma = m -> §{
     // }
 
     theory Idempotent {
         include Magma
         idem:--- (x∘x) == x
     }
+
+    // OppositeCommMagma: Commutative -> Commutative = m -> §{
+    //     include OppositeMagma
+    // }
 
     theory PowerAssociative {
         include Magma
@@ -43,6 +44,10 @@ module meta_magmas {
         include Magma
         assoc: ??? // (x) -> x∘(y∘z) == (x∘y)∘z
     }
+
+    // OppositeSemigroup: Semigroup -> Semigroup = s -> §{
+    //     include OppositeMagma
+    // }
 
     theory CommSemigroup {
         include Semigroup
@@ -67,12 +72,12 @@ module meta_magmas {
 
     theory Pointed {
         include Magma
-        point: U
+        point: carrier
     }
 
     theory AbsorbingElement {
         include Magma
-        abs : U
+        abs : carrier
         realize Pointed
         point = abs
     }

@@ -1,3 +1,5 @@
 module cic {
-    
+    theory Lean {
+        
+    }
 }

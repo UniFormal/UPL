@@ -12,8 +12,8 @@ module meta_groups {
 
     theory InverseOperator {
         include .magmas.Semigroup
-        inv: univ -> univ # postfix ⁻
-        is_weak_inverse: (univ, univ) -> bool = (x, y) -> (x∘(y∘x) == x) & (y∘(x∘y) == y)
+        inv: carrier -> carrier # postfix ⁻
+        is_weak_inverse: (carrier, carrier) -> bool = (x, y) -> (x∘(y∘x) == x) & (y∘(x∘y) == y)
     }
 
     theory WeakInverse {
@@ -26,7 +26,7 @@ module meta_groups {
         include InverseOperator
         inverseLeft:--- (x⁻)∘x == e
         inverseRight:--- x∘(x⁻) == e
-        div: (univ, univ) -> univ = (x, y) -> x∘(y⁻)
+        div: (carrier, carrier) -> carrier = (x, y) -> x∘(y⁻)
         inverse_inv:--- inverse(x, x⁻)
         inv_unit: |- e⁻ == e
         inv_inv:--- (x⁻)⁻ == x

@@ -1,9 +1,9 @@
 module meta_lattices {
     theory MeetSemilattice {
-        include .relations.Carrier
-        meetOp: (univ,univ) -> univ # infix ⊓
+        include .relations.EqualityType
+        meetOp: (carrier,carrier) -> carrier # infix ⊓
         meet = .magmas.Semilattice {
-            type univ = ..univ,
+            type carrier = ..carrier,
             op = meetOp,
             idem = idem,
             comm = comm,
@@ -12,10 +12,10 @@ module meta_lattices {
     }
 
     theory JoinSemilattice {
-        include .relations.Carrier
-        joinOp: (univ,univ) -> univ # infix ⊔
+        include .relations.EqualityType
+        joinOp: (carrier,carrier) -> carrier # infix ⊔
         join = .magmas.Semilattice {
-            type univ = ..univ,
+            type carrier = ..carrier,
             op = joinOp,
             idem = idem,
             comm = comm,
@@ -25,9 +25,9 @@ module meta_lattices {
 
     theory BoundedMeetSemilattice {
         include MeetSemilattice
-        top: univ
+        top: carrier
         bmeet = .monoids.Monoid {
-            type univ = ..univ,
+            type carrier = ..carrier,
             op = meet.op,
             e = top,
             inverse = inverse,
@@ -41,9 +41,9 @@ module meta_lattices {
 
     theory BoundedJoinSemilattice {
         include JoinSemilattice
-        bottom: univ
+        bottom: carrier
         bmeet = .monoids.Monoid {
-            type univ = ..univ,
+            type carrier = ..carrier,
             op = join.op,
             e = bottom,
             inverse = inverse,

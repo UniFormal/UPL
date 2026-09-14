@@ -1,6 +1,6 @@
 module meta_modules {
     theory Scalars {
-        scalars: .relations.Carrier
+        scalars: .relations.EqualityType
     }
 
     theory RingScalars {
@@ -24,7 +24,7 @@ module meta_modules {
         include .groups.CommGroup
         left_scalars: RingScalars
 
-        left_scalar_mult: (scalars.univ, univ) -> univ # infix ⋅
+        left_scalar_mult: (scalars.carrier, carrier) -> carrier # infix ⋅
         left_identity:--- (left_scalars.scalars.mult.e) ⋅ x == x
         left_distrib_scalars:--- (left_scalars.scalars.add.op(s1,s2)) ⋅ x == (s1 ⋅ x) ∘ (s2 ⋅ x)
         left_distrib_vectors:--- s ⋅ (x ∘ y) == (s ⋅ x) ∘ (s ⋅ y) 
@@ -36,7 +36,7 @@ module meta_modules {
         include .groups.CommGroup
         right_scalars: RingScalars
 
-        right_scalar_mult: (univ, scalars.univ) -> univ # infix ⋅
+        right_scalar_mult: (carrier, scalars.carrier) -> carrier # infix ⋅
         right_identity:--- x ⋅ (right_scalars.scalars.mult.e) == x
         right_distrib_scalars:--- x ⋅ (right_scalars.scalars.add.op(s1,s2)) == (x ⋅ s1) ∘ (x ⋅ s2)
         right_distrib_vectors:--- (x ∘ y) ⋅ s == (x ⋅ s) ∘ (y ⋅ s)

@@ -1,11 +1,21 @@
-theory divgroups {
+module divgroups {
     theory DivGroup {
-        include .relations.Carrier
-        e : univ
-        div: (univ, univ) -> univ
-        self_div:--- div(x, x) == e
-        unit_neutR:--- div(x, e) == x
-        reciprocal:--- div(e, div(x, y)) == div(y, x) 
-        reduce:--- div(div(x, z), div(y, z)) == div(x, y)
+        include .sets.Set
+    }
+
+    // GroupToDivGroup: DivGroup -> .groups.Group = g -> §{
+    //     include .sets.Set
+    // }
+
+    // DivGroupToGroup: .groups.Group -> DivGroup = d -> §{
+    //     include .sets.Set
+    // }
+
+    theory GroupToGroup_Eq {
+        include .groups.Group
+    }
+
+    theory DivGroupToDivGroup_Eq {
+        include DivGroup
     }
 }

@@ -1,8 +1,8 @@
 module meta_ringoids {
     theory BiMagma {
-        include .relations.Carrier
-        add: .magmas.Magma {type univ = ..univ} 
-        mult: .magmas.Magma {type univ = ..univ}
+        include .relations.EqualityType
+        add: .magmas.Magma {type carrier = ..carrier} 
+        mult: .magmas.Magma {type carrier = ..carrier}
     }
 
     theory Ringoid {
@@ -108,9 +108,9 @@ module meta_ringoids {
 
     // The traditional definition of a Lie ring
     theory LieRing {
-        include .relations.Carrier
-        add: .groups.CommGroup {type univ = ..univ}
-        bracket: (univ, univ) -> univ # circumfix ⟨
+        include .relations.EqualityType
+        add: .groups.CommGroup {type carrier = ..carrier}
+        bracket: (carrier, carrier) -> carrier # circumfix ⟨
         bilinear:--- (⟨add.op(x, y), z⟩ == add.op(⟨x, z⟩,⟨y, z⟩)) & (⟨x, add.op(y, z)⟩ == add.op(⟨x, y⟩,⟨x, z⟩))
         alternating:--- ⟨x, x⟩ == add.e
         jacobi:--- add.op(⟨x, ⟨y, z⟩⟩, add.op(⟨y, ⟨z, x⟩⟩, ⟨z, ⟨x, y⟩⟩)) == add.e
@@ -119,7 +119,7 @@ module meta_ringoids {
     // The Lie ring obtained from a ring by defining the bracket as the commutator
     theory CommutatorLieRing {
         include Ring
-        bracket: (univ, univ) -> univ # circumfix ⟨
+        bracket: (carrier, carrier) -> carrier # circumfix ⟨
         // bracket is defined as the commutator, i.e. ⟨x, y⟩ == x*y - y*x
         bracket_defn:--- ⟨x, y⟩ == add.op(mult.op(x, y), add.inv(mult.op(y, x)))
 

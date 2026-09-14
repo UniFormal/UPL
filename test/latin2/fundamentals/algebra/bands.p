@@ -24,6 +24,24 @@ module meta_bands {
         right_regular:--- y∘(x∘y) == x∘y
     }
 
+    // views for the three stages of regular band theories
+
+    Regular2LeftNormal: LeftNormal -> Regular = r -> §{
+        include .magmas.Band
+    }
+
+    LeftNormal2LeftRegular: LeftRegular -> LeftNormal = l -> §{
+        include .magmas.Band
+    }
+
+    Regular2RightNormal: RightNormal -> Regular = r -> §{
+        include .magmas.Band
+    }
+
+    RightNormal2RightRegular: RightRegular -> RightNormal = r -> §{
+        include .magmas.Band
+    }
+
     theory Normal {
         include .magmas.Band
         normal:--- z∘((x∘y)∘z) == z∘((y∘x)∘z)
@@ -37,6 +55,42 @@ module meta_bands {
     theory RightCommutative {
         include .magmas.Band
         right_abelian:--- z∘(x∘y) == z∘(y∘x)
+    }
+
+    // views for the diamond of normal band theories (with semilattices at the bottom)
+
+    Normal2RightCommutative: RightCommutative -> Normal = n -> §{
+        include .magmas.Band
+    }
+
+    Normal2LeftCommutative: LeftCommutative -> Normal = n -> §{
+        include .magmas.Band
+    }
+
+    RightCommutative2Semilattice: .magmas.Semilattice -> RightCommutative = r -> §{
+        include .magmas.Band
+    }
+
+    LeftCommutative2Semilattice: .magmas.Semilattice -> LeftCommutative = l -> §{
+        include .magmas.Band
+    }
+
+    // views from regular to normal band theories
+
+    LeftNormal2Normal: Normal -> LeftNormal = l -> §{
+        include .magmas.Band
+    }
+
+    LeftRegular2RightCommutative: RightCommutative -> LeftRegular = l -> §{
+        include .magmas.Band
+    }
+
+    RightNormal2Normal: Normal -> RightNormal = r -> §{
+        include .magmas.Band
+    }
+
+    RightRegular2LeftCommutative: LeftCommutative -> RightRegular = r -> §{
+        include .magmas.Band
     }
 
     theory Rectangular {
