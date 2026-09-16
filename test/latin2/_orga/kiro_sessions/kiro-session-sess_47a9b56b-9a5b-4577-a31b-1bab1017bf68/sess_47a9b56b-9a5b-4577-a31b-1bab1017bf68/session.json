@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "1.0.0",
+  "dataModelVersion": 1,
+  "id": "sess_47a9b56b-9a5b-4577-a31b-1bab1017bf68",
+  "title": "Add MMT Theories As UPL",
+  "agentMode": "vibe",
+  "workspacePaths": [
+    "c:\\Users\\zane\\Desktop\\Praktikum\\UPL"
+  ],
+  "rootPaths": [
+    "c:\\Users\\zane\\Desktop\\Praktikum\\UPL"
+  ],
+  "createdAt": "2026-09-11T14:40:00.434Z",
+  "lastModifiedAt": "2026-09-15T14:25:47.552Z",
+  "modelId": "claude-opus-5",
+  "autopilot": false,
+  "effortLevel": "high",
+  "semanticReviewEnabled": true,
+  "disableAutoCompaction": false,
+  "ftaEnabled": false,
+  "workflowsEnabled": false,
+  "specPlanEnabled": false,
+  "specWorkflow": "quick",
+  "specSkipClarificationEnabled": true,
+  "status": "idle",
+  "_meta": {
+    "kiro": {
+      "policyPreset": [
+        "edit-workspace"
+      ],
+      "shellType": "powershell"
+    }
+  }
+}
