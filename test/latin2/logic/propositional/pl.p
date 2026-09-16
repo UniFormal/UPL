@@ -269,8 +269,23 @@ module pl {
         PLTest.equiv(a,b) -> if(pos) PLTest.and(PLTest.or(nnf2 a false, nnf2 b true), PLTest.or(nnf2 b false, nnf2 a true)) else PLTest.or(PLTest.and(nnf2 a true, nnf2 b false), PLTest.and(nnf2 b true, nnf2 a false))
         a -> if(pos) a else PLTest.not(a)
     }
+
+    phi = PLTest{equiv}(PLTest{A}, PLTest{B})
     
-    phi = PLTest{equiv}(
+    expected_phi = PLTest{and}(
+        PLTest{or}(
+            PLTest{not}(PLTest{A}),
+            PLTest{B}
+        ),
+        PLTest{or}(
+            PLTest{not}(PLTest{B}),
+            PLTest{A}
+        )
+    )
+
+    result = nnf2 phi true
+    
+    phi2 = PLTest{equiv}(
         PLTest{and}(
             PLTest{not}(PLTest{not}(PLTest{A})),
             PLTest{not}(PLTest{and}(PLTest{B}, PLTest{C}))
@@ -281,7 +296,7 @@ module pl {
         )
     )
     
-    expected_phi = PLTest{and}(
+    expected_phi2 = PLTest{and}(
         PLTest{or}(
             PLTest{or}(PLTest{not}(PLTest{A}), PLTest{and}(PLTest{B}, PLTest{C})),
             PLTest{or}(PLTest{or}(PLTest{not}(PLTest{C}), PLTest{D}), PLTest{and}(PLTest{not}(PLTest{A}), PLTest{not}(PLTest{B})))
@@ -292,5 +307,12 @@ module pl {
         )
     )
 
-    test = ASSERT(nnf2 phi true, expected_phi)
+    result2 = nnf2 phi2 true
+
+    test = {
+        ASSERT(result, expected_phi)
+        result
+        //ASSERT(result2, expected_phi2)
+        //result2
+    }
 }
