@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>ScrollView – Test ohne Unity</title>
+  <style>
+    body { font-family: sans-serif; margin: 2em; max-width: 50em; }
+    [dropzone] { display: inline-block; min-width: 2em; padding: 0 .3em; border: 1px dashed #888; border-radius: 3px; }
+    [data-fact-id] { background: #e6f2e6; border-style: solid; }
+    [data-solution-id] { display: inline-block; padding: 0 .3em; border: 1px solid #36c; border-radius: 3px; }
+    .facts span { display: inline-block; margin: .2em; padding: .2em .5em; background: #eee; cursor: grab; border-radius: 3px; }
+    button { margin: .2em; }
+  </style>
+</head>
+<body>
+  <!--
+    Ein einziges Skript: UPL und ScrollView zusammen, gebaut mit
+      sbt frameitScrollView/fastLinkJS
+    Es stellt auch UPLs eigenes globales Objekt FrameIT bereit.
+    Die Seite über einen lokalen Webserver öffnen, nicht per file://.
+  -->
+  <script src="target/scala-2.13/frameit-scrollview-fastopt/main.js"></script>
+
+  <h2 id="scroll-label"></h2>
+
+  <p>
+    Gegeben die Punkte <span data-slot-id="test?_A"></span>, <span data-slot-id="test?_B"></span>,
+    <span data-slot-id="test?_C"></span>, <span data-slot-id="test?_D"></span>, <span data-slot-id="test?_E"></span>,
+    die Abstände <span data-slot-id="test?_AB"></span>, <span data-slot-id="test?_AC"></span>,
+    <span data-slot-id="test?_BE"></span> und die Ähnlichkeit <span data-slot-id="test?_are_similar"></span>.
+  </p>
+  <p>
+    Dann gilt <span data-solution-id="test?_CD"></span> =
+    <span data-slot-id="test?_AC"></span> · <span data-slot-id="test?_BE"></span> / <span data-slot-id="test?_AB"></span>.
+  </p>
+
+  <button id="apply-scroll">Scroll anwenden</button>
+
+  <h3>Test</h3>
+  <button onclick="helper()">helper(): alle Slots belegen</button>
+  <button onclick="measure()">Messungen anmelden (wie Unity)</button>
+  <button onclick="loadLevelFromProjectFile('levels/intercept/intercept.pp')">Level aus .pp-Datei laden</button>
+  <div class="facts" id="facts"></div>
+  <p><small>Nach „Messungen anmelden“ lassen sich die Facts auf die Slots ziehen; Rechtsklick auf einen Slot hebt die Zuweisung auf.
+    Werte stehen im Tooltip (Maus über einen belegten Slot).</small></p>
+
+  <script>
+    // Eine Scroll im Backend-Format für den Strahlensatz des Demo-Levels.
+    const s = c => ({ parseAs: "string", content: c });
+    const slot = (n, t) => ({ uri: s("test?" + n), type: s(t) });
+    const scrollJson = JSON.stringify({
+      uri: s("test?InterceptTheorem"), type: s("Scroll"), name: s("InterceptTheorem"),
+      slots: [slot("_A","point"), slot("_B","point"), slot("_C","point"), slot("_D","point"), slot("_E","point"),
+              slot("_AB","float"), slot("_AC","float"), slot("_BE","float"), slot("_are_similar","assertion")],
+      resultingFacts: [{ uri: s("test?_CD"), type: s("float") }]
+    });
+
+    // Messungen wie Unity sie schicken würde.
+    const measurements = [
+      { s_type: "PointFact", id: "ground", label: "ground" }, { s_type: "PointFact", id: "q", label: "q" },
+      { s_type: "PointFact", id: "foot", label: "foot" },     { s_type: "PointFact", id: "tip", label: "tip" },
+      { s_type: "PointFact", id: "p", label: "p" },
+      { s_type: "LineFact", id: "ground_dist_small", label: "ground_dist_small", pid1: "ground", pid2: "q", distance: 42 },
+      { s_type: "LineFact", id: "ground_dist_large", label: "ground_dist_large", pid1: "ground", pid2: "foot", distance: 420 },
+      { s_type: "LineFact", id: "apparent_height", label: "apparent_height", pid1: "q", pid2: "p", distance: 21 }
+    ];
+
+    function measure() {
+      const box = document.getElementById("facts");
+      box.innerHTML = "";
+      for (const m of measurements) {
+        if (!declareMeasuredFact(JSON.stringify(m))) continue;
+        const el = document.createElement("span");
+        el.textContent = m.label;
+        el.draggable = true;
+        el.addEventListener("dragstart", e => e.dataTransfer.setData("application/json", JSON.stringify(m)));
+        box.appendChild(el);
+      }
+    }
+
+    window.addEventListener("load", () => {
+      loadDemoLevel();
+      RenderScroll(scrollJson);
+    });
+  </script>
+</body>
+</html>

@@ -1,10 +1,21 @@
-name := "UPL"
-scalaVersion := "2.13.14"
-enablePlugins(ScalaJSPlugin)
+lazy val root = (project in file("."))
+  .enablePlugins(ScalaJSPlugin)
+  .settings(
+    name := "UPL",
+    scalaVersion := "2.13.14",
+  )
 
-// produces the right module.exports for Node.js, but then does not work in browser
-// scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.CommonJSModule) }
 
-// use @JSExport to mark the objects and methods that should be available from JS
-// run "compile" and "fastLinkJS" to build a self-contained main.js holding the dependency closure of the exported methods
-// run "package" to create a jar file, or run "assembly" using sbt-assembly plugin -- does not work well because js included
+lazy val frameitScrollView = (project in file("frameit-scrollview"))
+  .enablePlugins(ScalaJSPlugin)
+  .dependsOn(root)
+  .settings(
+    name := "frameit-scrollview",
+    scalaVersion := "2.13.15",
+    libraryDependencies ++= Seq(
+      "org.scala-js" %%% "scalajs-dom" % "2.8.0",
+      "com.raquo" %%% "laminar" % "17.2.0",
+    ),
+    scalaJSUseMainModuleInitializer := true,
+    Compile / mainClass := Some("info.kwarc.p.frameit.ScrollViewMain"),
+  )
