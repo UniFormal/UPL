@@ -8,7 +8,7 @@ object WebMain {
   val checker = new Checker(ErrorThrower)
   def checkProgram(input: String) = {
     val voc = Parser.text(SourceOrigin.anonymous, input, ErrorThrower)
-    val prog = Program(voc, UnitValue)
+    val prog = Program(voc, Unit.Value)
     checker.checkProgram(prog)
   }
 
@@ -32,7 +32,7 @@ object WebMain {
     print(r)
   }
 
-  def emptyProgram = Program(Theory.empty, UnitValue)
+  def emptyProgram = Program(Theory.empty, Unit.Value)
 
   def print(sf: SyntaxFragment) = sf.toString
 }

@@ -1,6 +1,6 @@
 package info.kwarc.p
 
-object Solver {
+class Solver {
    val checker = new Checker(ErrorThrower)
    case class Error(msg: String, thy: Theory) extends SError(thy.loc, msg + " while solving " + thy)
    def fail(msg: String)(implicit thy: Theory) = throw Error(msg, thy)
@@ -11,12 +11,17 @@ object Solver {
   var redundant: List[String] = Nil  // axioms/theorems that we have used and that should be removed from the theory
   var redundantP: List[Property] = Nil
 
-   /**
-    * conservatively extends a theory, trying to reduce the abstract interface
-    * e.g., by adding definitions for symbols that are determined by axioms
+  var gc: GlobalContext = _
+  var trustUninhabitedAxioms: Boolean = true
+
+  var shouldPrint : Boolean = true
+
+  /** conservatively extend a theory, trying to reduce the abstract interface
+    * e.g. by adding definitions for symbols that are determined by axioms
     */
    def solve(gc: GlobalContext, thy: Theory) = {
      implicit val cause = thy
+     this.gc = gc
      val thyE = Checker.evaluateTheory(gc, thy)
      val thyN = checker.Normalize(gc,thyE)
      // the state during solving
@@ -29,21 +34,24 @@ object Solver {
      // prepare the solving by collecting the relevant information from the theory
      thyN.decls.foreach(d => findFields(d, Path(), thyN, Map()));
 
+    // clean up duplicate unknowns
+    unknowns = unknowns.distinct
+    // clean up known unknowns (e.g. value assignment via instantiation)
+    unknowns = unknowns.filter(u => knowns.count(k => k.name == u.name) == 0)
 
-     // the actual solving
-     // TODO
-     println("Start: ")
-     printAsTheory("Unknowns", unknowns)
-     printAsTheory("Knowns", knowns)
-     printAsTheory("Properties", props)
-     //printAsTheory("Redundant", redundantP)
-     //println(thyN.decls.filter(d => !d.defined))
-     //println(thyN.decls.filter(d => d.defined))
+    // the actual solving
+    // TODO
+    println("Start: ")
+    printAsTheory("Unknowns", unknowns)
+    printAsTheory("Knowns", knowns)
+    printAsTheory("Properties", props)
+    //printAsTheory("Redundant", redundantP)
+    //println(thyN.decls.filter(d => !d.defined))
+    //println(thyN.decls.filter(d => d.defined))
 
-
-     var noChanges : Boolean = false
-     while(!noChanges) {
-       noChanges = true
+    var noChanges: Boolean = false
+    while (!noChanges) {
+      noChanges = true
 
        // TODO remove redundant axioms
        props.foreach(p => {
@@ -79,8 +87,8 @@ object Solver {
                // other forms
                // TODO umformungen
                case Some(_) | None => {
-                 val iso = findIsolatable(p.left, Occurrence.root.path)//.filter(n => n._1 == u.name)
-                 Console.println(iso)
+                 val iso = Isolator.findIsolatable(p.left, Occurrence.root.path).filter(n => n._1 == u.name)
+                 //Console.println(iso)
                  //Console.println(InverseMethods.all.foreach(m => m.apply(p.left, p.right)))
                  iso match {
                    case Nil =>
@@ -92,7 +100,7 @@ object Solver {
                      unknowns = unknowns.filter(x => x.name != u.name)
                      noChanges = false
                  }
-                 val iso2 = findIsolatable(p.right, Occurrence.root.path).filter(n => n._1 == u.name)
+                 val iso2 = Isolator.findIsolatable(p.right, Occurrence.root.path).filter(n => n._1 == u.name)
                  iso2 match {
                    case Nil =>
                    case iso_head :: rest =>
@@ -119,9 +127,6 @@ object Solver {
      printAsTheory("Properties", props)
      printAsTheory("Redundant", redundantP)
      printAsTheory("New", knowns.filter(k => k.isNew))
-
-     // just for temporary testing: add one definition
-     //knowns ::= Known("a", IntValue(1), true)
 
      // return the extended theory by adding definitions and dropping now-redundant properties
      var changed = false
@@ -156,11 +161,14 @@ object Solver {
       fail("nested theories not supported: " + thd.name)(thy)
     case ed: ExprDecl =>
       ed.tp match {
-        case ProofType(Equality(true,_,l,r)) =>
+        case ProofType(Equality(true,_,l,r)) if ed.defined || trustUninhabitedAxioms =>
           props ::= Property(pathifyExpression(l, pre, lpt, thy),pathifyExpression(r, pre, lpt, thy),pre)//Property(l,r,pre)//
         case ClassType(theo) =>
           // println(theo.decls.forall(d => d.defined))
-          theo.decls.foreach(dec => findFields(dec, pre/ed.name, thy, lpt+(ed.name -> theo))) // TODO besser mit map
+          val tV = Checker.evaluateTheory(gc, theo)
+          // TODO funktioniert noch nicht
+          tV.decls.foreach(dec => findFields(dec, pre/ed.name, thy, lpt+(ed.name -> theo))) // TODO besser mit map
+          ed.dfO.get.asInstanceOf[Instance].theory.decls.foreach(dec => findFields(dec, pre/ed.name, thy, lpt+(ed.name -> theo)))
           if (unknowns.exists(u => startsWith(u.name, pre/ed.name))) unknowns ::= Unknown(pre/ed.name, ed.tp, true)
           else knowns ::= Known(pre/ed.name, ed.dfO.get, false)
           // axiome --> beide Seiten OwnedExpr (owner = ClosedRef(ed.name), domain = theo, ownedExpr = left/right)
@@ -169,10 +177,12 @@ object Solver {
             unknowns ::= Unknown(pre/ed.name, ed.tp, false)
           else
             knowns ::= Known(pre/ed.name, ed.dfO.get, false)
+        // TODO case Tuple(es) =>
         case _ =>
           // nicht lösbar -> als Known hinzufügen
           // bool als return für flag für instanz, soll dann bei unknowns bleiben
       }
+    case _ =>
   }
 
   def pathifyExpression(e: Expression, p:Path, lpt:Map[String, Theory], thy : Theory) : Expression = {
@@ -196,23 +206,7 @@ object Solver {
 
 
 
-  /**
-   * finds all possibilities which unknowns can be isolated where
-   * @param e current expression to traverse
-   * @param traversed: accumulator of path traversed so far
-   */
-  def findIsolatable(e: Expression, traversed: List[Int]): List[(Path,Occurrence)] = e match {
-    case ClosedRef(n) => List((Path(n), Occurrence(traversed.reverse)))
-    // case OwnedExpr(ClosedRef(n), _, e) // findIsolatable auf e
-    case o: OwnedExpr => List((PathHelper.extractPathFromOwnedExpr(o, Path()), Occurrence(traversed.reverse)))
-    case Application(BaseOperator(op: KnownOperator,_), as) =>
-      op.isolatableArguments(as).flatMap(i => findIsolatable(as(i), i::traversed))
-    case Application(OpenRef(p), as) =>
-      InverseMethods.findIsolatable(p, as, traversed)
-    case Tuple(es) =>
-      Range(0,es.length).toList.flatMap(i => findIsolatable(es(i), i::traversed))
-    case _ => Nil
-  }
+
 
   /**
    * rearranges a property so that it isolates at an occurrence in the left expression
@@ -243,13 +237,46 @@ object Solver {
   }
 
   def cleanUpUnknownInstances(): Unit = {
+    // remove unknowns, which are actually knowns
     val knownInstances = unknowns.filter(u => u.isInstance && unknowns.count(u2 => startsWith(u2.name, u.name)) == 1)
     unknowns = unknowns.filter(u => !knownInstances.exists(k => k.name == u.name))
     // TODO knownInstances.foreach(k => knowns ::= Known(u.name, TypeDecl()))
-    //Instance(Include(theo)::List[ExprDecl](known field und lösung)) prefix bei feldern entfernen
+    //Instance(Include(theo)::List[ExprDecl](known field ans solution)) remove prefix from fields
     //unknowns.exists(u => startsWith(u.name, pre/ed.name))) unknowns ::= Unknown(pre/ed.name, ed.tp)
   }
+
+  def println(arg: Any): Unit = {
+    if (shouldPrint) Console.println(arg)
+  }
 }
+object Solver {
+  lazy val solver = new Solver()
+  def apply(gc: GlobalContext, thy: Theory, trustUninhabitedAxioms: Boolean = true): Theory = {
+    solver.trustUninhabitedAxioms = trustUninhabitedAxioms
+    solver.solve(gc, thy)
+  }
+}
+
+object Isolator {
+  /**
+   * finds all possibilities which unknowns can be isolated where
+   * @param e current expression to traverse
+   * @param traversed: accumulator of path traversed so far
+   */
+  def findIsolatable(e: Expression, traversed: List[Int]): List[(Path,Occurrence)] = e match {
+    case ClosedRef(n) => List((Path(n), Occurrence(traversed.reverse)))
+    // case OwnedExpr(ClosedRef(n), _, e) // findIsolatable auf e
+    case o: OwnedExpr => List((PathHelper.extractPathFromOwnedExpr(o, Path()), Occurrence(traversed.reverse)))
+    case Application(BaseOperator(op: KnownOperator,_), as) =>
+      op.isolatableArguments(as).flatMap(i => findIsolatable(as(i), i::traversed))
+    case Application(OpenRef(p), as) =>
+      InverseMethods.findIsolatable(p, as, traversed)
+    case Tuple(es) =>
+      Range(0,es.length).toList.flatMap(i => findIsolatable(es(i), i::traversed))
+    case _ => Nil
+  }
+}
+
 
 object PathHelper {
   def extractPathFromOwnedExpr(e: Expression, p: Path): Path = e match {
@@ -315,11 +342,17 @@ case class InverseUnary(fun: Path, inv: Path) extends InverseMethodData (fun, 0)
 
   def findIsolatable(p: Path, args: List[Expression], traversed: List[Int]): List[(Path, Occurrence)] = {
     if (fun.toString().equals(p.toString())) {
-      Solver.findIsolatable(args.head, 0 :: traversed)
+      Isolator.findIsolatable(args.head, 0 :: traversed)
     }
     else {
       Nil
     }
+  }
+}
+
+object Printer {
+  def printTheory(name: String, t : Theory): Unit = {
+    println(name + t.toString().replace(", ", ",\r\n\t").replace("{", "{\r\n\t").replace("}", "\r\n}"))
   }
 }
 
@@ -365,11 +398,66 @@ object InverseMethods {
 
 object SolverTest {
   def main(args: Array[String]): Unit = {
+
+    //Math.sin(FloatValue(3.14))
+
     val path = File(args(0)).canonical
     val proj = Project.fromFile(path, None)
     val voc = proj.check(true)
     val gc = GlobalContext(voc)
-    val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "Test8")))
-    println(tS)
+    val S = new Solver()
+    //val tS = Solver.solve(gc, OpenRef(Path("Demo", "OppositeLength")))
+    val tS = S.solve(gc, OpenRef(Path("Demo", "TestOppositeLength")))
+    //val tS = Solver.solve(gc, OpenRef(Path("Demo", "TestInterceptTheorem2")))
+    //val tS = S.solve(gc, OpenRef(Path("SolverTest", "Slingshot_test")));
+    //val tS = Solver.solve(gc, OpenRef(Path("SolverTest", "C")));
+    //val tS = S.solve(gc, OpenRef(Path("SolverTestCases", "AddXL")))
+    //S.printAsTheory("Result", tS.decls);
+    // OppositeLength
+    // TestOppositeLength
+
+    //test_cases(args)
+
+    //println(tS)
+  }
+
+  def test_cases(args: Array[String]): Unit = {
+    val path = File(args(0)).canonical
+    val proj = Project.fromFile(path, None)
+    val voc = proj.check(true)
+    val gc = GlobalContext(voc)
+
+    val thsXYZ = List("Add")
+
+    var thLR : List[String] = List()
+    thLR :::= thsXYZ.map(t => List(t+"X", t+"Y",  t+"Z")).flatten
+
+    var ths : List[String] = List()
+    ths :::= thLR.map(t => List(t+"L", t+"R")).flatten
+
+    println(ths)
+    val checker = new Checker(ErrorThrower)
+    val S = new Solver()
+
+    val solThy = OpenRef(Path("SolverTestCases", "Solutions"))
+    val solThyE = Checker.evaluateTheory(gc, solThy)
+    val solThyN = checker.Normalize(gc, solThyE)
+
+    ths.foreach(t => {
+      val thy = OpenRef(Path("SolverTestCases", t))
+      val thyE = Checker.evaluateTheory(gc, thy)
+      val thyN = checker.Normalize(gc,thyE)
+      // find solution
+
+      val tS = S.solve(gc, thy)
+      Printer.printTheory(t, tS) // .printAsTheory("Result " + thy.path, tS.decls);
+      // solution must be equivalent to Solver result
+
+      val sol = solThyN.decls.filter(d => d.isInstanceOf[ExprDecl]).find(d => d.asInstanceOf[ExprDecl].name == t).get
+      println("Solution: " + sol)
+      // TODO some automated check if the solution is somehow included in the result
+
+      println("--------------------")
+    })
   }
 }

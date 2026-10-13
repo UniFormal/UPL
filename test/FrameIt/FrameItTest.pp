@@ -1,2 +1,2 @@
-source: Gameplay_Example/gameplay_example.p
-main: similarTriangles_gameplay_example.test
+background: ../solver/math.p
+schemata: slingshot_example.p

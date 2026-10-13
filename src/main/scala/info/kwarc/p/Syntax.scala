@@ -111,6 +111,9 @@ case class Module(name: String, closed: Boolean, df: TheoryValue) extends NamedD
     }
   }
 
+  /** replaces the body of the definiens */
+  def copyBody(f: List[Declaration] => List[Declaration]): Module = copy(df = df.copy(decls = f(df.decls)))
+
   /** dereferences a path inside this module, returns the result followed by its ancestors */
   def lookupPathAndParents(path: Path, parents: List[NamedDeclaration]): Option[List[NamedDeclaration]] = path.names match {
     case Nil => Some(this :: parents)
@@ -136,9 +139,18 @@ object Module {
   def apply(name: String, closed: Boolean, ds: List[Declaration] = Nil): Module = Module(name, closed, TheoryValue(ds))
 }
 
-/** parent of all declarations that do not nest other declarations */
-sealed trait AtomicDeclaration extends Declaration {
+/** Mixin for all [[SyntaxFragment]]s which have a field [[tp]]:[[Type]].
+  * I.e. [[TypedDeclaration]], [[AtomicDeclaration]] and many [[Expression]]s
+  * @todo It might make sense to turn this into a polymorphic `Typed[+T <: Type]`,
+  *       similar to [[HasChildren]], so the [[Type]] of subexpressions can be coerced
+  */
+sealed trait Typed {
   def tp: Type
+}
+object Typed { def unapply(arg: Typed): Option[Type] = Option(arg.tp) }
+
+/** parent of all declarations that do not nest other declarations */
+sealed trait AtomicDeclaration extends Declaration with Typed{
   def children = tp :: dfO.toList
 }
 
@@ -170,30 +182,42 @@ object Include {
 
 /** parent class of all declarations that introduce symbols, e.g., type, function, predicate symbols */
 sealed trait SymbolDeclaration extends NamedDeclaration with AtomicDeclaration {
+  def params: LocalContext
   def tpSep: String // ":", "<", ...
   override def toString = {
+    var paramsS = ""
+    var inVars: Option[Boolean] = None
+    params.variables.reverse.foreach {
+      case td: TVarDecl =>
+        val sep = if (inVars.contains(true)) "," else if (inVars.contains(false)) ")@(" else "@("
+        paramsS += sep + td.name
+        inVars = Some(true)
+      case ed: EVarDecl =>
+        val sep = if (inVars.contains(true)) ")(" else if (inVars.contains(false)) "," else "("
+        paramsS += sep + ed.toString
+        inVars = Some(false)
+    }
+    if (inVars.isDefined) paramsS += ")"
     val tpS = if (tp == null || tp == AnyType) "" else " " + tpSep + " " + tp.toString
     val dfOS = dfO match {
       case Some(t) => " = " + t
       case None    => ""
     }
-    kind + " " + name + tpS + dfOS
+    kind + " " + name + paramsS + tpS + dfOS
   }
   def toRef = ClosedRef(name)
   def ntO: Option[Notation]
   def modifiers: Modifiers
   def subsumedBy(that: SymbolDeclaration): Boolean = {
-    this.kind == that.kind && this.name == that.name && this.tp == that.tp &&
+    this.kind == that.kind && this.name == that.name && this.params == that.params && this.tp == that.tp &&
       (!this.defined || this.dfO == that.dfO) &&
       modifiers == that.modifiers
   }
-  def tc: LocalContext
 }
 
 /** unifies [[ExprDecl]] and [[EVarDecl]] */
-trait TypedDeclaration extends Named {
-  def tc: LocalContext
-  def tp: Type
+trait TypedDeclaration extends Named with Typed {
+  def params: LocalContext
 }
 
 /** unifies TypeDecl and TVarDecl */
@@ -210,7 +234,7 @@ case class Modifiers(closed: Boolean, mutable: Boolean) {
   * @param tp the upper type bound, [AnyType] if unrestricted, null if to be inferred during checking
   * @param args input (bound in both type bound and definition)
   */
-case class TypeDecl(name: String, tc: LocalContext, tp: Type, dfO: Option[Type], modifiers: Modifiers) extends SymbolDeclaration with KindedDeclaration {
+case class TypeDecl(name: String, params: LocalContext, tp: Type, dfO: Option[Type], modifiers: Modifiers) extends SymbolDeclaration with KindedDeclaration {
   def kind = Keywords.typeDecl
   def tpSep = "<"
   def ntO = None
@@ -219,7 +243,7 @@ case class TypeDecl(name: String, tc: LocalContext, tp: Type, dfO: Option[Type],
 /** declares a typed symbol
   * @param tp the type, null if to be inferred during checking
   */
-case class ExprDecl(name: String, tc: LocalContext, tp: Type, dfO: Option[Expression], ntO: Option[Notation], modifiers: Modifiers) extends SymbolDeclaration with TypedDeclaration {
+case class ExprDecl(name: String, params: LocalContext, tp: Type, dfO: Option[Expression], ntO: Option[Notation], modifiers: Modifiers) extends SymbolDeclaration with TypedDeclaration {
   def kind = if (modifiers.mutable) Keywords.mutableExprDecl else Keywords.exprDecl
   def tpSep = ":"
 }
@@ -227,7 +251,10 @@ case class ExprDecl(name: String, tc: LocalContext, tp: Type, dfO: Option[Expres
 // ***************** Objects **************************************
 
 /** parent of all anonymous objects like types, expressions, formulas, etc. */
-sealed abstract class Object extends SyntaxFragment
+sealed abstract class Object extends SyntaxFragment {
+  def known: Boolean = true
+  def skipUnknown: Object
+}
 
 /** theories */
 sealed trait Theory extends Object {
@@ -239,6 +266,7 @@ sealed trait Theory extends Object {
   /* TODO: Refs to primitive modules should initially be QuasiFlat */
   private[p] var flatness: Theory.Flatness = Theory.NotFlat
   def isFlat = flatness != Theory.NotFlat
+  def skipUnknown: Theory = this
 }
 object Theory {
   def empty = TheoryValue(Nil)
@@ -268,8 +296,7 @@ object Theory {
 
 /** types */
 sealed trait Type extends Object {
-  def known = true
-  def skipUnknown = this
+  def skipUnknown: Type = this
   // needs a different name than its counter part for expressions because Ref inherits both with different return types
   def substituteInType(sub: Substitution) = Substituter(GlobalContext(""), sub, this)
   def <--(ins: Type*) = SimpleFunType(ins.toList, this)
@@ -281,11 +308,12 @@ sealed trait Type extends Object {
   def power(n: Int) = ProdType.simple(Range(1, n).toList.map(_ => this))
 }
 object Type {
-  private var unknownCounter = -1
-  def unknown(gc: GlobalContext = null) = {
-    unknownCounter += 1
-    val cont = new UnknownTypeContainer(unknownCounter, null)
-    UnknownType(gc, cont, if (gc == null) null else gc.visibleLocals.identity)
+  def unknown(gc: GlobalContext = null): Type = {
+    unknown(gc, if (gc == null) null else gc.visibleLocals.identity)
+  }
+  def unknown(gc: GlobalContext, sub: Substitution): Type = {
+    val cont = new UnknownContainer
+    UnknownType(gc, cont, sub)
   }
 
   val unbounded = AnyType
@@ -294,12 +322,23 @@ object Type {
   def normalize(tp: Type) = IdentityTraverser(tp)(GlobalContext(""), ())
 }
 
-/** typed expressions */
+/** typed expressions
+  * @todo Roughly half of all Expressions don't have a [[Type]]
+  */
 sealed trait Expression extends Object {
+  def skipUnknown: Expression = this
   def field(dom: Theory, f: String) = OwnedExpr(this, dom, ClosedRef(f))
   def substitute(sub: Substitution) = Substituter(GlobalContext(""), sub, this)
   /** true if this expression binds all free variables in its children */
   def closing = false
+}
+
+object Expression {
+  def unknown(gc: GlobalContext = null, a: Type = null) = {
+    val cont = new UnknownContainer
+    val etp = if (a == null) a else Type.unknown(gc)
+    UnknownExpr(gc, cont, etp, if (gc == null) null else gc.visibleLocals.identity)
+  }
 }
 
 // ************************** Common objects ************************
@@ -308,6 +347,7 @@ sealed trait Expression extends Object {
 
 /** reference to a name */
 sealed trait Ref extends Expression with Type with Theory {
+  override def skipUnknown: Ref = this
   def children = Nil
   def finite = false
   def label = toString
@@ -328,29 +368,39 @@ case class VarRef(name: String) extends Ref {
   override def toString = name
 }
 
+object BuiltinRef {
+  val uniformal = Path("Uniformal")
+  def apply(p: Path) = OpenRef(uniformal/p)
+  def unapply(r: OpenRef): Option[Path] = if (r.path.head == uniformal.head) Some(r.path.tail) else None
+}
+
 /** reference to an open/closed symbol with its type arguments */
-case class AppliedRef(ref: Ref, args: List[Type]) extends Expression with Type {
-  override def toString = ref.toString + "@" + args.mkString("(", ", ", ")")
+case class AppliedRef(ref: Ref, tpargs: List[Type], args: List[Expression]) extends Expression with Type {
+  override def skipUnknown = this
+  override def toString = ref.toString +
+    (if (tpargs.nonEmpty) "@" else "") + Util.mkString(tpargs,"(", ", ", ")") +
+    Util.mkString(args, "(", ", ", ")", bracketOne = true)
   def label = "ref"
-  def children = ref :: args
+  def children = ref :: tpargs ::: args
   def finite = false
 }
 /** unifies Ref and AppliedRef; AppliedRef(r,Nil) is the same as r */
 object MaybeAppliedRef {
-  def apply(r: Ref, tpargs: List[Type]) = if (tpargs.isEmpty) r else AppliedRef(r,tpargs)
+  def apply(r: Ref, tpargs: List[Type], args: List[Expression] = Nil) =
+    if (tpargs.isEmpty && args.isEmpty) r else AppliedRef(r,tpargs,args)
   def unapply(t: Object) = t match {
-    case r: Ref => Some((r,Nil))
-    case AppliedRef(r,tpargs) => Some((r,tpargs))
+    case r: Ref => Some((r,Nil,Nil))
+    case AppliedRef(r,tpargs,args) => Some((r,tpargs,args))
     case _ => None
   }
 }
 
-/** an object from a different local environment that is translated by o into the current local environment
+/** an [[Object]] `x` from a different local environment that is translated by the [[owner]] `o`
+  * into the current local environment. Written `o.x`
   *
-  * written o.x
-  * If T |- o: S and S |- t : A : type, then T |- o.t : o.A : type
-  * In particular, x must be closed and relative to the domain of o, not relative to the current lc.
-  * o must be a morphism into the current lc, and o.x can be seen as the morphism application o(t).
+  * If `T |- o: S` and `S |- t : A : type`, then `T |- o.t : o.A : type`
+  * In particular, `x` must be closed and relative to the domain of `o`, not relative to the current lc.
+  * `o` must be a morphism into the current lc, and `o.x` can be seen as the morphism application `o(t)`.
   */
 sealed trait OwnedObject extends Object {
   /** the translation, must evaluate to an [[Instance]] */
@@ -367,9 +417,9 @@ sealed trait OwnedObject extends Object {
 
 object OwnedObject {
   def unapply(o: Object) = o match {
-    case OwnedType(o,d,t) => Some((o,d,t))
-    case OwnedExpr(o,d,e) => Some((o,d,e))
-    case OwnedTheory(o,d,thy) => Some((o,d,thy))
+    case OwnedType(o,d,t) => Some(o,d,t)
+    case OwnedExpr(o,d,e) => Some(o,d,e)
+    case OwnedTheory(o,d,thy) => Some(o,d,thy)
     case _ => None
   }
 }
@@ -403,9 +453,9 @@ object FlatOwnedObject {
 }
 
 object OwnedReference {
-  def apply(o: Expression, d: Theory, nd: NamedDeclaration, args: List[Type] = Nil): OwnedObject = {
+  def apply(o: Expression, d: Theory, nd: NamedDeclaration, tpargs: List[Type] = Nil, args: List[Expression] = Nil): OwnedObject = {
     val r = ClosedRef(nd.name)
-    val ra = MaybeAppliedRef(r, args)
+    val ra = MaybeAppliedRef(r, tpargs, args)
     nd match {
       case _:ExprDecl => OwnedExpr(o,d,ra)
       case _:TypeDecl => OwnedType(o,d,ra)
@@ -418,7 +468,7 @@ object OwnedReference {
 
 /** expressions translated into another regional context
   *
-  * If t is ClosedRef(n), this is the usual field access o.n known from OOP. See also [[Expression.field]]
+  * If [[owned]] is [[ClosedRef]](n), this is the usual field access [[owner]].n known from OOP. See also [[Expression.field]]
   * By allowing arbitrary terms, we can delay traversing expressions, which might have to duplicate owner.
   */
 case class OwnedExpr(owner: Expression, ownerDom: Theory, owned: Expression) extends Expression with OwnedObject
@@ -464,8 +514,13 @@ sealed trait ObjectOver extends Object {
 case class TheoryValue(override val decls: List[Declaration]) extends Theory with HasChildren[Declaration] {
   override def toString = {
     this match {
-      case PhysicalTheory(p, ds) => p.toString + (if (ds.isEmpty) "" else ds.mkString("{", ", ", "}"))
-      case _ => decls.mkString("{", ", ", "}")
+      case PhysicalTheory(p, ds) => p.toString + (if (ds.isEmpty) "" else TheoryValue(ds).toString)
+      case TheoryValue(decls) =>
+        val multiLine = "{\n" + decls.mkString("\n").indent(2) + "}"
+        lazy val singleLine = decls.mkString("{", ",  ", "}")
+        if (decls.lengthCompare(1) <= 0 || multiLine.lengthCompare(50) <= 0)
+              singleLine
+        else  multiLine
     }
   }
   def label = "theory"
@@ -531,67 +586,83 @@ object TheoryAsValue {
   }
 }
 
-// ***************** Types **************************************
+// ***************** Unknowns *************************************
 
-/** an omitted type that is to be filled in during type inference */
-class UnknownTypeContainer(private var id: Int, private[p] var tp: Type) {
+/** mutable memory location that holds an omitted object that is to be filled in during type inference */
+class UnknownContainer {
+  private[p] var obj: Object = null
+  private[p] val id = UnknownContainer.next
+  def known = !empty && obj.known
+  def empty = obj == null
+
   def label = "???" + id
-  override def toString = if (known) tp.toString else label
-  def known = tp != null && tp.known
+  override def toString = if (known) obj.toString else label
 }
 
-/** an unknown type that is to be solved during inference
-  * see [[Type.unknown]] for its creation
-  *
-  * All local variables that were visible when the type was created can be free in the solution.
-  * This class can be seen as a redex that abstracts over them and is then applied to some arguments.
-  * @param originalContext the free variables, initially context in which this type occurred
-  * @param container the mutable container of the solved type, initially empty
-  * @param sub the argument corresponding to the free variables, initially the identity
-  */
-case class UnknownType(originalContext: GlobalContext, container: UnknownTypeContainer, sub: Substitution) extends Type {
+object UnknownContainer {
+  private var unknownCounter = -1
+  private def next = {unknownCounter += 1; unknownCounter}
+}
+
+/** an unknown object that is to be solved during inference
+ * see [[Type.unknown]] and [[Expression.unknown]] for creation
+ *
+ * All local variables that were visible when the type was created can be free in the solution.
+ * This class can be seen as a redex that abstracts over them and is then applied to some arguments.
+ */
+sealed trait UnknownObject extends Object {
+  /** the free variables that may occur, the context in which this object occurred */
+  def originalContext: GlobalContext
+  /** the mutable container of the solved object, initially empty */
+  def container: UnknownContainer
+  /** a substitution to the free variables that has to be applied once solved, initially the identity */
+  def sub: Substitution
+
+  override def toString = container.toString + (if (sub != null && !sub.isIdentity) "[" + sub + "]" else "")
+  def label = container.label
+  def children = if (sub == null) Nil else sub.children
+
   // overriding to avoid extremely slow recursion into the global context
   override def hashCode() = container.hashCode() + sub.hashCode()
   override def equals(that: Any) = {
     that match {
-      case that: UnknownType =>
-        this.container == that.container && this.sub == that.sub
+      case that: UnknownObject => this.container == that.container && this.sub == that.sub
       case _ => false
     }
   }
-  override def toString = container.toString + (if (sub != null && !sub.isIdentity) "[" + sub + "]"  else "")
-  def label = container.label
-  def children = if (sub == null) Nil else sub.children
+
   override def known = container.known
-  override def skipUnknown = if (!known) this else {
-    val sk = container.tp.skipUnknown
-    if (sub == null)
-      sk // only happens if unchecked content is reused after checking has solved a type
-    else
-      sk.substituteInType(sub)
-  }
-
-  /** solves the unknown type
-    * pre: if not null, t is relative to u.gc
+  /** solves the unknown object
+    * pre: if not null, o is relative to u.gc
     */
-  private[p] def set(t: Type): Unit = {
-    if (known)
-      throw IError("type already inferred")
-    if (container.tp == null) {
-      // println(s"solving $this as $t")
-      container.tp = t.skipUnknown
-    } else
-      container.tp match {
-        case u: UnknownType =>
-          u.set(t)
-        case _ => throw IError("impossible case")
-      }
+  private[p] def set(o: Object): Unit = {
+    if (known) throw IError("object already inferred")
+    if (container.obj == null) {
+      container.obj = o.skipUnknown
+    } else container.obj match {
+      case u: UnknownObject => u.set(o)
+      case _ => throw IError("impossible case")
+    }
   }
-
-  /** pattern fragment: sub is a renaming of the free variables */
-  def isSolvable = !known && sub.inverse.isDefined
-  def finite = if (known) skipUnknown.finite else false
 }
+
+case class UnknownType(originalContext: GlobalContext, container: UnknownContainer, sub: Substitution) extends Type with UnknownObject {
+  def finite = if (known) skipUnknown.finite else false
+  override def skipUnknown = if (container.empty) this else {
+    val sk = container.obj.skipUnknown.asInstanceOf[Type]
+    if (sub == null) sk // only happens if unchecked content is reused after solving
+    else sk.substituteInType(sub)
+  }
+}
+case class UnknownExpr(originalContext: GlobalContext, container: UnknownContainer, tp: Type, sub: Substitution) extends Expression with UnknownObject with Typed {
+  override def skipUnknown = if (container.empty) this else {
+    val sk = container.obj.skipUnknown.asInstanceOf[Expression]
+    if (sub == null) sk
+    else sk.substitute(sub)
+  }
+}
+
+// ***************** Types **************************************
 
 /** the type of instances of a theory */
 case class ClassType(domain: Theory) extends Type {
@@ -620,7 +691,7 @@ case class ExprsOver(scope: Theory, tp: Type) extends Type with ObjectOver {
 }
 
 /** atomic built-in base types */
-sealed abstract class BaseType extends Type {
+sealed abstract class BaseType extends Type with Named {
   def name: String
   override def toString = name
   def label = name
@@ -644,10 +715,10 @@ case object EmptyType extends BaseType {
   def finite = true
 }
 
-/** 1 element */
-case object UnitType extends BaseType {
-  val name = "unit"
-  def finite = true
+/** 1 element; defined as empty product */
+object Unit {
+  val Type = ProdType(ExprContext.empty)
+  val Value = Tuple(Nil)
 }
 
 /** 2 elements */
@@ -741,17 +812,13 @@ object NumberType {
 }
 
 /** interval of integers, unbounded if bounds absent, including lower and upper bound if present */
-case class IntervalType(lower: Option[Expression], upper: Option[Expression])
-  extends Type {
-  private def boundString(e: Option[Expression]) =
-    e.map(_.toString).getOrElse("")
+case class IntervalType(lower: Option[Expression], upper: Option[Expression]) extends Type {
+  private def boundString(e: Option[Expression]) = e.map(_.toString).getOrElse("")
   override def toString = s"int[${boundString(lower)};${boundString(upper)}]"
   def label = "int"
   def children = lower.toList ::: upper.toList
   def finite = lower.isDefined && upper.isDefined
-  def concrete = lower.forall(_.isInstanceOf[NumberValue]) && upper.forall(
-    _.isInstanceOf[NumberValue]
-  )
+  def concrete = lower.forall(_.isInstanceOf[NumberValue]) && upper.forall(_.isInstanceOf[NumberValue])
 }
 
 object IntervalType {
@@ -777,7 +844,9 @@ object IntervalType {
 /** dependent functions
  */
 case class FunType(ins: ExprContext, out: Type) extends Type {
-  override def toString = ProdType(ins).toString + " -> " + out
+  override def toString = {
+    "(" + ProdType(ins).toString + " -> " + out + ")"
+  }
   def label = "->"
   def children = ins.children ::: List(out)
   override def childrenInContext =
@@ -801,6 +870,24 @@ object SimpleFunType {
   }
 }
 
+/** easier syntax for working with function types; distinguishes () -> A and A */
+object PlainFunType {
+  /** argument name (if named) and type */
+  type Arg = (Option[String],Type)
+  def apply(ins: List[Arg], out: Type) = {
+    val vds = ins.map {case (nO,a) => nO.map(n => EVarDecl(n,a)).getOrElse(EVarDecl.anonymous(a))}
+    FunType(ExprContext.make(vds), out)
+  }
+  def unapply(tp: Type): Option[(List[Arg],Type)] = tp match {
+    case FunType(ins, out) =>
+      val args = Util.reverseMap(ins.variables) {in =>
+        val nO = if (in.anonymous) None else Some(in.name)
+        (nO, in.tp)
+      }
+      Some((args,out))
+    case _ => None
+  }
+}
 /** dependent sums/tuples
  */
 case class ProdType(comps: ExprContext) extends Type {
@@ -913,15 +1000,15 @@ case class ProofType(formula: Expression) extends Type {
 
 // **************************** introduction/elimination forms for built-in types
 
-/** the current instance
+/** the current [[Instance]]
+ *
   * @param level 1 for 'this' (written as '.'), 2 for surrounding instance (written as '..') and so on
+  *
+  * @todo Replace this with object This
+  *       use `Eval(...(Eval(This))...)` instead of `This(n)`, parse `..c` as `Eval(c)`
+  *       checking `Eval(_)` always pops a frame - no need to substitute
+  *       Whether [[Eval]] is legal, and with which type, depends on the region, e.g., always if transparent, only [[ExprOver]] if quoted, never if owned
   */
-/*
-  TODO: replace this with object This
-  use Eval(...(Eval(This))...) instead of This(n), parse ..c as Eval(c)
-  checking Eval(_) always pops a frame - no need to substitute
-  Whether Eval is legal and with which type, depends on the region, e.g., always if transparent, only ExprOver if quoted, never if owned
- */
 case class This(level: Int) extends Expression {
   override def toString = if (level <= 0) "illegal" else Range(0,level).map(_ => '.').mkString("")
   def children = Nil
@@ -930,7 +1017,11 @@ case class This(level: Int) extends Expression {
 
 /** instance of a theory, introduction form for [[ClassType]] */
 case class Instance(theory: Theory) extends Expression with MutableExpressionStore {
-  override def toString = if (isRuntime) s"instance of $theory" else theory.toString
+  override def toString = if (isRuntime) s"instance of $theory"
+    else {
+      val tS = theory.toString
+      if (tS.endsWith("}")) tS else tS+"{}"
+    }
   def label = "new"
   def children = theory.children
   override def childrenInContext =
@@ -991,6 +1082,7 @@ case class Lambda(ins: ExprContext, body: Expression, mayReturn: Boolean) extend
 }
 
 object Lambda {
+  def apply(vd: EVarDecl, bd: Expression): Lambda = Lambda(ExprContext(List(vd)), bd, false)
   /** makes a Lambda returnable */
   def allowReturn(e: Expression) = e match {
     case l:Lambda if !l.mayReturn => l.copy(mayReturn = true).copyFrom(l)
@@ -1004,10 +1096,16 @@ object Lambda {
 case class Application(fun: Expression, args: List[Expression]) extends Expression {
   override def toString = {
     fun match {
-      case BaseOperator(o: InfixOperator, _) =>
-        args.mkString("(", " " + o.symbol + " ", ")")
-      case BaseOperator(o: PrefixOperator, _) => o.symbol + args.mkString
-      case _                                  => fun.toString + args.mkString("(", ", ", ")")
+      case BaseOperator(o,_) => o.fixity match {
+        case _:Infix => args.mkString("(", " " + o.symbol + " ", ")")
+        case Prefix => o.symbol + args.mkString
+        case Postfix => args.mkString + o.symbol
+        case _:Applyfix => args.head.toString + args.tail.mkString(o.symbol, ",", o.close)
+        case _:Circumfix => args.mkString(o.symbol, ",", o.close)
+        case _:Bindfix => o.symbol + args.mkString("(",",",")")
+        case Nullfix => fun.toString // args.isEmpty
+      }
+      case _ => fun.toString + args.mkString("(", ", ", ")")
     }
   }
   def label = "apply"
@@ -1021,6 +1119,12 @@ case class Tuple(comps: List[Expression]) extends Expression {
   override def toString = comps.mkString("(", ", ", ")")
   def label = "tuple"
   def children = comps
+}
+object TupleGeneral {
+  def apply(es: List[Expression]) = es match {
+    case List(e) => e
+    case l => Tuple(l)
+  }
 }
 
 /** projection, elimination form for [[ProdType]]
@@ -1055,18 +1159,20 @@ case class ListElem(list: Expression, position: Expression) extends Expression {
   def children = List(list, position)
 }
 
-case class Quantifier(univ: Boolean, vars: ExprContext, body: Expression) extends Expression {
+case class Quantifier(univ: Boolean, vars: ExprContext, body: Expression) extends Expression with Typed {
   override def closing = vars == null
   def label = if (univ) "forall" else "exists"
   override def toString = s"($label $vars. $body)"
   def children = vars.children ::: List(body)
   override def childrenInContext = vars.childrenInContext ::: List((None,Some(vars.toLocalContext),body))
+  val tp: Type = BoolType
 }
 object Quantifier {
   def optional(u: Boolean, vs: ExprContext, bd: Expression) = if (vs.empty) bd else Quantifier(u,vs,bd)
 }
 
-/** typed equality, possibly negated */
+/** typed equality, possibly negated
+  * @note Doesn't extend [[Typed]], because [[tp]] is the type of [[left]]/[[right]], not of this Expression */
 case class Equality(positive: Boolean, tp: Type, left: Expression, right: Expression) extends Expression {
   def label = if (positive) "equal" else "inequal"
   def op = if (positive) "==" else "!="
@@ -1077,11 +1183,18 @@ object Equality {
   def reduce(pos: Boolean): Connective = if (pos) And else Or
 }
 
-case class Assert(test: Expression, tp: Type, expected: Expression) extends Expression {
+case class Assert(test: Expression, tp: Type, expected: Expression) extends Expression with Typed {
   def asBoolean = Equality(true, tp, test, expected).copyFrom(this)
   override def toString = s"ASSERT($test, $tp, $expected)"
   def label = "assert"
   def children = List(test,tp,expected)
+}
+
+/** unsafe run-time cast, possibly throwing exception */
+case class Cast(exp: Expression, tp: Type) extends Expression with Typed {
+  override def toString = s"CAST($tp,$exp)"
+  def label = "cast"
+  def children = List(exp,tp)
 }
 
 /*
@@ -1095,14 +1208,9 @@ case class ProofElim(elim: Expression, cases: List[List[VarDecl]]) extends Expre
 */
 
 /** base values, introduction forms of [[BaseType]] */
-sealed abstract class BaseValue(val value: Any, val tp: BaseType) extends Expression {
+sealed abstract class BaseValue(val value: Any, val tp: BaseType) extends Expression with Typed {
   def label = value.toString + "  :" + tp.toString
   def children = Nil
-}
-
-/** element of [[UnitType]] */
-case object UnitValue extends BaseValue((), UnitType) {
-  override def toString = "()"
 }
 
 /** elements of [[BoolType]] */
@@ -1117,7 +1225,11 @@ case class NumberValue(override val tp: NumberType, re: Real, im: Real) extends 
   }
   def valid = re.valid && im.valid
   def normal = re.normal && im.normal
-  def normalize = if (normal) this else NumberValue(tp, re.normalize, im.normalize)
+  def normalize = if (normal) this else NumberValue(minimalType, re.normalize, im.normalize)
+  def minimalType = NumberType(
+               negative = re.negative || im.negative, fractional = !re.integer || !im.integer,
+               imaginary = !im.zero,                  approximate = re.approximate || im.approximate,
+               infinite = re.infinite || im.infinite)
   def zero = re.zero && im.zero
   def positive = re.positive && im.positive
   def integer = re.integer && im.integer
@@ -1148,7 +1260,7 @@ object NumberValue {
 object RealValue {
   def apply(r: Real) = NumberValue(r.tp, r, Real.zero)
   def unapply(e: Expression) = e match {
-    case NumberValue(_,r,s) if s == Real.zero => Some(r)
+    case n@NumberValue(_,r,_) if n.real => Some(r)
     case _ => None
   }
 }
@@ -1162,7 +1274,7 @@ object RatValue {
 object IntValue {
   def apply(i: BigInt) = RatValue(i,1)
   def unapply(e: Expression) = e match {
-    case RatValue(i,j) if i % j == 0 => Some(i/j)
+    case RealValue(r@Rat(i,j)) if r.integer => Some(i/j)
     case _ => None
   }
 }
@@ -1199,6 +1311,7 @@ sealed abstract class Real {
   def positive = !zero && !negative
   def integer: Boolean
   def natural: Boolean
+  def approximate: Boolean
 }
 object Real {
   val b0 = BigInt(0)
@@ -1225,6 +1338,7 @@ case class ApproxReal(value: Double) extends Real {
   def negative = value < 0
   def integer = false
   def natural = false
+  def approximate = true
 }
 case class Rat(enu: BigInt, deno: BigInt) extends Real {
   override def toString = {
@@ -1272,6 +1386,7 @@ case class Rat(enu: BigInt, deno: BigInt) extends Real {
   def negative = (enu > 0 && deno < 0) || (enu < 0 && deno > 0)
   def integer = normalize.deno == 1
   def natural = integer && !negative
+  def approximate = false
 }
 
 /** elements of [[StringType]] */
@@ -1285,9 +1400,9 @@ object String {
 
 /** built-in operators, bundles various elimination forms for the built-in types
   * @param operator the operator
-  * @param tp its type (most operators are ad-hoc polymorphic), null if to be infered during checking
+  * @param tp its type (most operators are ad-hoc polymorphic), null if to be inferred during checking
   */
-case class BaseOperator(operator: Operator, tp: Type) extends Expression {
+case class BaseOperator(operator: Operator, tp: Type) extends Expression with Typed {
   override def toString = "(" + operator.symbol + ":" + tp + ")"
   def label = operator.symbol
   def children = Nil
@@ -1296,10 +1411,16 @@ case class BaseOperator(operator: Operator, tp: Type) extends Expression {
 /** value that is promised to exist but is not known
   * executing this is an error; but it type-checks against every type
   */
-case class UndefinedValue(tp: Type) extends Expression {
-  override def toString = "???"
+case class UndefinedValue(tp: Type) extends Expression with Typed {
+  // TODO make typed [[UndefinedValue]] parsable
+  override def toString = "???"// + "[" + tp + "]"
   def label = "???"
   def children = List(tp)
+  // TODO When should UndefinedValues be equal?
+  override def equals(obj: Any): Boolean = obj match {
+    case that:UndefinedValue => this.loc == that.loc
+    case _ => false
+  }
 }
 
 // ************************** Standard programming language objects
@@ -1310,7 +1431,7 @@ case class UndefinedValue(tp: Type) extends Expression {
   *               unnamed output variables are the target of return statements
   */
 case class EVarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Boolean, output: Boolean) extends Expression with VarDecl with TypedDeclaration {
-  def keyword = if (mutable) Keywords.mutableVarDecl else Keywords.varDecl
+  def keyword = if (mutable) Keywords.mutableVarDecl + " " else ""
   override def toString = {
     val sep = if (output) "#" else ":"
     val tpS = if (tp == null) "???" else tp.toString
@@ -1318,7 +1439,7 @@ case class EVarDecl(name: String, tp: Type, dfO: Option[Expression], mutable: Bo
       case Some(v) => " = " + v.toString
       case None    => ""
     }
-    s"$keyword $name$sep $tpS$vlS"
+    s"$keyword$name$sep $tpS$vlS"
   }
   def children = tp :: dfO.toList
   def toSub = EVarDecl.sub(name, toRef)
@@ -1427,48 +1548,39 @@ abstract class InferenceCallbacks {
 
 object Symbols {
   import Unicode.UChar
-  // We work with Unicode characters (i.e., Int), not Java characters (limited 16 bit UTF-16 style)
-  /** character types that are allowed in operators */
-  val operators = Unicode.symbolCategories ::: Unicode.modifierCategories
-  /** characters that are used by UPL to delimit expressions and are not allowed in operators
-   * ':' is allowed in operators */
-  val notOpChars: List[UChar] = Unicode.characters("\"'`;,.")
 
-  /** tests if c is allowed in an operator */
-  def isOperatorChar(c: UChar) = (operators contains Character.getType(c)) && !notOpChars.contains(c)
+  /** true if c may appear in an operator */
+  def isOperatorChar(c: UChar): Boolean = Unicode.symbolCategories.contains(Character.getType(c))
+  def isModifierChar(c: UChar): Boolean = Unicode.modifierCategories.contains(Character.getType(c))
 
-  /** differentiates between infix and postfix operator */
-  def isPostfixOp(s: String) = {
-    Unicode.forall(s)(c => Unicode.symbolType(c) == PostfixSymbol)
+  /** starts a multi-character operator: basic Latin but not letter, digit, whitespace, bracket, underscore, comma, or semicolon */
+  def isMultiOpStart(c: UChar): Boolean = {
+    c >= 0x21 && c <= 0x7E && !Character.isLetterOrDigit(c) && !Character.isWhitespace(c) && !"_,;()[]{}".contains(c)
   }
-
-  /** ends an infix or bracket operator that is followed by a bracket */
-  def isPrefixChar(c: UChar) = List(PrefixSymbol,GeneralOperatorSymbol) contains Unicode.symbolType(c)
-
-  // right-pointing tacks and similar, not used yet, but could be used for precedences
-  def isTurnstileLike(c: UChar) = {
-    c == 0x22A2 || (c >= 0x22A6 && c <= 0x22AF) || c == 0x2AE2 || c == 0x2AE6 || c == 0x27DD
+  /** continues a multi-character operator */
+  def isMultiOpChar(c: UChar): Boolean = {
+    isMultiOpStart(c) || Unicode.modifierCategories.contains(Character.getType(c))
   }
+  /**
+   * starts a single-character operator: higher Unicode symbol
+   */
+  def isSingleOpStart(c: UChar): Boolean = {
+    c > 0x7E && Unicode.symbolCategories.contains(Character.getType(c))
+  }
+  /** continues a single-character operator (only modifiers allowed) */
+  def isSingleOpChar(c: UChar): Boolean = isModifierChar(c)
 
-  def isOpeningBracketStart(c: UChar) = Unicode.symbolType(c) match {
-    case OpenBracketSymbol(cls) => Some(cls)
-    case _ => None
+  /** starts an opening bracket */
+  def isOpeningBracketStart(c: UChar) = Unicode.closingBracketFor(c)
+  /** starts an opening bracket */
+  def isClosingBracketStart(c: UChar) = Unicode.openingBracketFor(c)
+  /** continues an opening bracket */
+  def isBracketChar(c: UChar) = isModifierChar(c)
+  /** continues an opening bracket */
+  def makeClosingBracket(s: String) = {
+    val o = Character.codePointAt(s,0)
+    Character.toString(Unicode.closingBracketFor(o).get) + s.substring(Character.charCount(o))
   }
-  def isOpeningBracketChar(c: UChar) = isOperatorChar(c) || isOpeningBracketStart(c).isDefined
-  /** differentiates between infix and bracket operator */
-  def isOpeningBracket(s: String) = {
-    isOpeningBracketStart(s.codePointAt(0))
-  }
-  def makeClosingBracket(op: String): String = {
-    var cl = ""
-    op.codePointStepper.iterator.foreach {c =>
-      cl = Unicode.toString(Unicode.closingBracketSymbol(c).getOrElse(c)) + cl
-    }
-    cl
-  }
-
-  def isBindfixStart(c: UChar) = Unicode.symbolType(c) == BindfixSymbol
-  def isBindfixChar(c: UChar) = isOperatorChar(c) || isBindfixStart(c)
 }
 
 /** parent class of all operators
@@ -1479,16 +1591,14 @@ object Symbols {
  */
 sealed abstract class Operator {
   val symbol: String
-  val length = symbol.length
+  def length = symbol.length
   /** for known operators: as defined; for pseudo-operators: as they were parsed */
   def fixity: Fixity
-  /** closing bracket, only useful for BracketFix */
+  /** closing bracket, only useful for bracket fixities */
   def close: String = Symbols.makeClosingBracket(symbol)
-  /** only useful for Infix */
-  def precedence = Precedence.get(symbol)
   /** if the operator has exactly one type, this should be overridden for easy type inference */
   def uniqueType: Option[FunType] = None
-  def makeExpr(args: List[Expression]) = Application(BaseOperator(this, uniqueType.getOrElse(Type.unknown(null))), args)
+  def makeExpr(args: List[Expression]) = Application(BaseOperator(this, uniqueType.getOrElse(Type.unknown())), args)
   def unapply(e: Expression) = e match {
     case Application(BaseOperator(op,_), args) if op == this => Some(args)
     case _ => None
@@ -1497,29 +1607,16 @@ sealed abstract class Operator {
 }
 
 /** operators in parsed unchecked syntax, must be elaborated during checking */
-case class PseudoOperator(symbol: String, fixity: Fixity) extends Operator {
+case class PseudoOperator(unfixed: UnfixedOperator, fixity: Fixity) extends Operator {
+  val symbol = unfixed.symbol
   def magicName: String = "_" + fixity.toString.toLowerCase + "_" + symbol
-
-  def interpret(meaning: Expression, args: List[Expression]): Expression = {
-    fixity match {
-      case Bindfix =>
-        args match {
-          case List(l@Lambda(vd -: rest, bd, mr)) if !rest.empty =>
-            // curry multiple bindings into single ones
-            // TODO support non-associative binders like exists-unique
-            val bdI = interpret(meaning, List(Lambda(rest, bd, false)))
-            val lI = Lambda(ExprContext(List(vd)), bdI, mr).withLocationFromTo(vd, bd)
-            Application(meaning, List(lI))
-          case e => Application(meaning, args)
-        }
-      case _ => Application(meaning, args)
-    }
-  }
+  def precedence = unfixed.precedence
+  def toExpression = BaseOperator(this, Type.unknown()).withLocation(unfixed.loc)
 }
 
 /** built-in operator, may occur in checked syntax */
 sealed abstract class KnownOperator extends Operator {
-  def is(po: PseudoOperator) = po.symbol == symbol && po.fixity == fixity
+  def is(po: PseudoOperator) = po.symbol == symbol && po.fixity.getClass == fixity.getClass
   /** if the operator is ad hoc polymorphic, this should be overridden to infer the operator type
    * @param ins the argument types
    * @param cbs: a callback to compute the union of some types
@@ -1543,7 +1640,7 @@ sealed class InfixOperator(val symbol: String, val assoc: Associativity = NotAss
   def invertible = false
 
   override def arity = if (flexary) None else Some(2)
-  def fixity = Infix
+  def fixity = Infix(assoc)
   def flexary = assoc != NotAssociative
   def associative = assoc match {
     case Semigroup | Monoid(_) => true
@@ -1619,7 +1716,7 @@ case object Not extends PrefixOperator("!") with SelfInverseUnary {
   override val uniqueType = Some(B <-- B)
 }
 
-/** implication a => b is the same as comparision a <= b; but we need a separate operator to get the right notation */
+/** implication a => b is the same as comparison a <= b; but we need a separate operator to get the right notation */
 case object Implies extends InfixOperator("=>", RightAssociative) with Connective {
   override def isDynamic = true
 }
@@ -1680,7 +1777,7 @@ case object Power extends InfixOperator("^", RightAssociative) {
       case _ => N
     }
     var ret = baseType
-    if (baseType.negative) ret = ret.copy(imaginary = true)
+    if (baseType.negative && expType.fractional) ret = ret.copy(imaginary = true)
     if (expType.negative) ret = ret.copy(fractional = true)
     if (expType.fractional) ret = ret.copy(approximate = true)
     Some(SimpleFunType(List(baseType, expType), ret))

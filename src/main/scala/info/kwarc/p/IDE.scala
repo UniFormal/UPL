@@ -211,7 +211,7 @@ class VSCodeBridge(vs: VSCode, diagn: DiagnosticCollection) {
     val (gc,sf) = proj.fragmentAt(loc).getOrElse(return null)
     // return new Hover("line: " + pos.line + "; character: " + pos.character + "\n" + sf.toStringShort + " " + sf.loc)
     val hov = sf match {
-      case r: Ref => gc.lookupRef(r).getOrElse(return null) match {
+      case r: Ref => gc.lookupRef(r).getOrElse(return new Hover("unknown reference")) match {
         case sd: SymbolDeclaration => sd.toString
         case _: Module => "module"
         case vd: VarDecl => vd.toString

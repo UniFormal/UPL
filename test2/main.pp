@@ -1,2 +1,0 @@
-source: .
-main: Lists.test

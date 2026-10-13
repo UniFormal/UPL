@@ -1,0 +1,1 @@
+main: (inst_iib.x(1) + inst_iib.x(2)) * (inst_iii.x(1) + inst_iii.x(2) + inst_iii.x(3))

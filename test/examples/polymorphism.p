@@ -34,8 +34,8 @@ module Polymorphism {
     embed@A: A -> univ@A # prefix !
     flatten@A: univ@(univ@A) -> univ@A
 
-    bind@(A,B): univ@A -> (A -> univ@B) -> univ@B # infix >>=
-              = x -> f -> flatten(map(f)(x))
+    bind@(A,B): (univ@A, (A -> univ@B)) -> univ@B # infix >>=
+              = (x, f) -> flatten(map(f)(x))
   }
 
   // lists as such a functor

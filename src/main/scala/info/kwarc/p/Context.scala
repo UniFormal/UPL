@@ -158,12 +158,16 @@ object LocalContext {
 
 /** parent of all variable declarations */
 trait VarDecl extends Named {
-  def tc = LocalContext.empty
+  def params = LocalContext.empty
   def dfO: Option[Object]
   def defined = dfO.isDefined
   def label = if (name != "") name else "_"
   def toRef = VarRef(name).copyFrom(this)
   def toSub: VarDecl
+  def renamesTo = dfO match {
+    case Some(VarRef(n)) => Some(n)
+    case _ => None
+  }
 }
 
 object VarDecl {
@@ -178,21 +182,26 @@ object VarDecl {
  * represented as decls == VarDecl.sub(n_l,e_n), ...
  */
 case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
+  // TODO Question: Aren't substitutions normally applied "all at once"?
+  //      The frequent use of `reverse` and lack of a `compose`-operation suggests this is not the case here(?)
   override def toString = decls.reverseIterator.map(vd => vd.name + "/" + vd.dfO.get).mkString(", ")
   def label = "substitution"
-  def children = decls.map(_.dfO.get)
+  def children: List[Object] = decls.flatMap(_.dfO)
 
+  def apply(n: String) = lookupO(n).flatMap(_.dfO)
   /** e_1, ..., e_n */
-  def exprs = Util.reverseMap(decls)(_.dfO.get)
+  def defs: List[Object] = Util.reverse(decls)(_.flatMap(_.dfO))
   def map(f: VarDecl => VarDecl) = Substitution(
-    Util.reverseMap(decls)(f).reverse
+    Util.reverseMap(decls)(f).reverse // Todo: Why double reverse?
   )
   def take(n: Int) = Substitution(decls.drop(decls.length-n))
 
+  def append(s: Substitution): Substitution = Substitution(s.decls ::: this.decls)
+
   /** this : G -> target   --->  this, n/e : G, n:_ -> target */
-  def append(n: String, e: Expression) = copy(decls = EVarDecl.sub(n, e) :: decls)
+  def append(n: String, e: Expression): Substitution = copy(decls = EVarDecl.sub(n, e) :: decls)
   /** this : G -> target   --->  this, n/e : G, n:_ -> target */
-  def append(n: String, t: Type) = copy(decls = TVarDecl.sub(n, t) :: decls)
+  def append(n: String, t: Type): Substitution = copy(decls = TVarDecl.sub(n, t) :: decls)
 
   /** this : G -> target   --->  this, n/vd.name : G, n:_ -> target, vd */
   def appendRename(n: String, vd: VarDecl) = {
@@ -213,19 +222,22 @@ case class Substitution(decls: List[VarDecl]) extends HasChildren[VarDecl] {
   /** substitution is no-op */
   def isIdentity = decls.forall(d => d.anonymous || d.dfO.contains(VarRef(d.name)))
 
-  /** if this is an injective renaming, the inverse */
-  def inverse: Option[Substitution] = {
-    var image: List[String] = Nil
-    val subs = decls.collect {
-      case vd @ EVarDecl(_, _, Some(VarRef(n)), _, _) if !vd.anonymous && !image.contains(n) =>
-        image ::= n
-        EVarDecl.sub(n, vd.toRef)
-      case vd @ TVarDecl(_,Some(VarRef(n))) if !vd.anonymous && !image.contains(n) =>
-        image ::= n
-        TVarDecl.sub(n, vd.toRef)
-      case _ => return None
+  /** the substitution containing x/v whenever v/x is in this subistution and x occurs in no other RHS
+    * in particular, if this is an injective renaming, the inverse
+    * In those cases, an x in e[this], must have come from a v in e.
+    */
+  def inverse(gc: GlobalContext): Substitution = {
+    val fvs = decls.map(vd => FreeVariables.collect(gc,vd.dfO.get))
+    def unique(n: String) = fvs.count(_.contains(n)) == 1
+    var subs: List[VarDecl] = Nil
+    decls.foreach {
+      case vd @ EVarDecl(_, _, Some(VarRef(n)), _, _) if !vd.anonymous && unique(n) =>
+        subs ::= EVarDecl.sub(n, vd.toRef)
+      case vd @ TVarDecl(_,Some(VarRef(n))) if !vd.anonymous && unique(n) =>
+        subs ::= TVarDecl.sub(n, vd.toRef)
+      case _ =>
     }
-    Some(Substitution(subs))
+    Substitution(subs)
   }
 }
 object Substitution {
@@ -241,6 +253,7 @@ case class BiContext(lr: List[(VarDecl, VarDecl)]) {
   def right = LocalContext(lr.map(_._2))
   def renameLeftToRight = Substitution(lr.map({case (a, b) => VarDecl.rename(a,b)}))
   def renameRightToLeft = Substitution(lr.map({case (a, b) => VarDecl.rename(b,a)}))
+  def find(l: String) = lr.find(_._1.name == l).map(_._2.name)
 }
 
 object BiContext {
@@ -371,33 +384,35 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
     foundAbstract
   }
 
-  private def similar(a: Type, b: Type) = (a,b) match {
-    case (MaybeAppliedRef(r,_),MaybeAppliedRef(s,_)) => r == s
-    case (CollectionType(_,k),CollectionType(_,l)) => k == l
+  /** true if b has the same shape as a; b may be ill-typed and contain null as wildcard */
+  private def similar(a: Type, b: Type): Boolean = (a,b) match {
+    case (_,_:UnknownType) => true
+    case (_,null) => true
+    case (MaybeAppliedRef(r,_,_),MaybeAppliedRef(s,_,_)) => r == s
+    case (CollectionType(a,k),CollectionType(b,l)) => similar(a,b) && k == l
+    case (PlainFunType(aI,aO), PlainFunType(bI,bO)) =>
+      aI.length == bI.length && (aI zip bI).forall {case ((_,a),(_,b)) => similar(a,b)} && similar(aO,bO)
+    case (ProdType(as), ProdType(bs)) =>
+      as.length == bs.length && (as.decls zip bs.decls).forall {case (ad,bd) => similar(ad.tp,bd.tp)}
+    case (ProofType(_), ProofType(_)) => true
+    case (OwnedType(_,_,ao), b) => similar(ao,b)
     case _ => a == b
   }
+
   /** looks up a symbol in the current region by notation and types */
-  def lookupRegionalByNotation(pop: PseudoOperator, tpIn1: Option[Type], tpOut: Option[Type]): Option[ExprDecl] = {
+  def lookupRegionalByNotation(pop: PseudoOperator, tpsIn: List[Type], tpOut: Type): Option[ExprDecl] = {
     val tv = getCurrentTheoryValue
-    var candidates: List[ExprDecl] = Nil
     tv.decls.foreach {
-      case ed: ExprDecl =>
-        if (ed.ntO.exists(nt => nt.fixity == pop.fixity && nt.symbol == pop.symbol)) {
-          candidates ::= ed
-          ed.tp match {
-            case ft:FunType =>
-              val matches = tpIn1.forall(similar(_,ft.inDecls.last.tp)) && tpOut.forall(similar(_,ft.out))
-              if (matches) return Some(ed)
-            case _ =>
-          }
+      case ed: ExprDecl => ed.ntO foreach {nt =>
+        if (nt.symbol == pop.symbol && nt.fixity.similar(pop.fixity)) {
+          val neededType = nt.fixity.neededTargetType(tpsIn, tpOut)
+          if (similar(ed.tp, neededType)) return Some(ed)
         }
+      }
       case _ =>
     }
-    // if only 1 declaration for the fixity exists, use it even if the types don't match
-    if (candidates.sizeIs == 1)
-      candidates.headOption
-    else
-      None
+    //lookupRegionalByNotation(pop, tpsIn, tpOut) // just for debugging
+    None
   }
 
   def lookupGlobal(p: Path) = {
@@ -416,8 +431,8 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   /** lookup a module that is known to exist */
   def lookupModule(r: Ref) = lookupRef(r) match {
     case Some(m: Module) => m
-    case Some(_) => throw ASTError("not a module")
-    case None => throw ASTError("not a name")
+    case Some(_) => throw ASTError(r.label ++ " is not a module")
+    case None => throw ASTError(r.label ++ " is not a name")
   }
 
   // updates to stack of regional contexts
@@ -491,11 +506,17 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   private def currentParent: Path = {
     if (!inPhysicalTheory)
       throw IError("not in physical theory")
-    else currentRegion.theory match {
+    else currentTheory
+  }
+
+  /** the path to the current theory */
+  def currentTheory: Path = {
+    currentRegion.theory match {
       case PhysicalTheory(p, _) => p
       case _ => throw IError("not a physical theory")
     }
   }
+
   /** the current theory if in physical theory */
   def parentDecl = voc.lookupModule(currentParent).getOrElse {
     throw ASTError("unknown parent: " + currentParent)
@@ -533,10 +554,9 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
   }
   /** resolves an ambiguous name */
   def resolveName(obj: Object): Option[(Object, Option[Named])] = {
-    val (ref,args) = MaybeAppliedRef.unapply(obj).getOrElse{return Some((obj, None))}
+    val (ref,tpargs, args) = MaybeAppliedRef.unapply(obj).getOrElse{return Some((obj, None))}
     def make(r: Ref) = {
-      val ra = MaybeAppliedRef(r,args)
-      if (ra == obj) obj else ra.copyFrom(obj)
+      if (r == ref) obj else MaybeAppliedRef(r,tpargs,args).copyFrom(obj)
     }
     val n = ref match {
       case VarRef(n) => n
@@ -558,7 +578,7 @@ case class GlobalContext private (voc: Module, regions: List[RegionalContextFram
           d match {
             case nd: NamedDeclaration =>
               val dO = OwnersSubstitutor.applyDecl(gc,nd,-level).asInstanceOf[NamedDeclaration]
-              val objC = OwnedReference(owner,null,nd,args) // we keep the domain uninfered to avoid triggering checks later; but it will be inferred eventually anyway
+              val objC = OwnedReference(owner,null,nd,tpargs,args) // we keep the domain uninfered to avoid triggering checks later; but it will be inferred eventually anyway
               (objC.copyFrom(obj),Some(dO))
             case _ => throw IError("impossible case")
           }

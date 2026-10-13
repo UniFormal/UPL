@@ -8,9 +8,9 @@ module Logic {
      type prop
 
      // connectives (productions) with their types and concrete syntax
-     conj:  (prop,prop) -> prop    # infix ∧
+     conj:  (prop,prop) -> prop    # infix-left ∧
      neg:   prop -> prop           # prefix ¬ 
-     all:   (term -> prop) -> prop # bindfix ∀
+     all:   (term -> prop) -> prop # bindfix-assoc ∀
      equal: (term,term) -> prop    # infix ≐
 
      // even though -> is UPL's function space, higher-order abstract syntax works
@@ -48,7 +48,7 @@ module Logic {
     zero: term
     succ: term -> term # prefix $
     plus: (term,term) -> term # infix ++
-    plus_zero: |- ⊦ ∀x. x ++ zero ≐ x
-    plus_succ: |- ⊦ ∀x,n. x ++ $n ≐ $(x++n)
+    plus_zero: |- ⊦ ∀x. x++zero ≐ x
+    plus_succ: |- ⊦ ∀x,n. x ++ $n  ≐  $(x++n)
   }
 }

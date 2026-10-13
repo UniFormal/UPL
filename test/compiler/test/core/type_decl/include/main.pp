@@ -1,0 +1,1 @@
+main: if (inst_bool.y) inst_bool.x + inst_bool.z + inst_int.x + inst_int.y + inst_int.z else 3

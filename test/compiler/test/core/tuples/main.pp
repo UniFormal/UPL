@@ -1,0 +1,1 @@
+main: if (comp(2)) inst.x + inst.y(1) + inst.y(2) + (1, 2, 3, 4)(1) + comp(1) + comp(3) else 0

@@ -1,0 +1,146 @@
+# 1 type (Sets)
+
+universe: tp
+U = tm universe
+
+axioms and extension:
+ finite
+ graded (degree: U -> Nat)
+
+# 1 binary function symbol (Magmas)
+
+op: U -> U -> U
+
+axioms and extensions
+ associative
+ commutative
+ idempotent
+ neutral element (including a constant e: U)
+ aperiodic
+ cancellation
+ divisibility
+ semilattice: bounded, etc.
+ nilpotent
+ nil
+
+Related theories: loop, froop, quandle, rack, etc.
+
+Multiple axiomatizations of groups: 3 operations, 1 operation+existential axioms, based on division, 1 operation + a single axiom (see McCune's work at https://www.cs.unm.edu/~mccune/projects/gtsax/)
+
+General constructions
+ notation change: additive, multiplicative, join, meet
+
+# 1 binary predicate symbol (relations)
+
+axioms and extensions
+ reflexive
+ irreflexive
+ symmetric
+ transitive
+ antisymmetric
+ least
+ gretest
+ lub
+ glb
+
+# Actions
+
+T-action on S for every theories S, T
+ actor: T
+ include S
+ action: actor.U -> U -> U
+ axioms that make action a homomorphism into the S-endomophisms on U
+ 
+Typically: T = Monoid, Group, in which case the binary operation, unit, inversion are mapped to composition, identity, and inverse
+
+# 2 binary function symbols (BiMagmas)
+
+## Rings
+
+axioms and extensions
+ distributive
+ lattice
+ semi-ring
+ ring: with 1, commutative, GCD, Euclidean, UFD, etc.
+ field
+
+## Modules and Algebras
+
+for any theory T that extends Ring
+R: T
+include AbelianGroup
+mult: R.U -> U -> U
+
+fitered
+graded (implies decomposable into direct sum)
+super
+
+Hecke
+
+dimension
+finite-dimensional
+with basis (representation wrt. basis not necessarily unique in a module)
+
+if homomorphisms are formalized: basis may be preserved or not
+
+algebra (module + multiplication, unit)
+graded: multiplication is additive in non-zero degrees
+filtered: multiplication is subadditive in degrees
+
+semi-simple
+
+coalgebra: module over R + coproduct: U -> UxU, counit: U -> R and duals of algebra axioms
+
+co-T can be obtained systematically for every theory T that extends Module with only linear operations and axioms that can be expressed as commutative diagrams
+
+bialgebra: algebra and coalgebra
+Hopf algebra
+
+lie algebra: module + lie bracker (weaker than algebra)
+
+T-algebra for every theory T: free module over a base given by T-model, T-operations induce T-algebra operations by linearity
+typical: T = Monoid, Group, in which case the binary operation yields algebra structure
+
+## Lattices
+
+Based on relations or 2 binary operations and isomorphisms between them
+
+axioms
+ distributive
+ bounded
+ modular
+ Heyting
+ complete
+
+# Topology
+
+3 axiomatizations for closure
+6 axiomatization for topological spaces
+
+axioms and extensions
+ metric
+ Hausdorff
+ compact
+
+## Topology + X
+
+topological group
+lie group
+with Field: manifold, Hilbert space
+
+# General constructions
+
+must be axiomatized separately for every extending theory
+
+fintely generated
+
+Homomorphism
+hom sets
+
+submodel
+quotient model
+subquotient (lift, retract)
+
+Cartesion product
+
+tensor product for modules with basis (take Cartesian product of bases, related to T-algebras)

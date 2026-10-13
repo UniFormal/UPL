@@ -1,0 +1,3 @@
+These and their siblings stored with system-specific libraries (coq.mmt, pvs.mmt, etc.) should be modularized and then split
+- generally reusable modules should be sorted into LATIN2
+- the system-specific theories should stay with their libraries but import the modules from LATIN2

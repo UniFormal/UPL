@@ -111,6 +111,14 @@ object Interpreter {
     val r = ip.interpretExpression(p.main)
     (ip,r)
   }
+
+  def quickRun(e:Expression)(implicit gc:GlobalContext = GlobalContext("")) = {
+    scala.util.Try {
+      val checked = ThrowingChecker.checkProgram(Program(gc.voc.df, e))
+      val (_,r) = run(checked)
+      r
+    }.toOption
+  }
 }
 
 class Interpreter(vocInit: TheoryValue) {
@@ -129,6 +137,8 @@ class Interpreter(vocInit: TheoryValue) {
   private def globalContext = GlobalContext(voc)
   private def stack = env.regions
   private def frame = stack.head
+
+  private val builtins = new Uniformal(this)
 
   def interpretDeclaration(d: Declaration) = {
     d match {
@@ -150,10 +160,10 @@ class Interpreter(vocInit: TheoryValue) {
   def interpretExpression(exp: Expression): Expression = {
     if (debug) println("interpreting: " + exp)
     implicit val cause = exp
-    exp match {
+    (exp match {
       case _: BaseValue => exp
       case _: BaseOperator => exp
-      case AppliedRef(r,_) => interpretExpression(r) // type arguments can be ignored
+      case AppliedRef(r,_,_) => interpretExpression(r) // type arguments can be ignored; terms do not have term arguments
       case OpenRef(p) =>
         env.voc.lookupPath(p) match {
           case Some(sd: ExprDecl) => sd.dfO match {
@@ -186,7 +196,7 @@ class Interpreter(vocInit: TheoryValue) {
       case Assign(t,v) =>
         val vI = interpretExpression(v)
         assign(t,vI)(true, globalContext)
-        UnitValue
+        Unit.Value
       case ExprOver(v,q) =>
         val gc = GlobalContext("").push(v)
         val qI = EvalInterpreter(q)(gc,())
@@ -219,7 +229,7 @@ class Interpreter(vocInit: TheoryValue) {
                     sd.dfO.getOrElse(fail("no definiens"))
                   case Some(incl) =>
                     // execute inherited definition and then apply delegate
-                    OwnedExpr(incl.dfO.get, incl.dom, sd.toRef)
+                    OwnedExpr(incl.dfO.get, incl.dom, sd.toRef).copyFrom(sd)
                 }
                 val dfI = interpretExpression(df)
                 // we keep all fields that are local (i.e., a constructor argument),
@@ -230,12 +240,10 @@ class Interpreter(vocInit: TheoryValue) {
                 }
               case incl: Include =>
                 // execute inherited field initializers if necessary
-                val delegateO = incl.dfO match {
-                  case Some(df) =>
-                    // execute and remember delegate
-                    val dfI = interpretExpression(df)
-                    Some(incl.copy(dfO = Some(dfI)))
-                  case _ => None
+                val delegateO = incl.dfO map { df =>
+                  // execute and remember delegate
+                  val dfI = interpretExpression(df)
+                  incl.copy(dfO = Some(dfI))
                 }
                 // append at the end so that constructor fields are executed before inherited fields
                 // TODO: this does not find regional modules
@@ -256,7 +264,7 @@ class Interpreter(vocInit: TheoryValue) {
         }
       case Block(es) =>
         frame.inNewBlock {
-          var ret: Expression = UnitValue
+          var ret: Expression = Unit.Value
           es.foreach {e =>
             ret = interpretExpression(e)
           }
@@ -276,7 +284,7 @@ class Interpreter(vocInit: TheoryValue) {
         }
         thenBranchResult.getOrElse {eO match {
           case Some(e) => interpretExpression(e)
-          case None => UnitValue
+          case None => Unit.Value
         }}
       case While(c,b) =>
         var break = false
@@ -287,7 +295,7 @@ class Interpreter(vocInit: TheoryValue) {
           }
           if (cI) interpretExpression(b) else break = true
         }
-        UnitValue
+        Unit.Value
       case For(vd,r,b) =>
         val rI = interpretExpression(r)
         rI match {
@@ -352,8 +360,14 @@ class Interpreter(vocInit: TheoryValue) {
               frame.inNewBlock {
                 interpretDynamicBoolean(exp)
               }
-            } else
+            } else {
               Operator.simplify(bo, asI)
+            }
+          case BuiltinRef(p) => p.head match {
+            case "print" => builtins.print(asI)
+            case "read" => builtins.read()
+            case _ => fail("missing case for built-in function")
+          }
           case lam: Lambda =>
             // interpretation of lam has recorded the frame at abstraction time because
             // names in lam.body are relative to that
@@ -442,8 +456,17 @@ class Interpreter(vocInit: TheoryValue) {
           false
         } else true
         BoolValue(r)
+      case Cast(e,t) =>
+        val eI = interpretExpression(e)
+        (eI,t) match {
+           case (n: NumberValue, nT: NumberType) =>
+             if (n.minimalType sub nT) n.copy(tp = nT)
+             else abort(s"impossible cast: found $eI, expected type $nT")
+           case _ => abort("unsupported cast")
+        }
       case u: UndefinedValue => u
-    } // end match
+      case u: UnknownExpr => abort("unsolved unknown")
+    }).withLocation(exp.loc) // end match
   }
 
   /** expressions that are fully evaluated; they evaluate to themselves and are equal iff identical */
@@ -475,7 +498,8 @@ class Interpreter(vocInit: TheoryValue) {
         val lI = interpretDynamicBoolean(bs.head)
         lI match {
           case BoolValue(true) => if (bs.tail.isEmpty) BoolValue(true) else interpretDynamicBoolean(Implies(bs.tail))
-          case BoolValue(false) => BoolValue(true)
+          // a false hypothesis discharges the implication; a false conclusion refutes it
+          case BoolValue(false) => if (bs.tail.isEmpty) BoolValue(false) else BoolValue(true)
           case _ => Implies(lI::bs.tail)
         }
       }
@@ -516,7 +540,6 @@ class Interpreter(vocInit: TheoryValue) {
     val tpI = TypeInterpreter(gc,tp)
     tpI match {
       case EmptyType => Iterator.empty
-      case UnitType => Iterator(UnitValue)
       case BoolType => Iterator(BoolValue(true), BoolValue(false))
       case NumberType.Nat => Enumeration.Naturals.map(i => IntValue(i))
       case NumberType.Int => Enumeration.Integers.map(i => IntValue(i))
@@ -598,6 +621,15 @@ class Interpreter(vocInit: TheoryValue) {
           assignFail("collections have inequal length")
         } else {
           (e.elems zip vA.elems).forall {case (e,v) => assign(e,v)}
+        }
+      case (OwnedExpr(own, _, e), _) =>
+        interpretExpression(own) match {
+          case inst: Instance if inst.isRuntime =>
+            val fr = RegionalEnvironment(own.toString,Some(inst), parent = None)
+            env.inFrame(fr) {
+              assign(e, value)
+            }
+          case _ => assignFail("owner not a runtime instance")
         }
       case (Application(r: Ref, es), Application(s: Ref, vs)) if r == s =>
         (es zip vs) forall {case (e,v) => assign(e,v)}

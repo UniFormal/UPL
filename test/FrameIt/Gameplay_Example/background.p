@@ -18,17 +18,19 @@ theory Triangle{
   B: point
   C: point
 
-  a: (a:float, |- dist(B)(C) == a)
-  b: (b:float, |- dist(C)(A) == b)
-  c: (c:float, |- dist(A)(B) == c)
+  // a: (a:float, |- dist(B)(C) == a)
+  // b: (b:float, |- dist(C)(A) == b)
+  // c: (c:float, |- dist(A)(B) == c)
 
-  alpha: float
-  beta: float
-  gamma: float
+  // alpha: float
+  // beta: float
+  // gamma: float
 }
+triA: point -> point -> point -> Triangle
+triA = A -> B -> C -> Triangle{A=A ,B=B, C=C}
 
 theory Similar{
   t1: Triangle
   t2: Triangle
 }
-similar_T: (t1: Triangle) -> (t2: Triangle) -> ()
+similar_T: (t1: Triangle) -> (t2: Triangle) -> bool

@@ -1,5 +1,8 @@
 package info.kwarc.p
 
+import info.kwarc.p.compiler.LLVMCompiler
+import info.kwarc.p.isabelle.IsabelleCompiler
+
 
 /** A part in a project with mutable fields maintained by the projects */
 class ProjectEntry(val source: SourceOrigin) {
@@ -18,6 +21,13 @@ class ProjectEntry(val source: SourceOrigin) {
     DependencyAnalyzer.update(this)
     checkedIsDirty = true
     parsed
+  }
+  def clear(): Unit = {
+    parsed = Theory.empty
+    checked = Theory.empty
+    result = Theory.empty
+    errors.clear
+    depInter.clear()
   }
 }
 object ProjectEntry{
@@ -42,6 +52,8 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
 
   // holds errors with unknown location
   val errors = new ErrorCollector
+
+  val stdLib: Option[ProjectEntry] = entries.find(x => x.source.container.endsWith("lib/Uniformal.p"))
 
   def get(so: SourceOrigin) = entries.find(_.source == so).getOrElse {
     val e = new ProjectEntry(so)
@@ -88,14 +100,18 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
     le.parsed
   }
 
-  def updateAndCheck(so: SourceOrigin, src: String): TheoryValue = {
-    update(so, src)
-    check(so, false)
+  @inline
+  /** [[update]] and [[check]](don't run) in one swoop; Traverses [[entries]] only once */
+  def updateAndCheck(so: SourceOrigin, src: String): TheoryValue = updateAndCheck(get(so), src)
+  def updateAndCheck(le: ProjectEntry, src: String): TheoryValue = {
+    le.update(src)
+    check(le, false)
   }
 
-  def check(so: SourceOrigin, alsoRun: Boolean): TheoryValue = {
-    val le = get(so)
-    val (vocC,vocR) = makeGlobalContext(so)
+  @inline
+  def check(so: SourceOrigin, alsoRun: Boolean): TheoryValue = check(get(so), alsoRun)
+  def check(le: ProjectEntry, alsoRun: Boolean): TheoryValue = {
+    val (vocC,vocR) = makeGlobalContext(le.source)
     val eh = le.errors
     if (le.checkedIsDirty) {
       if (eh.hasErrors) return le.parsed
@@ -108,13 +124,19 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
       if (eh.hasErrors) return le.checked
       val ip = new Interpreter(vocR)
       val leR = le.checked.decls.map(ip.interpretDeclaration)
-      le.result = TheoryValue(leR)
+      le.result = TheoryValue(leR).copyFrom(le.checked)
       le.result
     } else {
       le.checked
     }
   }
 
+  /** Check the whole project
+    * @note Doesn't check any individual [[ProjectEntry]]
+    *
+    * @param stopOnError
+    * @return
+    */
   def check(stopOnError: Boolean) = {
     val ds = entries.flatMap(_.parsed.decls)
     val voc = TheoryValue(ds)
@@ -144,14 +166,19 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
   }
 
   /** initialize and run 'main' */
-  def run(): Option[Interpreter] = {
+  def run(programArgs: List[String]): Option[Interpreter] = {
     if (checkErrors()) return None
     val voc = check(false)
     if (checkErrors()) return None
-    val e = main.getOrElse(UnitValue)
+    val e = main.getOrElse(Unit.Value)
+    // Add program arguments into the scope of main
+    val argDecl = EVarDecl("args",
+      CollectionType(StringType, CollectionKind.List),
+      Some(CollectionValue(programArgs.map {a => StringValue(a)}, CollectionKind.List))
+    )
     val ch = new Checker(ErrorThrower)
     try {
-      val (eC, _) = ch.checkAndInferExpression(GlobalContext(voc), e)
+      val (eC, _) = ch.checkAndInferExpression(GlobalContext(voc), Block(List(argDecl, e)))
       val prog = Program(voc, eC)
       val (ip, r) = Interpreter.run(prog)
       println(r)
@@ -160,6 +187,23 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
       case e: PError =>
         println(e)
         None
+    }
+  }
+
+  /** compile this project to binary at path */
+  def compile(path: File): Unit = {
+    if (checkErrors()) return
+    val voc = check(false)
+    if (checkErrors()) return
+    val e = main.getOrElse(Unit.Value)
+    val ch = new Checker(ErrorThrower)
+    try {
+      val (eC, _) = ch.checkAndInferExpression(GlobalContext(voc), e)
+      val prog = Program(voc, eC)
+      LLVMCompiler.run(prog, path)
+    } catch {
+      case e: PError =>
+        println(e)
     }
   }
 
@@ -208,8 +252,8 @@ class Project(protected var entries: List[ProjectEntry], var main: Option[Expres
 
   /** evaluates [[main]] and starts a REPL afterwards, returns true if so
     */
-  def runMaybeRepl(dropToRepl: Boolean): Unit = {
-    val ipO = run()
+  def runMaybeRepl(dropToRepl: Boolean, programArgs: List[String] = Nil): Unit = {
+    val ipO = run(programArgs)
     if (dropToRepl) ipO foreach {ip => repl(ip)}
   }
 
@@ -276,7 +320,7 @@ object Project {
     }
     // render from checked vocabulary; compile the checked vocabulary (not the raw parsed AST)
     val gc: GlobalContext = proj.makeGlobalContext()
-    val isabelleStrings = proj.entries.map(pe => IsabelleCompiler.toIsabelleCode(pe.getVocabulary, gc))
+    val isabelleStrings = proj.entries.map(pe => isabelle.IsabelleCompiler.toIsabelleCode(pe.getVocabulary, gc))
     // write the strings to files
     (files zip isabelleStrings).foreach { case (f,s) => File.write(f,s) }
   }

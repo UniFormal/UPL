@@ -42,7 +42,7 @@ module Algebra {
   theory SubMagma {
     include SubCarrier
     include Magma
-    op_per:--- x1 % y1 & x2 % y2 => (x1∘y1) % (x2∘y2)
+    op_per:--- x1%y1 & x2%y2 => x1∘y1 % x2∘y2
   }
   theory Semigroup {
     include Magma
@@ -124,7 +124,7 @@ module Algebra {
     include AbelianRing
     mult: SubGroup {
       per = PER {
-        rel = (x,y) -> x == y & x != e
+        rel = (x,y) -> x == y  &  x != e
         sym = ???
         trans = ???
       }

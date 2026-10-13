@@ -1,0 +1,57 @@
+hardcode andrewsdotright
+ -> done, needs testing
+ add andrewsDotRight variant that does not eat lambda/Pi
+
+multiple notations for a constant
+
+document formats as interpretation hint preambles chosen by file ending
+delimiters, variable type reservations as interpretation hint, in a theory
+ should this be local?
+
+preamble files in every folder of archive; documents that enrich document context
+
+definitional theory extensions
+
+parametric views, e.g., for power set lattice
+
+structures with parameters, e.g.,
+structure equal {A: tp} : ?Equality = term = tm A
+(may not be implicit?)
+
+abstraction: variables are bound in order of use (is that unique if there are second-level implicit bindings?)
+
+optional argument n?, to be infered using search and unification hints (not limited to structures)
+question: how to handle omitted early argument (currying only works if last argument omitted)
+
+structural feature a : finiteType(n) --> a: type, a/1: a, ..., a/n: type, induction axioms
+
+programming: make a file executable, use structural feature for input, output
+  maybe p:input {x:A} --->  p/x:A="read from user"
+  read: codec A --> A
+  editable constants, generate dialog, html form fields etc.
+
+generate type coercion rules from role
+generate pseudo-content for whitespace application, resolve using whitespace notations and type of first non-Pi arguments
+ - good: e.g., xry notations via "relapply: Rel A B->A->B->prop # 2 1 3" for arbitrary relations
+ - problem: too many cases due to LF apply
+
+every var decl has list of conditions, e.g., sub/supertype bound, guards, ranges
+concrete syntax unclear, but can be used internally
+bound variables could be introduced through their condition: "x in A" becomes "x with x in A"; similar to how we anyway turn attributed variables into vardecls
+
+preview method in presenter
+
+resolve names dynamically in parsing (no notations for unapplied constants); use to skip in include steps in qualified names (also use this for names in views)
+
+mark structure/include in view as implicit; effect: only composed morphism is implicit, not the whole strucutre
+
+aliases and notations in include must be allowed
+
+include-like structural features for conditional conservative extension:
+with T = {a conservative extension of parent+T}; elaborates to a morphism from its body to parent+T
+do structural features need flag to determine whether they should be added to theory graph?
+
+structure take list of theory names as domain
+
+external notations, use in structures, e.g., with %i
+

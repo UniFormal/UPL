@@ -1,4 +1,3 @@
-
 module Math {
 
     // Constants
@@ -63,24 +62,24 @@ module Math {
     //cbrt = (x:float) -> {}
 
     // min, max
-    __helper_minmax : (x:float,ns:[float],min:bool)->float
-    __helper_minmax = (x:float,ns:[float],min:bool) -> {
-        ns match {
-            [] -> x
-            hd -: r -> if ((hd<x)==min) __helper_minmax(hd,r,min) else __helper_minmax(x,r,min)
-        }
+    helper_minmax : (x:float,ns:[float],min:bool) -> float
+    helper_minmax = (x:float,ns:[float],min:bool) -> {
+       ns match {
+           [] -> x
+           hd -: r -> if ((hd<x)==min) helper_minmax(hd,r,min) else helper_minmax(x,r,min)
+       }
     }
     min = (ns:[float]) -> {
-        ns match {
-            [] -> ???
-            hd -: r -> __helper_minmax(hd, r,true)
-        }
+       ns match {
+           [] -> ???
+           hd -: r -> helper_minmax(hd, r,true)
+       }
     }
     max = (ns:[float]) -> {
-        ns match {
-            [] -> ???
-            hd -: r -> __helper_minmax(hd, r,false)
-        }
+       ns match {
+           [] -> ???
+           hd -: r -> helper_minmax(hd, r,false)
+       }
     }
 
 
