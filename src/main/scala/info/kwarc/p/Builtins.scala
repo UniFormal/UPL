@@ -11,9 +11,4 @@ class Uniformal(ip: Interpreter) {
     val s = readLine()
     StringValue(s)
   }
-
-
-
-
-
 }

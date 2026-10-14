@@ -9,7 +9,7 @@ import SyntaxFragment.matchC
   * All methods carry a state a:A.
   * All local variable bindings pass through applyVarDecl, which also returns an updated state for use in the variable's scope.
   *
-  * The value 'null' is respected for theories and contexts, assuming they are inferred later.
+  * The value 'null' is respected for theories and contexts, assuming they are to be inferred later.
   */
 abstract class Traverser[A] {
   @inline def apply(p: Path)(implicit gc: GlobalContext, a: A): Path = matchC(p) {p => p}
