@@ -59,6 +59,11 @@ object Util {
     result.reverse
   }
 
+  implicit class LookupDecl(hasChildren: HasChildren[Declaration]) {
+    def lookupDecl[T <: Declaration](name:String): Option[T] =
+      hasChildren.decls.collectFirst {case d:T if d.nameO.contains(name) => d }
+  }
+
   /** mutable list seen as a map
    *  update prepends for efficiency; obsolete values are not cleared
    */
