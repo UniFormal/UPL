@@ -7,4 +7,5 @@ callPrint = () -> {
 callRead = () ->{
 
     Uniformal.print(Uniformal.read())
+    1
 }

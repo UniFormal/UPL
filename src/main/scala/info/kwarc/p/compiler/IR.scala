@@ -1,5 +1,7 @@
 package info.kwarc.p.compiler
 
+import info.kwarc.p.compiler.Operation.{IMUL, ISUB}
+
 import scala.collection.mutable
 
 case class IrProgram(declaredFunctions: mutable.ArrayBuffer[IrDeclFun], structs: List[IrStruct], globals: List[IrGlobalValue],
@@ -186,6 +188,14 @@ object IrUnknownType extends IrType {
   override def render(): String = "???"
 }
 
+case class IrStructNamed(name: String) extends IrType {
+  override def render(): String = s"%${name}"
+}
+
+case class IrStructTyped(name: String, fields: List[IrType]) extends IrType {
+  override def render(): String = s"{ ${fields.map { f => f.render() }.mkString(", ")} }"
+}
+
 object IrVariadicType extends IrType {
   override def render(): String = "..."
 }
@@ -313,4 +323,174 @@ object builtins {
     IrSimpleBuiltin("sin",IrFloat64(), List[IrType]{IrFloat64()}, "llvm.sin.f64"),
     IrBuiltinRead()
   )
+}
+
+object rationalNumbers {
+  val decl = IrStruct("Uniformal.Rat", List(IrIntType.I64, IrIntType.I64))
+
+  def add(): (IrDeclFun, IrFun) = {
+
+    val declAdd = IrDeclFun("Uniformal.Rat.Add", IrFunType(IrStructTyped(decl.name, decl.fields), List(IrPtrType(decl), IrPtrType(decl))))
+
+    val lhsPar = IrVar(IrPtrType(null), "param1")
+    val rhsPar = IrVar(IrPtrType(null), "param2")
+    val ret = IrVar(IrStructNamed(decl.name), "res")
+
+    val res = IrAlloca(ret)
+    val lhsVal = IrVar(IrPtrType(null), "lhsAddr")
+    val rhsVal = IrVar(IrPtrType(null), "rhsAddr")
+
+    val tmp0 = IrVar(IrPtrType(null), "0")
+    IrLoad(tmp0, lhsVal)
+    val enu = IrVar(IrPtrType(null), "enu")
+    val tmp1 = IrVar(IrIntType.I64, "1")
+    val tmp2 = IrVar(IrPtrType(null), "2")
+
+    val deno = IrVar(IrPtrType(null), "deno")
+    val tmp3 = IrVar(IrIntType.I64, "3")
+    val mul = IrVar(IrIntType.I64, "mul")
+    val mul3 = IrVar(IrIntType.I64, "mul3")
+    val mul7 = IrVar(IrIntType.I64, "mul7")
+    val addV = IrVar(IrIntType.I64, "add")
+
+    val enu1 = IrVar(IrPtrType(null), "enu1")
+    val enu4 = IrVar(IrPtrType(null), "enu4")
+    val tmp4 = IrVar(IrPtrType(null), "4")
+    val deno2 = IrVar(IrPtrType(null), "deno2")
+    val deno6 = IrVar(IrIntType.I64, "deno6")
+    val deno8 = IrVar(IrIntType.I64, "deno8")
+
+    val tmp5 = IrVar(IrIntType.I64, "5")
+    val tmp6 = IrVar(IrPtrType(null), "6")
+    val tmp7 = IrVar(IrIntType.I64, "7")
+    val tmp9 = IrVar(IrIntType.I64, "9")
+    val tmp10 = IrVar(IrPtrType(null), "10")
+    val tmp11 = IrVar(IrIntType.I64, "11")
+
+    val tmp8 = IrVar(IrPtrType(null), "8")
+    val tmp12 = IrVar(IrStructTyped("", List(IrIntType.I64, IrIntType.I64)), "12")
+    val deno5 = IrVar(IrIntType.I64, "deno5")
+
+    val instr = IrBlock("entry", List(res, IrAlloca(lhsVal), IrAlloca(rhsVal), IrStore(lhsPar, lhsVal), IrStore(rhsPar, rhsVal), IrLoad(tmp0, lhsVal),
+      IrGetElement(enu, decl, tmp0, List(0,0)), IrLoad(tmp1, enu), IrLoad(tmp2, lhsVal), IrGetElement(deno, decl, tmp2, List(0, 1)),
+      IrLoad(tmp3, deno), IrBinOp(mul, IMUL, tmp1, tmp3), IrLoad(tmp4, rhsVal), IrGetElement(enu1, decl, tmp4, List(0, 0)), IrLoad(tmp5, enu1), IrLoad(tmp6, lhsVal), IrGetElement(deno2, decl, tmp6, List(0,1)),
+      IrLoad(tmp7, deno2), IrBinOp(mul3, IMUL, tmp5, tmp7), IrBinOp(addV, Operation.IADD, mul, mul3), IrGetElement(enu4, decl, ret, List(0,0)), IrStore(addV, enu4), IrLoad(tmp8, lhsVal), IrGetElement(deno5, decl, tmp8, List(0,1)), IrLoad(tmp9, deno5),
+      IrLoad(tmp10, rhsVal), IrGetElement(deno6, decl, tmp10, List(0,1)), IrLoad(tmp11, deno6), IrBinOp(mul7, IMUL,tmp9, tmp11), IrGetElement(deno8, decl, ret, List(0,1)), IrStore(mul7, deno8), IrLoad(tmp12, IrVar(IrPtrType(null), "res")), IrReturn(tmp12)
+    ))
+    val fun = IrFun("Uniformal.Rat.Add", declAdd.signature, List(lhsPar, rhsPar), List(instr))
+    (declAdd, fun)
+  }
+
+  def mul(): (IrDeclFun, IrFun) = {
+    val declMul = IrDeclFun("Uniformal.Rat.mul", IrFunType(IrStructTyped(decl.name, decl.fields), List(IrPtrType(decl), IrPtrType(decl))))
+
+    val lhsPar = IrVar(IrPtrType(null), "param1")
+    val rhsPar = IrVar(IrPtrType(null), "param2")
+    val ret = IrVar(IrStructNamed(decl.name), "res")
+
+    val res = IrAlloca(ret)
+    val lhsVal = IrVar(IrPtrType(null), "lhsAddr")
+    val rhsVal = IrVar(IrPtrType(null), "rhsAddr")
+
+    val tmp0 = IrVar(IrPtrType(null), "0")
+    IrLoad(tmp0, lhsVal)
+    val enu = IrVar(IrPtrType(null), "enu")
+    val tmp1 = IrVar(IrIntType.I64, "1")
+    val tmp2 = IrVar(IrPtrType(null), "2")
+
+    val deno = IrVar(IrPtrType(null), "deno")
+    val tmp3 = IrVar(IrIntType.I64, "3")
+    val mul = IrVar(IrIntType.I64, "mul")
+
+    val enu1 = IrVar(IrPtrType(null), "enu1")
+    val tmp4 = IrVar(IrPtrType(null), "4")
+    val enu2 = IrVar(IrPtrType(null), "enu2")
+
+    val tmp5 = IrVar(IrIntType.I64, "5")
+    val tmp6 = IrVar(IrPtrType(null), "6")
+    val tmp7 = IrVar(IrIntType.I64, "7")
+    val tmp8 = IrVar(IrStructTyped("", List(IrIntType.I64, IrIntType.I64)), "8")
+    val mul4 = IrVar(IrPtrType(null), "mul4")
+    val deno3 = IrVar(IrPtrType(null), "deno2")
+    val deno5 = IrVar(IrIntType.I64, "deno5")
+
+    val instr = IrBlock("entry", List(res, IrAlloca(lhsVal), IrAlloca(rhsVal), IrStore(lhsPar, lhsVal), IrStore(rhsPar, rhsVal), IrLoad(tmp0, lhsVal),
+      IrGetElement(enu, decl, tmp0, List(0,0)), IrLoad(tmp1, enu), IrLoad(tmp2, rhsVal), IrGetElement(enu1, decl, tmp2, List(0, 0)),
+      IrLoad(tmp3, enu1), IrBinOp(mul, IMUL, tmp1, tmp3), IrGetElement(enu2, decl, ret, List(0,0)), IrStore(mul, enu2),
+      IrLoad(tmp4, lhsVal), IrGetElement(deno, decl, tmp4, List(0, 1)), IrLoad(tmp5, deno), IrLoad(tmp6, rhsVal),
+      IrGetElement(deno3, decl, tmp6, List(0, 1)), IrLoad(tmp7, deno3), IrBinOp(mul4, IMUL, tmp5, tmp7), IrGetElement(deno5, decl, ret, List(0, 1)),
+      IrStore(mul4, deno5), IrLoad(tmp8, IrVar(IrPtrType(null), "res")), IrReturn(tmp8)
+    ))
+
+    val fun = IrFun("Uniformal.Rat.Mul", declMul.signature, List(lhsPar, rhsPar), List(instr))
+    (declMul, fun)
+  }
+
+  def negate(): (IrDeclFun, IrFun) = {
+    val declNegate = IrDeclFun("Uniformal.Rat.negate", IrFunType(IrStructTyped(decl.name, decl.fields), List(IrPtrType(decl))))
+
+    val lhsPar = IrVar(IrPtrType(null), "param1")
+    val ret = IrVar(IrStructNamed(decl.name), "res")
+
+    val res = IrAlloca(ret)
+    val lhsVal = IrVar(IrPtrType(null), "lhsAddr")
+
+    val tmp0 = IrVar(IrPtrType(null), "0")
+    val enu = IrVar(IrPtrType(null), "enu")
+    val tmp1 = IrVar(IrIntType.I64, "1")
+    val tmp2 = IrVar(IrPtrType(null), "2")
+
+    val deno = IrVar(IrPtrType(null), "deno")
+    val tmp3 = IrVar(IrIntType.I64, "3")
+    val sub = IrVar(IrIntType.I64, "sub")
+
+    val enu1 = IrVar(IrPtrType(null), "enu1")
+    val tmp8 = IrVar(IrStructTyped("", List(IrIntType.I64, IrIntType.I64)), "8")
+    val deno2 = IrVar(IrIntType.I64, "deno2")
+
+    val instr = IrBlock("entry", List(res, IrAlloca(lhsVal), IrStore(lhsPar, lhsVal), IrGetElement(enu, decl, ret, List(0,0)),
+      IrLoad(tmp0, lhsVal), IrGetElement(enu1, decl, tmp0, List(0, 0)),
+      IrLoad(tmp1, enu1), IrBinOp(sub, ISUB, IrConst(0), tmp1),
+      IrStore(sub, enu), IrGetElement(deno, decl, ret, List(0, 1)), IrLoad(tmp2, lhsVal), IrGetElement(deno2, decl, tmp2, List(0,1)),
+      IrLoad(tmp3, deno2), IrStore(tmp3, deno), IrLoad(tmp8, IrVar(IrPtrType(null), "res")), IrReturn(tmp8)
+    ))
+    val fun = IrFun("Uniformal.Rat.Negate", declNegate.signature, List(lhsPar), List(instr))
+    (declNegate, fun)
+  }
+
+  def invert(): (IrDeclFun, IrFun) = {
+    val declInvert = IrDeclFun("Uniformal.Rat.invert", IrFunType(IrStructTyped(decl.name, decl.fields), List(IrPtrType(decl))))
+
+    val lhsPar = IrVar(IrPtrType(null), "param1")
+    val ret = IrVar(IrStructNamed(decl.name), "res")
+
+    val res = IrAlloca(ret)
+    val lhsVal = IrVar(IrPtrType(null), "lhsAddr")
+
+    val tmp0 = IrVar(IrPtrType(null), "0")
+    val enu = IrVar(IrPtrType(null), "enu")
+    val tmp1 = IrVar(IrIntType.I64, "1")
+    val tmp2 = IrVar(IrPtrType(null), "2")
+
+    val deno = IrVar(IrPtrType(null), "deno")
+    val tmp3 = IrVar(IrIntType.I64, "3")
+
+    val enu2 = IrVar(IrPtrType(null), "enu2")
+    val tmp8 = IrVar(IrStructTyped("", List(IrIntType.I64, IrIntType.I64)), "8")
+    val deno1 = IrVar(IrIntType.I64, "deno1")
+
+    val instr = IrBlock("entry", List(res, IrAlloca(lhsVal), IrStore(lhsPar, lhsVal), IrGetElement(enu, decl, ret, List(0,0)),
+      IrLoad(tmp0, lhsVal), IrGetElement(deno, decl, tmp0, List(0, 1)),
+      IrLoad(tmp1, deno),
+      IrStore(tmp1, enu), IrGetElement(deno1, decl, ret, List(0, 1)), IrLoad(tmp2, lhsVal), IrGetElement(enu2, decl, tmp2, List(0,0)),
+      IrLoad(tmp3, enu2), IrStore(tmp3, deno1), IrLoad(tmp8, IrVar(IrPtrType(null), "res")), IrReturn(tmp8)
+    ))
+    val fun = IrFun("Uniformal.Rat.Invert", declInvert.signature, List(lhsPar), List(instr))
+    (declInvert, fun)
+  }
+}
+
+case class IrRational(enu: Long, deno: Long, initLabel: String) extends IrValue {
+  override def render(): String = rationalNumbers.decl.render()
+  override def tp: IrType = rationalNumbers.decl
 }

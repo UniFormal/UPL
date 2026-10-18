@@ -108,8 +108,22 @@ private class IRGenerator {
     // treated as i64 integers.
     case NumberValue(_, re, _) => re match {
       case ApproxReal(value) => IrConst(value)
-      case Rat(enu, deno) => IrConst(enu.toInt / deno.toInt)
-    } // Booleans are represented using i1 integers.
+      case Rat(enu, deno) =>  IrConst(enu.toInt / deno.toInt)
+      // TODO: check NumberType instead. Everything is a Rat
+        /*val initializer = fresh("rational_init")
+        val g = IrGlobal(initializer, rationalNumbers.decl, Some(s"{i64 ${enu.longValue}, i64 ${deno.longValue} }"))
+        globals.append(g)
+        if (!structs.exists(x => x.name == rationalNumbers.decl.name)){
+          structs.append(rationalNumbers.decl)
+          val add = rationalNumbers.add()
+          val mul = rationalNumbers.mul()
+          functions.append(add._2)
+          functions.append(mul._2)
+        }
+        IrRational(enu.longValue, deno.longValue, initializer)*/
+      }
+
+     // Booleans are represented using i1 integers.
     case BoolValue(value) => IrConst(value)
     case StringValue(value) =>
       stringGlobals.getOrElseUpdate(value, {
