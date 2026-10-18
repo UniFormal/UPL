@@ -172,7 +172,7 @@ object IrIntType {
 case class IrFloat64() extends IrType {
   override def render(): String = "double"
 }
-case class IrPtrType(to: IrType) extends IrType {
+case class IrPtrType(to: IrType = IrUnknownType) extends IrType {
   override def render(): String = "ptr"
 }
 
@@ -232,6 +232,10 @@ case class IrConstChar(size: Int) extends IrType {
 
   //+1 to account for \0
   override def render(): String = s"[${size+1} x i8]"
+}
+
+case class IrArrayType(length: Int, element: IrType) extends IrType {
+  override def render(): String = s"[$length x ${element.render()}]"
 }
 
 case class IrFunctionRef(fun: IrFunctionLike) extends IrGlobalValue {
