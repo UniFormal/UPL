@@ -1236,6 +1236,8 @@ case class NumberValue(override val tp: NumberType, re: Real, im: Real) extends 
   def times(z: NumberValue) = NumberValue(tp union z.tp, (re times z.re) minus (im times z.im), (re times z.im) plus (im times z.re))
   def scale(r: Real) = NumberValue(tp union r.tp, re times r, im times r)
   def divide(z: NumberValue) = times(z.invert)
+  // numeric equality; without it, `x eq y` on NumberValues falls back to reference equality
+  def eq(z: NumberValue): Boolean = (re eq z.re) && (im eq z.im)
   def lessEq(z: NumberValue) = (re lessEq z.re) && (im lessEq z.im)
   def min(z: NumberValue) = NumberValue(tp union z.tp, re min z.re, im min z.im)
   def max(z: NumberValue) = NumberValue(tp union z.tp, re max z.re, im max z.im)
