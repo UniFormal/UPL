@@ -2,18 +2,14 @@ package info.kwarc.p.compiler
 
 import info.kwarc.p._
 import info.kwarc.p.compiler.Condition._
-import info.kwarc.p.compiler.IRGenerator.{INLINED_DECLARATIONS, INSTANCE_ARGUMENT_NAME, STORED_DECLARATIONS, TOP_LEVEL_STRUCT_NAME}
+import info.kwarc.p.compiler.IRGenerator.TOP_LEVEL_STRUCT_NAME
 import info.kwarc.p.compiler.Operation._
 
 import scala.collection.mutable
 
 object IRGenerator {
   private val TOP_LEVEL_STRUCT_NAME = "__top_level"
-  private val INSTANCE_ARGUMENT_NAME = "__instance"
-  private val NEEDS_STORING_DECLARATION: ExprDecl => Boolean = d => d.dfO.isEmpty || d.modifiers.mutable
   private val IGNORED_DECLARATION: ExprDecl => Boolean = d => d.tp match { case _: ProofType => true case _ => false }
-  private val STORED_DECLARATIONS: PartialFunction[Declaration, ExprDecl] = { case d: ExprDecl if NEEDS_STORING_DECLARATION(d) && !IGNORED_DECLARATION(d) => d }
-  private val INLINED_DECLARATIONS: PartialFunction[Declaration, ExprDecl] = { case d: ExprDecl if !NEEDS_STORING_DECLARATION(d) && !IGNORED_DECLARATION(d) => d }
 
   def run(p: Program): IrProgram = {
     val ig = new IRGenerator()
@@ -134,57 +130,9 @@ private class IRGenerator {
     // Unit value is represented as a special constant to make it easy to
     // spot when debugging
     case Unit.Value => IrConst(0xdeadbeef) // note that Unit.Value is defined
-    case IfThenElse(cond, thn, Some(els)) => // Based on ideas from
-      // https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl05.html#if-then-else
-      var thenB = ctx.newBlock("then")
-      var elseB = ctx.newBlock("else")
-      val endB = ctx.newBlock("end")
-
-      val condO = compileDynamicBoolean(cond)
-      ctx.emit(IrCondBranch(condO, thenB.label, elseB.label))
-
-      ctx.insertBlock(thenB)
-      val thnO = compileExpression(thn)
-      val allocResult = IrVar(IrPtrType(thnO.tp), fresh("alloc_result"))
-      ctx.emit(IrStore(thnO, allocResult))
-      ctx.emit(IRBranch(endB.label))
-      thenB = ctx.currentBlock
-
-      ctx.insertBlock(elseB)
-      val elsO = compileExpression(els)
-      ctx.emit(IrStore(elsO, allocResult))
-      ctx.emit(IRBranch(endB.label))
-      elseB = ctx.currentBlock
-
-      ctx.insertBlock(endB)
-
-      ctx.emitFirst(IrAlloca(allocResult))
-
-      val result = IrVar(thnO.tp, fresh("result"))
-      ctx.emit(IrLoad(result, allocResult))
-
-      result
-    case IfThenElse(cond, thn, _) =>
-      var thenB = ctx.newBlock("then")
-      val endB = ctx.newBlock("end")
-
-      ctx.emit(IrCondBranch(compileDynamicBoolean(cond), thenB.label, endB.label))
-
-      ctx.insertBlock(thenB)
-      val thnO = compileExpression(thn)
-      val allocResult = IrVar(IrPtrType(thnO.tp), fresh("alloc_result"))
-      ctx.emit(IrStore(thnO, allocResult))
-      ctx.emit(IRBranch(endB.label))
-      thenB = ctx.currentBlock
-
-      ctx.insertBlock(endB)
-
-      ctx.emitFirst(IrAlloca(allocResult))
-
-      val result = IrVar(thnO.tp, fresh("result"))
-      ctx.emit(IrLoad(result, allocResult))
-
-      result
+    case IfThenElse(cond, thn, elsO) =>
+      compileIfThenElse(compileDynamicBoolean(cond), () => compileExpression(thn),
+        elsO.map(els => () => compileExpression(els)))
     case While(cond, body) =>
       val bodyB = ctx.newBlock("body")
       val loopB = ctx.newBlock("loop")
@@ -402,6 +350,34 @@ private class IRGenerator {
       result
   }
 
+  private def compileIfThenElse(cond: IrValue, thn: () => IrValue, elsO: Option[() => IrValue]): IrValue = {
+    // Based on ideas from
+    // https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl05.html#if-then-else
+    val thenB = ctx.newBlock("then")
+    val elseB = elsO.map(_ => ctx.newBlock("else"))
+    val endB = ctx.newBlock("end")
+
+    ctx.emit(IrCondBranch(cond, thenB.label, elseB.map(_.label).getOrElse(endB.label)))
+
+    ctx.insertBlock(thenB)
+    val thnO = thn()
+    val allocResult = IrVar(IrPtrType(thnO.tp), fresh("alloc_result"))
+    ctx.emit(IrStore(thnO, allocResult))
+    ctx.emit(IRBranch(endB.label))
+
+    elseB.zip(elsO).foreach { case (block, els) =>
+      ctx.insertBlock(block)
+      ctx.emit(IrStore(els(), allocResult))
+      ctx.emit(IRBranch(endB.label))
+    }
+
+    ctx.insertBlock(endB)
+    ctx.emitFirst(IrAlloca(allocResult))
+    val result = IrVar(thnO.tp, fresh("result"))
+    ctx.emit(IrLoad(result, allocResult))
+    result
+  }
+
   // Compiler equivalent of Interpreter.interpretDynamicBoolean.
   private def compileDynamicBoolean(exp: Expression)(implicit gc: GlobalContext): IrValue = exp match {
     case Assign(target, value) => compileMatch(target, compileExpression(value))
@@ -574,37 +550,35 @@ private class IRGenerator {
     case d => compileDeclaration(d)
     }
 
-    module.df.decls.collect(INLINED_DECLARATIONS).foreach { expr =>
-      val region = if (module.closed) Some(IrVar(IrPtrType(), fresh(INSTANCE_ARGUMENT_NAME))) else None
-      val re = RegionalEnvironment(module.toString, region)
-      inFrame(re) {
-        inNewFunctionCtx {
-          val result = compileExpression(expr.dfO.get)
-          ctx.emit(IrReturn(result))
-          val (params, args) = frame.region match {
-            case Some(value) => (List(IrPtrType()), List(value))
-            case None => (Nil, Nil)
+    if (!module.closed) {
+      module.df.decls.collect{case d: ExprDecl if d.dfO.isDefined => d}.foreach { expr =>
+        val re = RegionalEnvironment(module.toString, None)
+        inFrame(re) {
+          inNewFunctionCtx {
+            val result = compileExpression(expr.dfO.get)
+            ctx.emit(IrReturn(result))
+            val fun = IrFun(s"${moduleName}_${expr.name}", IrFunType(result.tp, Nil), Nil, ctx.buildBlocks())
+            functions += fun
+            IrFunctionRef(fun)
           }
-          val fun = IrFun(s"${moduleName}_${expr.name}", IrFunType(result.tp, params), args, ctx.buildBlocks())
-          functions += fun
-          IrFunctionRef(fun)
         }
       }
     }
   }
 
   private def loadClosedRef(r: ClosedRef)(implicit gc: GlobalContext): IrValue = {
-    val (theoryPath, theory) = currentTheory()
     frame.region match {
       case Some(theoryHeaderPtr) =>
-        theory.decls.collect(STORED_DECLARATIONS).find(_.name == r.name) match {
-          case Some(value) =>
-            val fieldValuePtr = IrVar(IrPtrType(llvmType(value.tp)), fresh(s"field_value_ptr"))
-            ctx.emit(IrCall(Some(fieldValuePtr), IrFunctionRef(SpecialFunctions.theoryGetField), List(theoryHeaderPtr, compileExpression(StringValue(r.name)))))
+        gc.lookupRegional(r.name).map(d => TypeExpansion(gc, d)) match {
+          case Some(ed: ExprDecl) =>
+            // TODO When a value is loaded before it is initialized the Interpreter falls back to the defined value
+            // see Interpreter.lookupRegional
+            // test case: test/compiler/test/core/instance_mutable_closed_ref/main.pp
+            val fieldType = llvmType(ed.tp)
+            val fieldValuePtr = IrVar(IrPtrType(fieldType), fresh(s"field_value_ptr"))
+            ctx.emit(IrCall(Some(fieldValuePtr), IrFunctionRef(SpecialFunctions.theoryGetField),
+              List(theoryHeaderPtr, compileExpression(StringValue(r.name)))))
             loadFromPointer(fieldValuePtr, fresh(s"value_${r.name}"))
-          case None =>
-            val exprDecl = theory.decls.collect(INLINED_DECLARATIONS).find(_.name == r.name).get
-            applyField(IrFunctionRef(IrDeclFun(s"${theoryPath}_${r.name}", IrFunType(llvmType(exprDecl.tp), List(IrPtrType())))), List(theoryHeaderPtr))
         }
       case None => throw new IllegalArgumentException("ClosedRef must be in a region")
     }
@@ -620,11 +594,11 @@ private class IRGenerator {
       return IrFunctionRef(builtin)
     }
 
-    val module = gc.lookupGlobal(modulePath).get.asInstanceOf[Module]
-
-    val exprDecl = module.decls.collect(INLINED_DECLARATIONS).find(_.name == path.name).get
-    val moduleName = if (modulePath.isRoot) TOP_LEVEL_STRUCT_NAME else modulePath.toString
-    applyField(IrFunctionRef(IrDeclFun(s"${moduleName}_${path.name}", IrFunType(llvmType(exprDecl.tp), Nil))), Nil)
+    gc.lookupGlobal(path) match {
+      case Some(d: ExprDecl) =>
+        val moduleName = if (modulePath.isRoot) TOP_LEVEL_STRUCT_NAME else modulePath.toString
+        applyField(IrFunctionRef(IrDeclFun(s"${moduleName}_${path.name}", IrFunType(llvmType(d.tp), Nil))), Nil)
+    }
   }
 
   private def loadVarRef(o: VarRef)(implicit gc: GlobalContext): IrValue = {
@@ -697,14 +671,6 @@ private class IRGenerator {
       case ::(Include(OpenRef(p), _, _), _) => p
       case _ =>  throw new IllegalArgumentException(s"Theory declarations doesn't start with include")
     }
-  }
-
-  private def currentTheory()(implicit gc: GlobalContext): (Path, Module) = {
-    val theoryPath = mainTheoryPath(gc.theory)
-    // We want to expand all types that are already declared in the theory
-    val module = gc.lookupGlobal(theoryPath).get.asInstanceOf[Module]
-
-    (theoryPath, module.copy(df = TheoryValue(module.decls.map{d => TypeExpansion(gc, d)})))
   }
 
   private def inFrame[A](f: RegionalEnvironment)(a: => A) = {
