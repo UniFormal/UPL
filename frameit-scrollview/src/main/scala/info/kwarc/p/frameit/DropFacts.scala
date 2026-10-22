@@ -5,9 +5,12 @@ import scala.scalajs.js
 import scala.scalajs.js.annotation.JSExportTopLevel
 import scala.util.control.NonFatal
 
+// The interaction layer
 
 object DropFacts {
 
+  // The slot an element of the page stands for
+  // "None" if the element has no "data-slot-id", no scroll is shown or the scroll ha no such slot
   private def slotFor(el: dom.Element): Option[Slot] =
     for {
       slotId <- Option(el.getAttribute("data-slot-id"))
@@ -15,6 +18,8 @@ object DropFacts {
       slot   <- scroll.slots.find(_.uri == slotId)
     } yield slot
 
+  // The fact belonging to the drag data: if its id is already known, the existing fact
+  // from the registry; otherwise the data is parsed as a measurement and declared in UPL
   private def factFromDragData(data: String): Option[Fact] =
     ApiParser.idOf(data).flatMap(FactRegistry.get).orElse {
       try FactRegistry.declare(ApiParser.parseMeasurement(data))
@@ -25,6 +30,9 @@ object DropFacts {
       }
     }
 
+  // Called when the player drops a fact on a slot
+  // The fact is assigned only if it fits the slot's type
+  // The view then updates itself; benifit of using Airstream
   def dropFactHandler(event: dom.DragEvent): Unit =
     (event.currentTarget, Option(event.dataTransfer)) match {
       case (target: dom.Element, Some(transfer)) =>
@@ -41,6 +49,7 @@ object DropFacts {
         dom.console.log("Ignored illegal DragEvent")
     }
 
+  // Called by Unity when a measurement has produced a new fact
   @JSExportTopLevel("declareMeasuredFact")
   def declareMeasuredFact(serializedFact: String): Boolean =
     try FactRegistry.declare(ApiParser.parseMeasurement(serializedFact)).isDefined
@@ -50,6 +59,7 @@ object DropFacts {
         false
     }
 
+  // Handles mouse clicks on a slot
   def clickHandler(event: dom.MouseEvent): Unit =
     event.currentTarget match {
       case target: dom.Element =>
@@ -71,6 +81,7 @@ object DropFacts {
   private val contextMenuListener: js.Function1[dom.Event, Unit] = (e: dom.Event) => e.preventDefault()
   private val dragOverListener: js.Function1[dom.Event, Unit] = (e: dom.Event) => e.preventDefault()
 
+  // Registers the listeners on all drop zones, each exactly once
   def addDropZoneEventListeners(): Unit =
     DomUtil.forEachElement("""[dropzone="copy"]""") { el =>
       el.removeEventListener("drop", dropListener)
@@ -81,5 +92,7 @@ object DropFacts {
       el.addEventListener("contextmenu", contextMenuListener)
     }
 
+  // Called once at startup
+  // Allows dropping anywhere in the document
   def init(): Unit = dom.document.addEventListener("dragover", dragOverListener)
 }

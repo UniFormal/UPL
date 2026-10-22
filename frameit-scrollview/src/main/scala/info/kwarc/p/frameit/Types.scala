@@ -4,6 +4,7 @@ import org.scalajs.dom
 import scala.collection.mutable
 
 
+// Helpers to build MathML elements for the browser
 object MathML {
   val Namespace = "http://www.w3.org/1998/Math/MathML"
 
@@ -38,29 +39,39 @@ abstract class BackendObject(val uri: String, val `type`: String, name: Option[S
   def label: dom.Element = mathMLify(UPL_name)
 }
 
+// A BackendObject without further known properties
 class PureReference(uri: String, `type`: String = "none") extends BackendObject(uri, `type`)
 
+// A piece of knowledge that is declared in UPL
 abstract class Fact(uri: String, `type`: String, name: Option[String])
     extends BackendObject(uri, `type`, name) {
 
+  // What Unity calls this kind of fact
   def s_type: Option[String] = None
 
+  // The type in UPL, e.g. "point" or "float"
   def uplType: String
 
+  // Does the fact fit a slot that expects "allowed"?
   def fits(allowed: String): Boolean =
     s_type.contains(allowed) || uplType == allowed || `type` == allowed
 
+  // Which representation show() uses by default
   protected def defaultHint: String = "name"
 
+  // A representation of the fact
   def show(hint: String): dom.Element = label
   final def show(): dom.Element = show(defaultHint)
 }
 
+// "There is a point"
 class PointFact(uri: String, name: Option[String] = None) extends Fact(uri, "point", name) {
   override def s_type: Option[String] = Some("PointFact")
   def uplType = "point"
 }
 
+// A point with known coordinates
+// The coordinates are stored in UPL
 class Known3DPointFact(uri: String, name: Option[String] = None)
     extends Fact(uri, "Known3DPoint", name) {
   def uplType = "Known3DPoint"
@@ -71,6 +82,8 @@ class Known3DPointFact(uri: String, name: Option[String] = None)
   }
 }
 
+//A numeric value with its origin
+// Value, function and arguments are read from UPL, never stored here
 class ValueFact(uri: String, val func: String, name: Option[String] = None)
     extends Fact(uri, func, name) {
   def uplType = "float"
@@ -91,15 +104,19 @@ class ValueFact(uri: String, val func: String, name: Option[String] = None)
   }
 }
 
+// A statement without a numeric value
 class AssertionFact(uri: String, name: Option[String] = None) extends Fact(uri, "assertion", name) {
   def uplType = "assertion"
 }
 
+// An angle between three points
 class AngleFact(uri: String, val p1: String, val p2: String, val p3: String, name: Option[String] = None)
     extends ValueFact(uri, "angle", name) {
   def isRightAngle: Boolean = value.contains(90.0)
 }
 
+// A line segment between two points
+// Shows its length by default
 class LineSegmentFact(uri: String, val p1: String, val p2: String, name: Option[String] = None)
     extends ValueFact(uri, "dist", name) {
   override def s_type: Option[String] = Some("LineFact")
@@ -107,6 +124,8 @@ class LineSegmentFact(uri: String, val p1: String, val p2: String, name: Option[
   def length: Option[Double] = value
 }
 
+// A line through two points
+// Not declared in UPL
 class LineFact(uri: String, val p1: String, val p2: String, name: Option[String] = None,
                `type`: String = "Line_Fact")
     extends Fact(uri, `type`, name) {
@@ -120,6 +139,7 @@ class LineFact(uri: String, val p1: String, val p2: String, name: Option[String]
   }
 }
 
+// A ray: a LineFact with its own type
 class RayFact(uri: String, p1: String, p2: String, name: Option[String] = None)
     extends LineFact(uri, p1, p2, name, "Ray_Fact")
 
@@ -128,10 +148,12 @@ class RayFact(uri: String, p1: String, p2: String, name: Option[String] = None)
 object UplSyntax {
   var curried: Boolean = true
 
+  // Writes "func" applied to "args" in the current notation
   def apply(func: String, args: String*): String =
     if (curried) func + args.map(a => s"($a)").mkString
     else args.mkString(s"$func(", ", ", ")")
 
+  // Is "func" declared with a tuple argument in "background"? Then the level is not curried
   def detect(background: String, func: String = "dist"): Unit = {
     val tupled = raw"(^|\s)$func\s*:\s*\(".r
     curried = !background.linesIterator.exists(l => tupled.findFirstIn(l).isDefined)
@@ -145,6 +167,7 @@ final case class DistanceMeasurement(id: String, label: Option[String],
                                      pid1: String, pid2: String, distance: Double) extends Measurement
 
 
+// Registry of the facts the ScrollView has declared, by Unitys ID
 object FactRegistry {
   private val byId = mutable.LinkedHashMap.empty[String, Fact]
 
@@ -153,10 +176,13 @@ object FactRegistry {
   def register(f: Fact): Fact = { byId(f.uri) = f; f }
   def clear(): Unit = byId.clear()
 
+  // UPL name of the fact with Unitys ID "id"
   private def uplNameOf(id: String): Option[String] = byId.get(id).map(_.UPL_name)
 
+  // Is the name already used in the ScrollView?
   def nameTaken(name: String): Boolean = byUplName(name).isDefined
 
+  // Declares a measurement in UPL and registers the reference
   def declare(m: Measurement): Option[Fact] = get(m.id).orElse {
     val name = m.label.filter(_.nonEmpty).getOrElse(m.id)
     m match {

@@ -6,11 +6,12 @@ import com.raquo.airstream.state.Var
 import com.raquo.airstream.ownership.Owner
 
 
+// An Airstream Owner whose subscriptions we can end ourselves
 private final class KillableOwner extends Owner {
   def kill(): Unit = killSubscriptions()
 }
 
-
+// Keeps all places on the page with "attr="id" in sync with a signal"
 private final class ViewBinding(attr: String, id: String) {
   private var owner = new KillableOwner
   val selector: String = s"[$attr='$id']"
@@ -22,6 +23,7 @@ private final class ViewBinding(attr: String, id: String) {
   }
 }
 
+// Tooltip text for a fact, with the current value from UPL
 private object Describe {
   def apply(f: Fact): String = f match {
     case v: ValueFact => v.value.fold(v.UPL_name)(x => s"${v.UPL_name} = $x")
@@ -29,7 +31,7 @@ private object Describe {
   }
 }
 
-
+// A gap of a scroll, into which the player drops a fact
 class Slot(uri: String, `type`: String, name: Option[String] = None)
     extends BackendObject(uri, `type`, name) {
 
@@ -47,17 +49,19 @@ class Slot(uri: String, `type`: String, name: Option[String] = None)
     allowed.isEmpty || allowed.exists(f.fits)
   }
 
+  // Turns all places of the slot drop zones and keeps their view up do date
   def prepare(): Unit = {
     DomUtil.forEachElement(view.selector) { el =>
       el.setAttribute("dropzone", "copy")
       el.setAttribute("data-allowed-types", `type`)
     }
+    // Recompute on every change of the assignment or of the logical world in UPL
     view.bind(assigned.signal.combineWith(Backend.revision)) { case (el, (factOpt, _)) =>
       DomUtil.setContent(el, label)
       factOpt match {
         case Some(f) =>
-          el.setAttribute("data-fact-id", f.uri)
-          el.setAttribute("title", Describe(f))
+          el.setAttribute("data-fact-id", f.uri) // Marks the slot as filled
+          el.setAttribute("title", Describe(f)) // Tooltip with the current value from UPL
         case None =>
           el.removeAttribute("data-fact-id")
           el.removeAttribute("title")
@@ -67,6 +71,8 @@ class Slot(uri: String, `type`: String, name: Option[String] = None)
 }
 
 
+// A result of a scroll
+// Before the scroll is applied, it shows the name from the schema
 final class ResultView(val ref: BackendObject) {
   private val produced: Var[Option[Fact]] = Var(None)
   private val view = new ViewBinding("data-solution-id", ref.uri)
@@ -74,6 +80,7 @@ final class ResultView(val ref: BackendObject) {
   def fact: Option[Fact] = produced.now()
   def fact_=(f: Option[Fact]): Unit = produced.set(f)
 
+  // Keeps all places of the result up to date, like Slot.prepare
   def prepare(): Unit =
     view.bind(produced.signal.combineWith(Backend.revision)) { case (el, (factOpt, _)) =>
       DomUtil.setContent(el, factOpt.fold(ref.label)(_.label))
@@ -85,7 +92,7 @@ final class ResultView(val ref: BackendObject) {
     }
 }
 
-
+// A scroll as defined in the backend
 class Scroll(
   uri: String,
   val slots: List[Slot],
@@ -154,7 +161,7 @@ class Scroll(
   }
 }
 
-
+// DOM helper funkctions used by several files
 object DomUtil {
   def forEachElement(selector: String)(f: dom.Element => Unit): Unit = {
     val nodes = dom.document.querySelectorAll(selector)

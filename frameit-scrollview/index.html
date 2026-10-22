@@ -13,12 +13,7 @@
   </style>
 </head>
 <body>
-  <!--
-    Ein einziges Skript: UPL und ScrollView zusammen, gebaut mit
-      sbt frameitScrollView/fastLinkJS
-    Es stellt auch UPLs eigenes globales Objekt FrameIT bereit.
-    Die Seite über einen lokalen Webserver öffnen, nicht per file://.
-  -->
+
   <script src="target/scala-2.13/frameit-scrollview-fastopt/main.js"></script>
 
   <h2 id="scroll-label"></h2>
@@ -45,7 +40,6 @@
     Werte stehen im Tooltip (Maus über einen belegten Slot).</small></p>
 
   <script>
-    // Eine Scroll im Backend-Format für den Strahlensatz des Demo-Levels.
     const s = c => ({ parseAs: "string", content: c });
     const slot = (n, t) => ({ uri: s("test?" + n), type: s(t) });
     const scrollJson = JSON.stringify({
@@ -55,7 +49,6 @@
       resultingFacts: [{ uri: s("test?_CD"), type: s("float") }]
     });
 
-    // Messungen wie Unity sie schicken würde.
     const measurements = [
       { s_type: "PointFact", id: "ground", label: "ground" }, { s_type: "PointFact", id: "q", label: "q" },
       { s_type: "PointFact", id: "foot", label: "foot" },     { s_type: "PointFact", id: "tip", label: "tip" },

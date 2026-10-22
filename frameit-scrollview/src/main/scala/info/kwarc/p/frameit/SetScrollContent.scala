@@ -15,8 +15,10 @@ object SetScrollContent {
   var currentScroll: Option[Scroll] = None
 
 
+  // Shows a scroll
   @JSExportTopLevel("RenderScroll")
   def renderScroll(json: js.UndefOr[String] = js.undefined): Unit = {
+    // Take the argument if given otherwise the attribute set by Unity
     val source = json.toOption.orElse(
       Option(dom.document.querySelector("#Unity-Data-Interface"))
         .flatMap(el => Option(el.getAttribute("data-scroll-dynamic")))
@@ -68,10 +70,14 @@ object SetScrollContent {
       }
   }
 
+  // Recomputes all views from UPL if UPL was changed from outside via FrameIT
   @JSExportTopLevel("refreshScrollView")
   def refreshScrollView(): Unit = Backend.refresh()
 
 
+  // Loads a level from its files
+  // Key of the project file
+  // All public ways of loading a level end up here
   def loadFiles(files: Map[String, Seq[(String, String)]]): Boolean = {
     val background = (files.getOrElse("background", Nil) ++ files.getOrElse("source", Nil)).map(_._2)
     UplSyntax.detect(background.mkString("\n"))
@@ -84,6 +90,7 @@ object SetScrollContent {
     ok
   }
 
+  // Loads a level from strings brute force style
   @JSExportTopLevel("loadLevel")
   def loadLevel(background: String, schemata: String, initialStage: js.UndefOr[String] = js.undefined): Boolean =
     loadFiles(Map(
@@ -93,6 +100,7 @@ object SetScrollContent {
     ))
 
 
+  // Loads a level from the content of a .pp file and the contents of the files it names
   @JSExportTopLevel("loadLevelFromStrings")
   def loadLevelFromStrings(projectFile: String, files: js.Dictionary[String]): Boolean = {
     val entries = ProjectFile.parse(projectFile)
@@ -104,6 +112,9 @@ object SetScrollContent {
   }
 
 
+  // Loads a level by letting the WebVew fetch the .pp file and all files it names ("elegantly as files")
+  // Paths are relative to the .pp file
+  // Only works if the WebView is allowed to access the files
   @JSExportTopLevel("loadLevelFromProjectFile")
   def loadLevelFromProjectFile(url: String): js.Promise[Boolean] = {
     val ppUrl = new dom.URL(url, dom.document.baseURI).href
@@ -124,7 +135,8 @@ object SetScrollContent {
     }.toJSPromise
   }
 
-
+  // The intercept theorem level that used to be hard-coded, now only for testing
+  // Written like the UPL example levels
   object DemoLevel {
     val background: String =
       """type point
@@ -153,6 +165,10 @@ object SetScrollContent {
   @JSExportTopLevel("loadDemoLevel")
   def loadDemoLevel(): Boolean = loadLevel(DemoLevel.background, DemoLevel.schemata)
 
+
+  // Test without Unity: declares the measurements of the intercept theorem example and
+  // fills all slots. Afterwards applyScroll() should yield a segment CD = 420 · 21 / 42 = 210
+
   @JSExportTopLevel("helper")
   def helper(): Unit = currentScroll match {
     case None => dom.console.error("No current scroll")
@@ -163,12 +179,14 @@ object SetScrollContent {
         ("_AC", "ground_dist_large", "ground", "foot", 420.0),
         ("_BE", "apparent_height", "q", "p", 21.0))
 
+      // Points first: a segment can only be declared once its end points are known
       val pointFacts = points.flatMap { case (slot, n) =>
         FactRegistry.declare(PointMeasurement(n, Some(n))).map(slot -> _)
       }
       val distFacts = dists.flatMap { case (slot, n, a, b, d) =>
         FactRegistry.declare(DistanceMeasurement(n, Some(n), a, b, d)).map(slot -> _)
       }
+      // The similarity is not a measurement; it is declared directly in UPL (only once)
       val similar =
         FactRegistry.get("are_similar").orElse {
           if (Backend.add("are_similar: |- similar((tip,ground,foot))((p, ground, q)) = ???"))
@@ -176,6 +194,7 @@ object SetScrollContent {
           else None
         }.map("_are_similar" -> _).toList
 
+      // Assign every fact to its slot; the view updates itself
       (pointFacts ++ distFacts ++ similar).foreach { case (slotName, fact) =>
         scroll.slots.find(_.UPL_name == slotName) match {
           case Some(slot) => slot.assignedFact = Some(fact)
@@ -185,12 +204,15 @@ object SetScrollContent {
   }
 
 
+  // Decodes HTML entities
+  // Unity puts the scroll JSON HTML-encoded into an attribute
   def htmlDecode(value: String): String = {
     val textarea = dom.document.createElement("textarea").asInstanceOf[dom.html.TextArea]
     textarea.innerHTML = value
     textarea.value
   }
 
+  // Fixed function value for the #apply-scroll button
   private val applyListener: js.Function1[dom.Event, Unit] = (_: dom.Event) => { applyScroll(); () }
 
   def init(): Unit = {
@@ -211,7 +233,10 @@ object SetScrollContent {
   }
 }
 
+// Reads UPL project files like UPL itself (FrameITProject.unfoldProjectFile):
+// lines of the form "key: file1 file2", comment lines start with "//"
 
+// Known keys: background, source, schemata (all loaded as background), stageInit (initial state of the logical world)
 object ProjectFile {
 
   def parse(content: String): List[(String, List[String])] =
@@ -225,12 +250,15 @@ object ProjectFile {
       }
     }.toList
 
+  // Maps every key to its files with path and content, in the order of the file
   def collect(entries: List[(String, List[String])], read: String => String): Map[String, Seq[(String, String)]] =
     entries.foldLeft(Map.empty[String, Seq[(String, String)]]) { case (acc, (key, files)) =>
       acc.updated(key, acc.getOrElse(key, Seq.empty) ++ files.map(p => p -> read(p)))
     }
 }
 
+// Entry point of the subproject (set as mainClass in build.sbt)
+// Runs when main.js is loaded.
 object ScrollViewMain {
   def main(args: Array[String]): Unit = {
     DropFacts.init()
