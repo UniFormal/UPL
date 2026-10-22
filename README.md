@@ -40,3 +40,8 @@ If you develop UPL, it is easier to skip installing the vsix file (but still gen
 4. Select Node.js
 5. This will spawn a second VSCode window with the extension loaded
 
+
+# FrameIT ScrollView
+
+'frameit-scrollview' contains the ScrollView of FrameIT, a browser UI on top of the FrameIT backend (Scala.js + Laminar).
+It is a separate sbt project; build it with 'sbt frameitScrollView/fastLinkJS'. See 'frameit-scrollview/README.md'.
