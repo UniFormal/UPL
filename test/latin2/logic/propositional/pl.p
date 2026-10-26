@@ -239,34 +239,13 @@ module pl {
         D: prop
     }
 
-    // nnf : PLTest.prop -> PLTest.prop
-    // nnf = F -> F match {
-    //     // Handle equivalence by expanding to conjunction of implications
-    //     PLTest.equiv(a,b) -> nnf(PLTest.and(PLTest.impl(a,b), PLTest.impl(b,a)))
-        
-    //     // Handle negations first (more specific patterns)
-    //     PLTest.not(PLTest.not(a)) -> nnf(a)
-    //     PLTest.not(PLTest.impl(a,b)) -> nnf(PLTest.and(a, PLTest.not(b)))
-    //     PLTest.not(PLTest.equiv(a,b)) -> nnf(PLTest.not(PLTest.and(PLTest.impl(a,b), PLTest.impl(b,a))))
-    //     PLTest.not(PLTest.and(a,b)) -> nnf(PLTest.or(PLTest.not(a), PLTest.not(b)))
-    //     PLTest.not(PLTest.or(a,b)) -> nnf(PLTest.and(PLTest.not(a), PLTest.not(b)))
-        
-    //     // Handle positive connectives
-    //     PLTest.impl(a,b) -> nnf(PLTest.or(PLTest.not(a), b))
-    //     PLTest.and(a,b) -> PLTest.and(nnf(a), nnf(b))
-    //     PLTest.or(a,b) -> PLTest.or(nnf(a), nnf(b))
-        
-    //     // Base case: atoms, truth, falsity, or negated atoms
-    //     a -> a
-    // }
-
-    nnf2 : PLTest.prop -> bool -> PLTest.prop
-    nnf2 = F -> pos -> F match {
-        PLTest.not(a) -> nnf2 a (!pos)
-        PLTest.and(a,b) -> if(pos) PLTest.and(nnf2 a true, nnf2 b true) else PLTest.or(nnf2 a false, nnf2 b false)
-        PLTest.or(a,b) -> if(pos) PLTest.or(nnf2 a true, nnf2 b true) else PLTest.and(nnf2 a false, nnf2 b false)
-        PLTest.impl(a,b) -> if(pos) PLTest.or(nnf2 a false, nnf2 b true) else PLTest.and(nnf2 a true, nnf2 b false)
-        PLTest.equiv(a,b) -> if(pos) PLTest.and(PLTest.or(nnf2 a false, nnf2 b true), PLTest.or(nnf2 b false, nnf2 a true)) else PLTest.or(PLTest.and(nnf2 a true, nnf2 b false), PLTest.and(nnf2 b true, nnf2 a false))
+    nnf : PLTest.prop -> bool -> PLTest.prop
+    nnf = F -> pos -> F match {
+        PLTest.not(a) -> nnf a (!pos)
+        PLTest.and(a,b) -> if(pos) PLTest.and(nnf a true, nnf b true) else PLTest.or(nnf a false, nnf b false)
+        PLTest.or(a,b) -> if(pos) PLTest.or(nnf a true, nnf b true) else PLTest.and(nnf a false, nnf b false)
+        PLTest.impl(a,b) -> if(pos) PLTest.or(nnf a false, nnf b true) else PLTest.and(nnf a true, nnf b false)
+        PLTest.equiv(a,b) -> if(pos) PLTest.and(PLTest.or(nnf a false, nnf b true), PLTest.or(nnf b false, nnf a true)) else PLTest.or(PLTest.and(nnf a true, nnf b false), PLTest.and(nnf b true, nnf a false))
         a -> if(pos) a else PLTest.not(a)
     }
 
@@ -284,8 +263,6 @@ module pl {
             PLTest{A}
         )
     )
-
-    result = nnf2 phi true
     
     phi2 = PLTest{equiv}(
         PLTest{and}(
@@ -309,12 +286,10 @@ module pl {
         )
     )
 
-    result2 = nnf2 phi2 true
-
     test = {
-        ASSERT(result, phi_nnf)
+        ASSERT(nnf phi true, phi_nnf)
         //result
-        //ASSERT(result2, expected_phi2)
+        //ASSERT(nnf phi2 true, expected_phi2)
         //result2
     }
 }
