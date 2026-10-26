@@ -26,13 +26,13 @@ module pl {
         include EquivalenceNDI
         include EquivalenceNDE
 
-        equiv_equivalence: .relations.EquivalenceRelation {
-            type carrier = prop
-            type rel(c1:carrier, c2:carrier) = ded(c1 ⇔ c2)
-            refl = ???
-            sym = ???
-            trans = ???
-        }
+        // equiv_equivalence: .relations.EquivalenceRelation {
+        //     type carrier = prop
+        //     type rel(c1:carrier, c2:carrier) = ded(c1 ⇔ c2)
+        //     refl = ???
+        //     sym = ???
+        //     trans = ???
+        // }
 
         // lindenbaum: .relations.EqualityType {
         //     type carrier = prop
@@ -312,8 +312,8 @@ module pl {
     result2 = nnf2 phi2 true
 
     test = {
-        ASSERT(result, expected_phi)
-        result
+        ASSERT(result, phi_nnf)
+        //result
         //ASSERT(result2, expected_phi2)
         //result2
     }

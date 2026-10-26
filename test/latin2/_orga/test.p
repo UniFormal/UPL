@@ -25,7 +25,18 @@ module test {
         // and so on...
     }
 
+    theory Terms {
+        type term
+    }
 
+    theory Types {
+        type tp
+    }
+
+    theory TypedTerms {
+        include Types
+        type tm(a: tp)
+    }
 
 }
 
