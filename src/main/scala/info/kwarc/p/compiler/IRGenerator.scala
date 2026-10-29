@@ -1,6 +1,6 @@
 package info.kwarc.p.compiler
 
-import info.kwarc.p._
+import info.kwarc.p.{Plus, _}
 import info.kwarc.p.compiler.Condition._
 import info.kwarc.p.compiler.IRGenerator.TOP_LEVEL_STRUCT_NAME
 import info.kwarc.p.compiler.Operation._
@@ -100,23 +100,25 @@ private class IRGenerator {
    *
    * @param exp Expression to compile
    * @return IrValue representing the result of the expression. */
-  private def compileExpression(exp: Expression)(implicit gc: GlobalContext): IrValue = exp match { // TODO Currently all numbers are
+  private def compileExpression(exp: Expression)(implicit gc: GlobalContext): IrValue = exp match {
     // treated as i64 integers.
-    case NumberValue(_, re, _) => re match {
-      case ApproxReal(value) => IrConst(value)
-      case Rat(enu, deno) =>  IrConst(enu.toInt / deno.toInt)
-      // TODO: check NumberType instead. Everything is a Rat
-        /*val initializer = fresh("rational_init")
-        val g = IrGlobal(initializer, rationalNumbers.decl, Some(s"{i64 ${enu.longValue}, i64 ${deno.longValue} }"))
+    case NumberValue(tp, re, _) =>  tp match {
+      case NumberType.Int => IrConst(re.asInstanceOf[Rat].enu.toInt)
+      case NumberType.Float => IrConst(re.asInstanceOf[ApproxReal].value)
+      case NumberType.Rat=>
+        val num = re.asInstanceOf[Rat]
+        val initializer = fresh("rational_init")
+        val g = IrGlobal(initializer, rationalNumbers.decl, Some(s"{i64 ${num.enu.longValue}, i64 ${num.deno.longValue} }"))
         globals.append(g)
         if (!structs.exists(x => x.name == rationalNumbers.decl.name)){
+          //memset
+          declaredFunctions.append(IrDeclFun("llvm.memcpy.inline.p0.p0.i64",
+            IrFunType(IrVoidType, List(IrPtrType(null), IrPtrType(null), IrIntType.I64, IrIntType.I1))))
+
           structs.append(rationalNumbers.decl)
-          val add = rationalNumbers.add()
-          val mul = rationalNumbers.mul()
-          functions.append(add._2)
-          functions.append(mul._2)
+          rationalNumbers.functions.foreach(x => functions.append(x._2))
         }
-        IrRational(enu.longValue, deno.longValue, initializer)*/
+        IrRational(num.enu.longValue, num.deno.longValue, initializer)
       }
 
      // Booleans are represented using i1 integers.
@@ -176,16 +178,6 @@ private class IRGenerator {
             compileExpression(args(0))
           } else {
 
-            val isFloat = (args(0).isInstanceOf[NumberValue] && args(0).asInstanceOf[NumberValue].tp == NumberType.Float)
-
-            val irOp = inf match {
-                  case Plus => if (isFloat) FADD else IADD
-                  case Minus => if (isFloat) FSUB else ISUB
-                  case Times => if (isFloat) FMUL else IMUL
-                  case Divide => if (isFloat) FDIV else IDIV
-                  case _ => ???
-                }
-
             val (left, right) = if (numArgs > 2) {
               if (inf.assoc == RightAssociative) {
                 (compileExpression(args(0)), compileExpression(Application(bo, args.tail)))
@@ -196,8 +188,63 @@ private class IRGenerator {
               (compileExpression(args(0)), compileExpression(args(1)))
             }
 
-            val op_result = IrVar(IrIntType.I64, fresh("op_result"))
-            ctx.emit(IrBinOp(op_result, irOp, left, right))
+            var op_result: IrVar = null
+
+            def emitOp(l: IrValue, r: IrValue): Unit = {
+              val irOp = inf match {
+                case Plus => FADD
+                case Minus => FSUB
+                case Times => FMUL
+                case Divide => FDIV
+              }
+              ctx.emit(IrBinOp(op_result, irOp, l, r))
+            }
+
+            args match {
+              case Seq(a: NumberValue, b: NumberValue) =>
+                (a.tp, b.tp) match {
+                  case (NumberType.Rat, NumberType.Rat) =>
+                    op_result = IrVar(IrStructTyped("", List(IrIntType.I64, IrIntType.I64)), fresh("op_result"))
+                    inf match {
+                      case Plus => ctx.emit(IrCall(Some(op_result), IrFunctionRef(rationalNumbers.add()._2), List(left,right)))
+                      case Minus =>
+                        val op_temp = IrVar(IrStructTyped("", List(IrIntType.I64, IrIntType.I64)), fresh("op_tmp"))
+                        ctx.emit(IrCall(Some(op_temp), IrFunctionRef(rationalNumbers.negate()._2), List(right)))
+                        ctx.emit(IrCall(Some(op_result), IrFunctionRef(rationalNumbers.add()._2), List(left,op_temp)))
+                      case Times => ctx.emit(IrCall(Some(op_result), IrFunctionRef(rationalNumbers.mul()._2), List(left,right)))
+                      case Divide =>
+                        val op_temp = IrVar(IrStructTyped("", List(IrIntType.I64, IrIntType.I64)), fresh("op_tmp"))
+                        ctx.emit(IrCall(Some(op_temp), IrFunctionRef(rationalNumbers.invert()._2), List(left,right)))
+                        ctx.emit(IrCall(Some(op_result), IrFunctionRef(rationalNumbers.mul()._2), List(left,op_temp)))
+                    }
+                  case (NumberType.Rat, _) =>
+                  case (_, NumberType.Rat) =>
+                  case (NumberType.Float, NumberType.Float) =>
+                    op_result = IrVar(IrFloat64(), fresh("op_result"))
+                   emitOp(left, right)
+                  case (NumberType.Float, _) =>
+                    val conv = IrVar(IrFloat64(), fresh("conv"))
+                    ctx.emit(IrConvert(right, conv))
+                    op_result = IrVar(IrFloat64(), fresh("op_result"))
+                    emitOp(left, conv)
+                  case (_, NumberType.Float) =>
+                    val conv = IrVar(IrFloat64(), fresh("conv"))
+                    ctx.emit(IrConvert(left, conv))
+                    op_result = IrVar(IrFloat64(), fresh("op_result"))
+                    emitOp(conv, right)
+                  case _ =>
+                    val irOp = inf match {
+                      case Plus => IADD
+                      case Minus => ISUB
+                      case Times => IMUL
+                      case Divide => IDIV
+                    }
+                    op_result = IrVar(IrIntType.I64, fresh("op_result"))
+                    ctx.emit(IrBinOp(op_result, irOp, left, right))
+                }
+              case _ => throw new IllegalArgumentException("invalid arg count")
+            }
+
             op_result
           }
       }

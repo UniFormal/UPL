@@ -196,6 +196,17 @@ case class IrStructTyped(name: String, fields: List[IrType]) extends IrType {
   override def render(): String = s"{ ${fields.map { f => f.render() }.mkString(", ")} }"
 }
 
+case class IrConvert(src: IrValue, target: IrValue) extends IrInstr {
+
+  def getType(t: IrValue): String = t.tp match {
+    case IrFloat64() => "fp"
+    case IrIntType(_) => "si"
+    case _ => throw new NotImplementedError(s"conversion of type ${t.tp} not supported")
+  }
+  override def render(): String = s"${target.render()} = ${getType(src)}to${getType(target)} ${src.tp.render()} ${src.render()} to ${target.tp.render()}"
+}
+
+
 object IrVariadicType extends IrType {
   override def render(): String = "..."
 }
@@ -492,6 +503,8 @@ object rationalNumbers {
     val fun = IrFun("Uniformal.Rat.Invert", declInvert.signature, List(lhsPar), List(instr))
     (declInvert, fun)
   }
+
+  val functions: List[(IrDeclFun, IrFun)] = List(add(), mul(), negate(), invert())
 }
 
 case class IrRational(enu: Long, deno: Long, initLabel: String) extends IrValue {
