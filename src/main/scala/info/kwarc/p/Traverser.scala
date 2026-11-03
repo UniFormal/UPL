@@ -135,18 +135,19 @@ abstract class Traverser[A] {
       var gcI = gc
       var aI = a
       val esT = es.map {e =>
-        val eT = e match {
-          case vd: EVarDecl =>
-            val (vdT,_a) = applyEVarDecl(vd)(gcI,aI)
-            gcI = gcI.append(vd)
-            aI = _a
-            vdT
-          case e => apply(e)(gcI,aI)
+        val eT = apply(e)(gcI,aI)
+        LocalContext.collect(e).foreach { vd =>
+          val (vdT,_a) = applyEVarDecl(vd)(gcI,aI)
+          gcI = gcI.append(vd)
+          aI = _a
+          vdT
         }
         eT
       }
       Block(esT)
-    case IfThenElse(c, t, e) => IfThenElse(apply(c), apply(t), e map apply)
+    case IfThenElse(c, t, e) =>
+      val gcT = gc.append(LocalContext.collectContext(c))
+      IfThenElse(apply(c), apply(t)(gcT,a), e map apply)
     case Match(e, cs, h) =>
       Match(apply(e), cs map {c => apply(c).asInstanceOf[MatchCase]}, h)
     case MatchCase(ctx,p,b) =>
