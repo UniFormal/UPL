@@ -1042,6 +1042,15 @@ private def variableMarker(name: String): String = s"__tptp_bound_var__:$name"
 
     case _: Include =>
       Nil
+
+    case ed: ExprDecl if ed.tp.isInstanceOf[ProofType] && ed.dfO.exists(_.isInstanceOf[UndefinedValue]) =>
+      val formula = ed.tp.asInstanceOf[ProofType].formula
+      val ownedDecls = declareOwnedReferences(formula, table)
+      ownedDecls :+ TPTPDecl(
+        ed.name,
+        "conjecture",
+        translateExpression(formula, gc, table, None)
+    )
     
     case ed: ExprDecl if ed.tp.isInstanceOf[ProofType] && ed.dfO.isEmpty =>
       table(ed.name) = TPTPInterpretedConstant("$o")
