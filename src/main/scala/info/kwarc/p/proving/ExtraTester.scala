@@ -290,6 +290,15 @@ object TPTPTranslatorSummary {
         |goal:--- u == ()
       """.stripMargin
 
+    val undefinedProofWithGoal =
+      """
+        |type univ
+        |rel: (univ,univ) -> bool # infix %
+        |sym:--- x % y => y % x
+        |trans:--- x % y & y % z => x % z
+        |c: |- Forall ((x % y) => ((x % x) & (y % y))) = ???
+      """.stripMargin
+
     val natWithGoal =
       """
         |val n: nat = 1
@@ -346,6 +355,21 @@ object TPTPTranslatorSummary {
           "thf(goal,conjecture,(u=unit_value))."
         ),
         mustNotContain = List("thf(goal,conjecture,$true)")
+      ),
+      SummaryCase(
+        "Undefined proof value: derive reflexivity from symmetry and transitivity",
+        undefinedProofWithGoal,
+        () => TPTPTranslator.translateTheory(parseTheory(undefinedProofWithGoal)).mkString("\n"),
+        "",
+        mustContain = List(
+          "thf(univ_type,type,univ:$tType).",
+          "thf(rel_type,type,rel:",
+          "thf(sym,axiom,",
+          "thf(trans,axiom,",
+          "thf(c,conjecture,",
+          "![X:univ,Y:univ]"
+        ),
+        mustNotContain = List("thf(c,axiom,", "$undefined", "thf(goal,conjecture")
       ),
       SummaryCase(
         "Nat declaration with a non-negativity goal",
