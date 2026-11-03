@@ -24,19 +24,44 @@ object IRGenerator {
   }
 }
 
-case class Variable(name: String, irValue: IrVar)
-case class VariableScope(var variables: List[Variable] = Nil)
+case class Variable(name: String, irVar: IrVar, mutable: Boolean)
 
-case class RegionalEnvironment(name: String, region: Option[IrVar] = None)
+case class RegionalEnvironment(name: String, region: Option[IrVar] = None, local: LocalEnvironment = LocalEnvironment.empty, parent: Option[RegionalEnvironment] = None) {
+  def allocate(n: String, vl: IrVar, mutable: Boolean = true): Unit = {
+    if (!vl.tp.isInstanceOf[IrPtrType] && mutable) throw new RuntimeException(s"Mutable variable $n is not a pointer")
+    local.fields ::= Variable(n, vl, mutable)
+  }
+
+  def inNewBlock[A](a: => A): A = {
+    val prevFields = local.fields
+    try {a}
+    finally {
+      local.fields = prevFields
+    }
+  }
+}
+
+case class LocalEnvironment(var fields: List[Variable]) {
+  def getO(n: String) = fields.find(_.name == n)
+}
+
+object LocalEnvironment {
+  def empty = LocalEnvironment(Nil)
+}
 
 object SpecialFunctions {
-  val mallocFun = IrDeclFun("malloc", IrFunType(IrPtrType(IrIntType.I64), List(IrIntType.I64)))
+  val malloc = IrDeclFun("malloc", IrFunType(IrPtrType(IrIntType.I64), List(IrIntType.I64)))
 
   val theoryCreate = IrDeclFun("theory_create", IrFunType(IrPtrType(), List(IrIntType.I64, IrPtrType())))
   val theoryInitField = IrDeclFun("theory_init_field", IrFunType(IrVoidType, List(IrPtrType(), IrPtrType(), IrPtrType())))
   val theoryGetField = IrDeclFun("theory_get_field", IrFunType(IrPtrType(), List(IrPtrType(), IrPtrType())))
 
   val stdin = IrGlobalExtern("stdin", IrPtrType(null))
+}
+
+object SpecialStructs {
+  // {fun_ptr, env_ptr}
+  val lambda = IrStruct("lambda", List(IrFunType(IrPtrType(), List(IrPtrType())), IrPtrType()))
 }
 
 private object TypeExpansion extends StatelessTraverser {
@@ -65,25 +90,37 @@ private object TypeExpansion extends StatelessTraverser {
 private class IRGenerator {
 
   private val declaredFunctions: mutable.ArrayBuffer[IrDeclFun] = mutable.ArrayBuffer(
-    SpecialFunctions.mallocFun,
+    SpecialFunctions.malloc,
     SpecialFunctions.theoryCreate, SpecialFunctions.theoryInitField, SpecialFunctions.theoryGetField
   )
 
   private val globals: mutable.ArrayBuffer[IrGlobalValue] = mutable.ArrayBuffer(SpecialFunctions.stdin)
-  private val structs: mutable.ArrayBuffer[IrStruct] = mutable.ArrayBuffer()
+  private val structs: mutable.ArrayBuffer[IrStruct] = mutable.ArrayBuffer(SpecialStructs.lambda)
   private val functions: mutable.ArrayBuffer[IrFun] = mutable.ArrayBuffer()
 
   private val nameCount: mutable.Map[String, Int] = mutable.Map().withDefaultValue(0)
   private val prodStructName: mutable.Map[List[IrType], String] = mutable.Map()
   private val stringGlobals: mutable.Map[String, IrGlobal] = mutable.Map()
-  private var scopes: List[VariableScope] = List(VariableScope(List()))
+  private val closureAdapters = mutable.Map[String, IrFun]()
   private var regions = List(RegionalEnvironment("toplevel"))
   private def frame = regions.head
 
   private val checker = new Checker(ErrorThrower)
   private var ctx: FunctionContext = _
 
-  private def getAllocatedVariable(n: String): IrVar = scopes.find(_.variables.exists(_.name == n)).map(_.variables.find(_.name == n).get).getOrElse(throw new RuntimeException(s"Variable $n not found")).irValue
+  private def lookupLocalO(n: String): Option[Variable] = {
+    var reg = regions.headOption
+    while (reg.nonEmpty) {
+      reg.get.local.getO(n) match {
+        case Some(variable) => return Some(variable)
+        case None => reg = reg.get.parent
+      }
+    }
+    None
+  }
+
+  private def lookupLocal(n: String): Variable = lookupLocalO(n).getOrElse(throw new RuntimeException(s"Variable $n " +
+    s"not found"))
 
   def compileMain(exp: Expression)(implicit gc: GlobalContext): Unit = {
     inNewFunctionCtx {
@@ -244,7 +281,7 @@ private class IRGenerator {
             op_result
           }
       }
-      case r => applyField(compileExpression(r), args.map(compileExpression))
+      case r => applyLambda(compileExpression(r), args.map(compileExpression))
     }
     case o: OpenRef => loadOpenRef(o)
     case r: ClosedRef => loadClosedRef(r)
@@ -256,43 +293,92 @@ private class IRGenerator {
       }
     case o: VarRef => loadVarRef(o)
     case Lambda(ins, body, _) =>
-      inNewFunctionCtx {
+      // Store all captured variables (and optionally the region)
+      // TODO proper traverser, that also collects ClosedRef and This usage for regions
+      val freeVariable = FreeVariables.collect(gc, exp, infer = true)
+      val captured = freeVariable.zip(freeVariable.map(lookupLocal))
+
+      val inRegion = frame.region.isDefined
+
+      val ptrSize = IrVar(IrIntType.I64, fresh("ptrSize"))
+      ctx.emit(IrComputeSize(ptrSize, IrPtrType()))
+      val envPtr = IrVar(IrPtrType(), fresh("env_ptr"))
+      val envSize = IrVar(IrIntType.I64, fresh("env_size"))
+
+      ctx.emit(IrBinOp(envSize, IMUL, ptrSize, IrConst(captured.length + (if (inRegion) 1 else 0))))
+      ctx.emit(IrCall(Some(envPtr), IrFunctionRef(SpecialFunctions.malloc), List(envSize)))
+
+      captured.zipWithIndex.foreach { case ((_, variable), i) =>
+        val fieldPtr = IrVar(IrPtrType(variable.irVar.tp), fresh(s"env_field${i}_ptr"))
+        ctx.emit(IrGetElement(fieldPtr, IrPtrType(), envPtr, List(i)))
+        ctx.emit(IrStore(variable.irVar, fieldPtr))
+      }
+      if (inRegion) {
+        val regionPtr = IrVar(IrPtrType(), fresh("region_ptr"))
+        ctx.emit(IrGetElement(regionPtr, IrPtrType(), envPtr, List(captured.length)))
+        ctx.emit(IrStore(frame.region.get, regionPtr))
+      }
+
+      val lambdaFun = inNewFunctionCtx {
+        // Rebuild the frame from the environment pointer
+        val envPtrArg = IrVar(IrPtrType(), fresh("env_ptr_arg"))
+        val lambdaRegion = if (inRegion) {
+          val region = IrVar(IrPtrType(), fresh("region"))
+          val regionPtr = IrVar(IrPtrType(), fresh("region_ptr"))
+          ctx.emit(IrGetElement(regionPtr, IrPtrType(), envPtrArg, List(captured.length)))
+          ctx.emit(IrLoad(region, regionPtr))
+          Some(region)
+        } else {
+          None
+        }
+
+        val re = RegionalEnvironment("lambda", lambdaRegion)
+
+        captured.zipWithIndex.foreach { case ((name, variable), i) =>
+          val envField = IrVar(variable.irVar.tp, fresh(s"env_field$i"))
+          val fieldPtr = IrVar(IrPtrType(variable.irVar.tp), fresh(s"env_field${i}_ptr"))
+          ctx.emit(IrGetElement(fieldPtr, IrPtrType(), envPtrArg, List(i)))
+          ctx.emit(IrLoad(envField, fieldPtr))
+
+          re.allocate(name, envField, variable.mutable)
+        }
+
         val params = ins.variables.reverse
         val arguments = params.map(v => IrVar(llvmType(v.tp), v.name))
 
-        scopes ::= VariableScope()
-        arguments.foreach { a =>
-          val allocatedVar = IrVar(IrPtrType(a.tp), fresh(s"alloc_arg_${a.name}"))
-          ctx.emitFirst(IrAlloca(allocatedVar))
-
-          scopes.head.variables ::= Variable(a.name, allocatedVar)
-          ctx.emit(IrStore(a, allocatedVar))
+        params.map(_.name).zip(arguments).foreach { case (name, arg) =>
+          re.allocate(name, arg, mutable = false)
         }
 
-        val result = compileExpression(body)(gc.append(ins))
-        scopes = scopes.tail
+        val result = inFrame(re) {
+          compileExpression(body)(gc.append(ins))
+        }
 
         ctx.emit(IrReturn(result))
 
-        val lambdaFun = IrFun(fresh("lambda"), IrFunType(result.tp, params.map(v => llvmType(v.tp))), arguments, ctx.buildBlocks())
-        functions += lambdaFun
-        IrFunctionRef(lambdaFun)
+        IrFun(fresh("lambda"), IrFunType(result.tp, IrPtrType() :: params.map(v => llvmType(v.tp))), envPtrArg :: arguments, ctx.buildBlocks())
       }
+      functions += lambdaFun
+
+      val structPtr = mallocStruct(SpecialStructs.lambda)
+      storeField(SpecialStructs.lambda, structPtr, IrFunctionRef(lambdaFun), 0)
+      storeField(SpecialStructs.lambda, structPtr, envPtr, 1)
+      structPtr
     case Block(exprs) =>
-      scopes ::= VariableScope()
-      var gcI = gc
-      val result = if (exprs.nonEmpty) {
-        exprs.dropRight(1).foreach { e =>
-          compileExpression(e)(gcI)
-          gcI = gcI.append(LocalContext.collectContext(e))
+      frame.inNewBlock {
+        var gcI = gc
+        val result = if (exprs.nonEmpty) {
+          exprs.dropRight(1).foreach { e =>
+            compileExpression(e)(gcI)
+            gcI = gcI.append(LocalContext.collectContext(e))
+          }
+          compileExpression(exprs.last)(gcI)
+        } else {
+          // dummy value (Unit.Value)
+          compileExpression(Unit.Value)
         }
-        compileExpression(exprs.last)(gcI)
-      } else {
-        // dummy value (Unit.Value)
-        compileExpression(Unit.Value)
+        result
       }
-      scopes = scopes.tail
-      result
     case Return(exp, false) =>
       val value = compileExpression(exp)
       ctx.emit(value.tp match {
@@ -304,6 +390,7 @@ private class IRGenerator {
     case Assign(target, value) =>
       compileAssignment(target, compileExpression(value))
       compileExpression(Unit.Value)
+    // TODO case inst: Instance if inst.isRuntime =>
     case Instance(concreteTheory) =>
       val gcI = gc.enter(concreteTheory)
 
@@ -346,11 +433,7 @@ private class IRGenerator {
     case Tuple(comps) =>
       val values = comps.map(compileExpression)
       val struct = findProdStruct(values.map(a => a.tp))
-      val size = IrVar(IrIntType.I64, fresh("size"))
-      ctx.emit(IrComputeSize(size, struct))
-
-      val structPtr = IrVar(IrPtrType(struct), fresh("struct_ptr"))
-      ctx.emit(IrCall(Some(structPtr), IrFunctionRef(SpecialFunctions.mallocFun), List(size)))
+      val structPtr = mallocStruct(struct)
 
       // Initializes the tuple values
       values.zipWithIndex.foreach { case (vl, fieldIndex) => storeField(struct, structPtr, vl, fieldIndex)}
@@ -371,25 +454,24 @@ private class IRGenerator {
       ctx.emitFirst(IrAlloca(allocMatchResult))
 
       cases.zipWithIndex.foreach { case (MatchCase(context, pattern, body), index)  =>
-        val gcI = gc.append(context)
-        scopes ::= VariableScope()
-        // Pattern variables, which will be assigned in compileMatch
-        context.decls.foreach { case vd: EVarDecl => bindDeclaration(vd, None)(gcI) }
-        val bindings = context.decls.collect { case vd: EVarDecl => vd.name }.toSet
+        frame.inNewBlock {
+          val gcI = gc.append(context)
+          // Pattern variables, which will be assigned in compileMatch
+          context.decls.foreach { case vd: EVarDecl => bindDeclaration(vd, None)(gcI) }
+          val bindings = context.decls.collect { case vd: EVarDecl => vd.name }.toSet
 
-        val nextMatchB = if (index == cases.length - 1) endB else ctx.newBlock("next_match")
-        val matchedB = ctx.newBlock("matched")
-        ctx.emit(IrCondBranch(compileMatch(pattern, target, bindings)(gcI), matchedB.label, nextMatchB.label))
-        ctx.insertBlock(matchedB)
+          val nextMatchB = if (index == cases.length - 1) endB else ctx.newBlock("next_match")
+          val matchedB = ctx.newBlock("matched")
+          ctx.emit(IrCondBranch(compileMatch(pattern, target, bindings)(gcI), matchedB.label, nextMatchB.label))
+          ctx.insertBlock(matchedB)
 
-        val matchResult = compileExpression(body)(gcI)
-        tp = matchResult.tp
-        ctx.emit(IrStore(matchResult, allocMatchResult))
+          val matchResult = compileExpression(body)(gcI)
+          tp = matchResult.tp
+          ctx.emit(IrStore(matchResult, allocMatchResult))
 
-        ctx.emit(IRBranch(endB.label))
-
-        scopes = scopes.tail
-        ctx.insertBlock(nextMatchB)
+          ctx.emit(IRBranch(endB.label))
+          ctx.insertBlock(nextMatchB)
+        }
       }
 
       val result = IrVar(tp, fresh("result"))
@@ -399,6 +481,7 @@ private class IRGenerator {
   }
 
   private def compileIfThenElse(cond: Expression, thn: Expression, elsO: Option[Expression])(implicit gc: GlobalContext): IrValue = {
+    // TODO frame.inNewBlock for then block
     // Based on ideas from
     // https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl05.html#if-then-else
     val thenB = ctx.newBlock("then")
@@ -434,7 +517,7 @@ private class IRGenerator {
   }
 
   private def compileAssignment(target: Expression, value: IrValue)(implicit gc: GlobalContext): Unit = target match {
-    case VarRef(name) => ctx.emit(IrStore(value, getAllocatedVariable(name)))
+    case VarRef(name) => storeInVariable(lookupLocal(name), value)
     case vd: EVarDecl => bindDeclaration(vd, Some(value))
     case ClosedRef(n) =>
       frame.region match {
@@ -464,7 +547,7 @@ private class IRGenerator {
     (implicit gc: GlobalContext): IrValue = target match {
     case VarRef(name) if bindings.contains(name) =>
       // n is pattern-variable
-      ctx.emit(IrStore(value, getAllocatedVariable(name)))
+      storeInVariable(lookupLocal(name), value)
       IrConst(true)
     case VarRef(name) =>
       val current = loadVarRef(VarRef(name))
@@ -496,12 +579,16 @@ private class IRGenerator {
     result
   }
 
+  // TODO do not malloc immutable variables
   private def bindDeclaration(vd: EVarDecl, value: Option[IrValue])(implicit gc: GlobalContext): IrVar = {
-    val allocatedVar = IrVar(IrPtrType(llvmType(vd.tp)), fresh(s"alloc_${vd.name}"))
-    ctx.emitFirst(IrAlloca(allocatedVar))
-    scopes.head.variables ::= Variable(vd.name, allocatedVar)
-    value.foreach(v => ctx.emit(IrStore(v, allocatedVar)))
-    allocatedVar
+    val size = IrVar(IrIntType.I64, fresh("size"))
+    ctx.emit(IrComputeSize(size, llvmType(vd.tp)))
+
+    val ptr = IrVar(IrPtrType(llvmType(vd.tp)), fresh(s"var_${vd.name}"))
+    ctx.emit(IrCall(Some(ptr), IrFunctionRef(SpecialFunctions.malloc), List(size)))
+    value.foreach(v => ctx.emit(IrStore(v, ptr)))
+    frame.allocate(vd.name, ptr)
+    ptr
   }
 
   private def tupleStruct(value: IrValue): IrStruct = value.tp match {
@@ -528,16 +615,49 @@ private class IRGenerator {
     fields.toList
   }
 
-  private def applyField(fieldVar: IrValue, args: List[IrValue])(implicit gc: GlobalContext): IrVar = {
-    val result = IrVar(fieldVar.tp.asInstanceOf[IrFunType].ret, fresh("result"))
+  private def applyLambda(structPtr: IrValue, args: List[IrValue])(implicit gc: GlobalContext): IrVar = {
+    // structPtr should be a SpecialStructs.lambda holding {fun_ptr, env_ptr}
+    structPtr.tp match {
+      case IrPtrType(tp) => tp match {
+        case struct@IrStruct("lambda", List(IrFunType(ret, _), _)) =>
+          val result = IrVar(ret, fresh("result"))
+          val option = result.tp match {
+            case IrVoidType => None
+            case _ => Some(result)
+          }
+          val funPtr = loadField(struct, structPtr, 0)
+          val envPtr = loadField(struct, structPtr, 1)
 
+
+          ctx.emit(IrCall(option, funPtr, envPtr :: args))
+          result
+      }
+    }
+  }
+
+  private def applyFunction(functionRef: IrFunctionRef, args: List[IrValue]): IrVar = {
+    val result = IrVar(functionRef.tp.ret, fresh("result"))
     val option = result.tp match {
       case IrVoidType => None
       case _ => Some(result)
     }
 
-    ctx.emit(IrCall(option, fieldVar, args))
+    ctx.emit(IrCall(option, functionRef, args))
     result
+  }
+
+  private def storeInVariable(variable: Variable, value: IrValue): Unit = {
+    if (!variable.mutable) throw new IllegalArgumentException(s"Variable ${variable.name} is not mutable")
+    ctx.emit(IrStore(value, variable.irVar))
+  }
+
+  private def loadVariable(variable: Variable): IrValue = {
+    variable.irVar.tp match {
+      case tp: IrPtrType if variable.mutable => val result = IrVar(tp.to, fresh(variable.name))
+        ctx.emit(IrLoad(result, variable.irVar))
+        result
+      case _ if !variable.mutable => variable.irVar
+    }
   }
 
   private def compileDeclaration(d: Declaration)(implicit gc: GlobalContext): Unit = {
@@ -565,7 +685,7 @@ private class IRGenerator {
     ctx.emit(IrComputeSize(size, value.tp))
 
     val ptr = IrVar(IrPtrType(value.tp), fresh(name))
-    ctx.emit(IrCall(Some(ptr), IrFunctionRef(SpecialFunctions.mallocFun), List(size)))
+    ctx.emit(IrCall(Some(ptr), IrFunctionRef(SpecialFunctions.malloc), List(size)))
     ctx.emit(IrStore(value, ptr))
     ptr
   }
@@ -615,6 +735,15 @@ private class IRGenerator {
     }
   }
 
+  private def mallocStruct(struct: IrStruct): IrVar = {
+    val size = IrVar(IrIntType.I64, fresh("size"))
+    ctx.emit(IrComputeSize(size, struct))
+
+    val structPtr = IrVar(IrPtrType(struct), fresh("struct_ptr"))
+    ctx.emit(IrCall(Some(structPtr), IrFunctionRef(SpecialFunctions.malloc), List(size)))
+    structPtr
+  }
+
   private def loadClosedRef(r: ClosedRef)(implicit gc: GlobalContext): IrValue = {
     frame.region match {
       case Some(theoryHeaderPtr) =>
@@ -638,26 +767,40 @@ private class IRGenerator {
     val modulePath = path.up
     //special case: generate IR for builtins
     if (path.head == "Uniformal") {
-      val builtin = loadBuiltin(path.names(1))
+      val builtin = closureAdapter(loadBuiltin(path.names(1)))
       //builtin.signature
-      return IrFunctionRef(builtin)
+      val lambdaPtr = mallocStruct(SpecialStructs.lambda)
+      storeField(SpecialStructs.lambda, lambdaPtr, IrFunctionRef(builtin), 0)
+      storeField(SpecialStructs.lambda, lambdaPtr, IrNullValue, 1)
+
+      return lambdaPtr
     }
 
     gc.lookupGlobal(path) match {
       case Some(d: ExprDecl) =>
         val moduleName = if (modulePath.isRoot) TOP_LEVEL_STRUCT_NAME else modulePath.toString
-        applyField(IrFunctionRef(IrDeclFun(s"${moduleName}_${path.name}", IrFunType(llvmType(d.tp), Nil))), Nil)
+        applyFunction(IrFunctionRef(IrDeclFun(s"${moduleName}_${path.name}", IrFunType(llvmType(d.tp), Nil))), Nil)
     }
   }
 
   private def loadVarRef(o: VarRef)(implicit gc: GlobalContext): IrValue = {
-    val allocatedVariable = getAllocatedVariable(o.name)
-    allocatedVariable.tp match {
-      case tp: IrPtrType => val result = IrVar(tp.to, fresh(o.name))
-        ctx.emit(IrLoad(result, allocatedVariable))
-        result
-      case _ => ???
-    }
+    val variable = lookupLocal(o.name)
+    loadVariable(variable)
+  }
+
+  private def closureAdapter(target: IrFunctionLike): IrFun = {
+    closureAdapters.getOrElseUpdate(target.name, {
+      val sig = target.signature
+      val params = sig.params.zipWithIndex.map { case (tp, i) => IrVar(tp, s"arg$i") }
+      val result = IrVar(sig.ret, "result")
+
+      val call = IrCall(if (sig.ret == IrVoidType) None else Some(result), IrFunctionRef(target), params)
+      val body = if (sig.ret == IrVoidType) List(call, IrReturnVoid) else List(call, IrReturn(result))
+      val adapter = IrFun(s"${target.name}.closure", IrFunType(sig.ret, IrPtrType() :: sig.params),
+        IrVar(IrPtrType(), "env") :: params, List(IrBlock("entry", body)))
+      functions += adapter
+      adapter
+    })
   }
 
   private def loadBuiltin(name: String): IrFun = {
@@ -681,7 +824,7 @@ private class IRGenerator {
     tp match {
       case BoolType => IrIntType.I1
       case _: NumberType => IrIntType.I64
-      case FunType(ins, out) => IrFunType(llvmType(out), ins.variables.map(v => llvmType(v.tp)))
+      case FunType(ins, out) => IrPtrType(SpecialStructs.lambda.copy(fields = List(IrFunType(llvmType(out), ins.variables.map(v => llvmType(v.tp))), IrPtrType())))
       case _: ClassType => IrPtrType()
       case ProdType(ExprContext(Nil)) => IrVoidType
       case u: UnknownType if u.known => llvmType(u.skipUnknown)
@@ -733,7 +876,9 @@ private class IRGenerator {
     ctx = new FunctionContext
     ctx.insertBlock(ctx.newBlock("entry"))
     try {a}
-    finally {ctx = prevCtx}
+    finally {
+      ctx = prevCtx
+    }
   }
 
   private case class BlockBuilder(label: String, instructions: mutable.ArrayBuffer[IrInstr] = mutable.ArrayBuffer()) {
@@ -746,7 +891,7 @@ private class IRGenerator {
 
   private class FunctionContext {
     private val blocks = mutable.ArrayBuffer[BlockBuilder]()
-    var currentBlock: BlockBuilder = _
+    private var currentBlock: BlockBuilder = _
 
     def newBlock(name: String): BlockBuilder = {
       BlockBuilder(fresh(name))

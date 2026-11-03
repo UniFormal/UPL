@@ -1,1 +1,0 @@
-main: ClosureLambda.test

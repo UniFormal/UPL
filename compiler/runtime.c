@@ -24,7 +24,7 @@ typedef struct {
     size_t field_count;
 } Theory;
 
-int compare_fields(const void *a, const void *b) {
+static int compare_fields(const void *a, const void *b) {
     return strcmp(((TheoryField *)a)->name, ((TheoryField *)b)->name);
 }
 
@@ -44,7 +44,7 @@ void* theory_create(size_t count, char *names[]) {
     return theory;
 }
 
-TheoryField* theory_find_field(Theory *theory, char *name) {
+static TheoryField* theory_find_field(Theory *theory, char *name) {
     TheoryField target = {.name = name};
     TheoryField *result = bsearch(&target, theory->fields, theory->field_count, sizeof(TheoryField), compare_fields);
     if (!result) {

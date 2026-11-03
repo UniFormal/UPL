@@ -115,7 +115,7 @@ case class IRBranch(dest: String) extends IrInstr {
   override def render() = s"br label %$dest"
 }
 
-case class IrGetElement(result: IrVar, struct: IrStruct, ptr: IrValue, vals: List[Int]) extends IrInstr {
+case class IrGetElement(result: IrVar, struct: IrType, ptr: IrValue, vals: List[Int]) extends IrInstr {
   override def render(): String = s"${result.render()} = getelementptr ${struct.render()}, ${
     ptr.renderWithType()
   }, ${vals.map(v => s"i32 $v").mkString(", ")}"
@@ -323,7 +323,7 @@ case class IrBuiltinRead()
     val call = IrCall(None, new IrFunctionRef(decl), List(cPtr.result, size.result, stdin))
     val res = IrVar(IrPtrType(null), "res")
     val l2 = IrLoad(res, cPtr.result)
-    val fun = IrFun(llvmName, IrFunType(IrPtrType(null), List(IrVoidType)), List.empty,
+    val fun = IrFun(llvmName, IrFunType(IrPtrType(), Nil), List.empty,
       List(IrBlock("builtin", List(cPtr, size, s1, s2, l1, call, l2, IrReturn(res)))))
 
     (decl, fun)

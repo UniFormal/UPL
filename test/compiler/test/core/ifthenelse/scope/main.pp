@@ -1,0 +1,1 @@
+main: {val x = 3; if (x < 5) {val x = 17; x} else 42}
