@@ -80,6 +80,7 @@ private class IRGenerator {
   private var regions = List(RegionalEnvironment("toplevel"))
   private def frame = regions.head
 
+  private val checker = new Checker(ErrorThrower)
   private var ctx: FunctionContext = _
 
   private def getAllocatedVariable(n: String): IrVar = scopes.find(_.variables.exists(_.name == n)).map(_.variables.find(_.name == n).get).getOrElse(throw new RuntimeException(s"Variable $n not found")).irValue
@@ -133,8 +134,7 @@ private class IRGenerator {
     // spot when debugging
     case Unit.Value => IrConst(0xdeadbeef) // note that Unit.Value is defined
     case IfThenElse(cond, thn, elsO) =>
-      compileIfThenElse(compileDynamicBoolean(cond), () => compileExpression(thn),
-        elsO.map(els => () => compileExpression(els)))
+      compileIfThenElse(cond, thn, elsO)
     case While(cond, body) =>
       val bodyB = ctx.newBlock("body")
       val loopB = ctx.newBlock("loop")
@@ -200,49 +200,45 @@ private class IRGenerator {
               ctx.emit(IrBinOp(op_result, irOp, l, r))
             }
 
-            args match {
-              case Seq(a: NumberValue, b: NumberValue) =>
-                (a.tp, b.tp) match {
-                  case (NumberType.Rat, NumberType.Rat) =>
-                    op_result = IrVar(IrStructTyped("", List(IrIntType.I64, IrIntType.I64)), fresh("op_result"))
-                    inf match {
-                      case Plus => ctx.emit(IrCall(Some(op_result), IrFunctionRef(rationalNumbers.add()._2), List(left,right)))
-                      case Minus =>
-                        val op_temp = IrVar(IrStructTyped("", List(IrIntType.I64, IrIntType.I64)), fresh("op_tmp"))
-                        ctx.emit(IrCall(Some(op_temp), IrFunctionRef(rationalNumbers.negate()._2), List(right)))
-                        ctx.emit(IrCall(Some(op_result), IrFunctionRef(rationalNumbers.add()._2), List(left,op_temp)))
-                      case Times => ctx.emit(IrCall(Some(op_result), IrFunctionRef(rationalNumbers.mul()._2), List(left,right)))
-                      case Divide =>
-                        val op_temp = IrVar(IrStructTyped("", List(IrIntType.I64, IrIntType.I64)), fresh("op_tmp"))
-                        ctx.emit(IrCall(Some(op_temp), IrFunctionRef(rationalNumbers.invert()._2), List(left,right)))
-                        ctx.emit(IrCall(Some(op_result), IrFunctionRef(rationalNumbers.mul()._2), List(left,op_temp)))
-                    }
-                  case (NumberType.Rat, _) =>
-                  case (_, NumberType.Rat) =>
-                  case (NumberType.Float, NumberType.Float) =>
-                    op_result = IrVar(IrFloat64(), fresh("op_result"))
-                   emitOp(left, right)
-                  case (NumberType.Float, _) =>
-                    val conv = IrVar(IrFloat64(), fresh("conv"))
-                    ctx.emit(IrConvert(right, conv))
-                    op_result = IrVar(IrFloat64(), fresh("op_result"))
-                    emitOp(left, conv)
-                  case (_, NumberType.Float) =>
-                    val conv = IrVar(IrFloat64(), fresh("conv"))
-                    ctx.emit(IrConvert(left, conv))
-                    op_result = IrVar(IrFloat64(), fresh("op_result"))
-                    emitOp(conv, right)
-                  case _ =>
-                    val irOp = inf match {
-                      case Plus => IADD
-                      case Minus => ISUB
-                      case Times => IMUL
-                      case Divide => IDIV
-                    }
-                    op_result = IrVar(IrIntType.I64, fresh("op_result"))
-                    ctx.emit(IrBinOp(op_result, irOp, left, right))
+            (checker.inferCheckedExpression(gc, args(0)), checker.inferCheckedExpression(gc, args(1))) match {
+              case (NumberType.Rat, NumberType.Rat) =>
+                op_result = IrVar(IrStructTyped("", List(IrIntType.I64, IrIntType.I64)), fresh("op_result"))
+                inf match {
+                  case Plus => ctx.emit(IrCall(Some(op_result), IrFunctionRef(rationalNumbers.add()._2), List(left,right)))
+                  case Minus =>
+                    val op_temp = IrVar(IrStructTyped("", List(IrIntType.I64, IrIntType.I64)), fresh("op_tmp"))
+                    ctx.emit(IrCall(Some(op_temp), IrFunctionRef(rationalNumbers.negate()._2), List(right)))
+                    ctx.emit(IrCall(Some(op_result), IrFunctionRef(rationalNumbers.add()._2), List(left,op_temp)))
+                  case Times => ctx.emit(IrCall(Some(op_result), IrFunctionRef(rationalNumbers.mul()._2), List(left,right)))
+                  case Divide =>
+                    val op_temp = IrVar(IrStructTyped("", List(IrIntType.I64, IrIntType.I64)), fresh("op_tmp"))
+                    ctx.emit(IrCall(Some(op_temp), IrFunctionRef(rationalNumbers.invert()._2), List(left,right)))
+                    ctx.emit(IrCall(Some(op_result), IrFunctionRef(rationalNumbers.mul()._2), List(left,op_temp)))
                 }
-              case _ => throw new IllegalArgumentException("invalid arg count")
+              case (NumberType.Rat, _) =>
+              case (_, NumberType.Rat) =>
+              case (NumberType.Float, NumberType.Float) =>
+                op_result = IrVar(IrFloat64(), fresh("op_result"))
+               emitOp(left, right)
+              case (NumberType.Float, _) =>
+                val conv = IrVar(IrFloat64(), fresh("conv"))
+                ctx.emit(IrConvert(right, conv))
+                op_result = IrVar(IrFloat64(), fresh("op_result"))
+                emitOp(left, conv)
+              case (_, NumberType.Float) =>
+                val conv = IrVar(IrFloat64(), fresh("conv"))
+                ctx.emit(IrConvert(left, conv))
+                op_result = IrVar(IrFloat64(), fresh("op_result"))
+                emitOp(conv, right)
+              case _ =>
+                val irOp = inf match {
+                  case Plus => IADD
+                  case Minus => ISUB
+                  case Times => IMUL
+                  case Divide => IDIV
+                }
+                op_result = IrVar(IrIntType.I64, fresh("op_result"))
+                ctx.emit(IrBinOp(op_result, irOp, left, right))
             }
 
             op_result
@@ -284,9 +280,13 @@ private class IRGenerator {
       }
     case Block(exprs) =>
       scopes ::= VariableScope()
+      var gcI = gc
       val result = if (exprs.nonEmpty) {
-        exprs.dropRight(1).foreach { e => compileExpression(e) }
-        compileExpression(exprs.last)
+        exprs.dropRight(1).foreach { e =>
+          compileExpression(e)(gcI)
+          gcI = gcI.append(LocalContext.collectContext(e))
+        }
+        compileExpression(exprs.last)(gcI)
       } else {
         // dummy value (Unit.Value)
         compileExpression(Unit.Value)
@@ -371,17 +371,18 @@ private class IRGenerator {
       ctx.emitFirst(IrAlloca(allocMatchResult))
 
       cases.zipWithIndex.foreach { case (MatchCase(context, pattern, body), index)  =>
+        val gcI = gc.append(context)
         scopes ::= VariableScope()
         // Pattern variables, which will be assigned in compileMatch
-        context.decls.foreach { case vd: EVarDecl => bindDeclaration(vd, None) }
+        context.decls.foreach { case vd: EVarDecl => bindDeclaration(vd, None)(gcI) }
         val bindings = context.decls.collect { case vd: EVarDecl => vd.name }.toSet
 
         val nextMatchB = if (index == cases.length - 1) endB else ctx.newBlock("next_match")
         val matchedB = ctx.newBlock("matched")
-        ctx.emit(IrCondBranch(compileMatch(pattern, target, bindings), matchedB.label, nextMatchB.label))
+        ctx.emit(IrCondBranch(compileMatch(pattern, target, bindings)(gcI), matchedB.label, nextMatchB.label))
         ctx.insertBlock(matchedB)
 
-        val matchResult = compileExpression(body)
+        val matchResult = compileExpression(body)(gcI)
         tp = matchResult.tp
         ctx.emit(IrStore(matchResult, allocMatchResult))
 
@@ -397,24 +398,25 @@ private class IRGenerator {
       result
   }
 
-  private def compileIfThenElse(cond: IrValue, thn: () => IrValue, elsO: Option[() => IrValue]): IrValue = {
+  private def compileIfThenElse(cond: Expression, thn: Expression, elsO: Option[Expression])(implicit gc: GlobalContext): IrValue = {
     // Based on ideas from
     // https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl05.html#if-then-else
     val thenB = ctx.newBlock("then")
     val elseB = elsO.map(_ => ctx.newBlock("else"))
     val endB = ctx.newBlock("end")
 
-    ctx.emit(IrCondBranch(cond, thenB.label, elseB.map(_.label).getOrElse(endB.label)))
+    ctx.emit(IrCondBranch(compileDynamicBoolean(cond), thenB.label, elseB.map(_.label).getOrElse(endB.label)))
 
     ctx.insertBlock(thenB)
-    val thnO = thn()
+    val gcT = gc.append(LocalContext.collectContext(cond))
+    val thnO = compileExpression(thn)(gcT)
     val allocResult = IrVar(IrPtrType(thnO.tp), fresh("alloc_result"))
     ctx.emit(IrStore(thnO, allocResult))
     ctx.emit(IRBranch(endB.label))
 
     elseB.zip(elsO).foreach { case (block, els) =>
       ctx.insertBlock(block)
-      ctx.emit(IrStore(els(), allocResult))
+      ctx.emit(IrStore(compileExpression(els), allocResult))
       ctx.emit(IRBranch(endB.label))
     }
 
