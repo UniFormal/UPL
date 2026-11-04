@@ -231,7 +231,7 @@ class Interpreter(vocInit: TheoryValue) {
                     // execute inherited definition and then apply delegate
                     OwnedExpr(incl.dfO.get, incl.dom, sd.toRef).copyFrom(sd)
                 }
-                val dfI = interpretExpression(df)
+                val dfI = interpretExpression(df) // TODO may fail if df depends on regional names that are assigned only later
                 // we keep all fields that are local (i.e., a constructor argument),
                 // declared in parent and mutable, or inherited and immutable and not values
                 // other fields can be looked up in the parent, in particular all lambdas
