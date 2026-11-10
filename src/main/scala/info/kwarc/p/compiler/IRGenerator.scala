@@ -156,7 +156,8 @@ private class IRGenerator {
           structs.append(rationalNumbers.decl)
           rationalNumbers.functions.foreach(x => functions.append(x._2))
         }
-        IrRational(num.enu.longValue, num.deno.longValue, initializer)
+        val rat = IrRational(null, null, g)
+        rat
       }
 
      // Booleans are represented using i1 integers.
@@ -226,6 +227,32 @@ private class IRGenerator {
             }
 
             var op_result: IrVar = null
+            if (inf == Divide){
+              var rat: IrValue = null
+              bo.tp match {
+                case FunType(_, NumberType.Rat) =>{
+                  (left, right) match {
+                    case (l: IrConst, r: IrConst) => {// rhs values (constants) -> memset through global
+                      val initializer = fresh("rational_init")
+                      val g = IrGlobal(initializer, rationalNumbers.decl, Some(s"{i64 ${l.value}, i64 ${r.value} }"))
+                      globals.append(g)
+                      rat = IrRational(null, null, g)
+                    }
+                    case _ => //lhs value use store operations instead
+                      rat = IrRational(left, right, null)
+                    }
+
+                  if (!structs.exists(x => x.name == rationalNumbers.decl.name)){
+                    //memset
+                    declaredFunctions.append(rationalNumbers.memSetFunc)
+
+                    structs.append(rationalNumbers.decl)
+                    rationalNumbers.functions.foreach(x => functions.append(x._2))
+                  }
+                }
+              }
+              return rat
+            }
 
             def emitOp(l: IrValue, r: IrValue): Unit = {
               val irOp = inf match {
@@ -686,7 +713,28 @@ private class IRGenerator {
 
     val ptr = IrVar(IrPtrType(value.tp), fresh(name))
     ctx.emit(IrCall(Some(ptr), IrFunctionRef(SpecialFunctions.malloc), List(size)))
-    ctx.emit(IrStore(value, ptr))
+    value match {
+      case IrRational(null, null, init) => ctx.emit(IrCall(None,IrFunctionRef(rationalNumbers.memSetFunc), List(ptr, init, IrConst(16), IrConst(false))))
+      case IrRational(enu, deno, null) => {
+        val trgEnu = IrVar(IrPtrType(null), fresh("enu"))
+        ctx.emit(IrGetElement(trgEnu, rationalNumbers.decl, ptr, List(0,0)))
+        enu match {
+          case c: IrConst =>
+            ctx.emit(IrStore(c, trgEnu))
+          case v: IrVar =>
+            ctx.emit(IrStore(v, trgEnu))
+        }
+        val trgDeno = IrVar(IrPtrType(null), fresh("deno"))
+        ctx.emit(IrGetElement(trgDeno, rationalNumbers.decl, ptr, List(0,1)))
+        deno match {
+          case c: IrConst =>
+            ctx.emit(IrStore(c, trgDeno))
+          case v: IrVar =>
+            ctx.emit(IrStore(v, trgDeno))
+        }
+      }
+      case _ => ctx.emit(IrStore(value, ptr))
+    }
     ptr
   }
 

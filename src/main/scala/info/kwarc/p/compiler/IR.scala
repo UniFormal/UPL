@@ -51,6 +51,11 @@ case class IrGlobalExtern(name: String, tp: IrType) extends IrGlobalValue{
   override def render(): String = s"@$name"
 }
 
+case class IrGlobalArray(name: String, tp: IrArrayType, value: List[IrValue]) extends IrGlobalValue {
+  override def renderGlobal(): String = s"@$name = ${tp.render()} [${value.map(v => v.renderWithType()).mkString(", ")}]"
+  override def render(): String = s"@$name"
+}
+
 case class IrBlock(label: String, instructions: List[IrInstr]) {
   def render(): String =
     s"""|$label:
@@ -167,6 +172,7 @@ case class IrIntType(bits: Int) extends IrType {
 object IrIntType {
   val I64 = IrIntType(64)
   val I32 = IrIntType(32)
+  val I16 = IrIntType(16)
   val I1 = IrIntType(1)
 }
 case class IrFloat64() extends IrType {
@@ -342,6 +348,8 @@ object builtins {
 
 object rationalNumbers {
   val decl = IrStruct("Uniformal.Rat", List(IrIntType.I64, IrIntType.I64))
+  val memSetFunc = IrDeclFun("llvm.memcpy.inline.p0.p0.i64",
+    IrFunType(IrVoidType, List(IrPtrType(null), IrPtrType(null), IrIntType.I64, IrIntType.I1)))
 
   def add(): (IrDeclFun, IrFun) = {
 
@@ -349,9 +357,9 @@ object rationalNumbers {
 
     val lhsPar = IrVar(IrPtrType(null), "param1")
     val rhsPar = IrVar(IrPtrType(null), "param2")
-    val ret = IrVar(IrStructNamed(decl.name), "res")
+    val ret = IrVar(IrPtrType(null), "res")
 
-    val res = IrAlloca(ret)
+    val res = IrAlloca(IrVar(IrStructNamed(decl.name), "res"))
     val lhsVal = IrVar(IrPtrType(null), "lhsAddr")
     val rhsVal = IrVar(IrPtrType(null), "rhsAddr")
 
@@ -372,8 +380,8 @@ object rationalNumbers {
     val enu4 = IrVar(IrPtrType(null), "enu4")
     val tmp4 = IrVar(IrPtrType(null), "4")
     val deno2 = IrVar(IrPtrType(null), "deno2")
-    val deno6 = IrVar(IrIntType.I64, "deno6")
-    val deno8 = IrVar(IrIntType.I64, "deno8")
+    val deno6 = IrVar(IrPtrType(null), "deno6")
+    val deno8 = IrVar(IrPtrType(null), "deno8")
 
     val tmp5 = IrVar(IrIntType.I64, "5")
     val tmp6 = IrVar(IrPtrType(null), "6")
@@ -384,7 +392,7 @@ object rationalNumbers {
 
     val tmp8 = IrVar(IrPtrType(null), "8")
     val tmp12 = IrVar(IrStructTyped("", List(IrIntType.I64, IrIntType.I64)), "12")
-    val deno5 = IrVar(IrIntType.I64, "deno5")
+    val deno5 = IrVar(IrPtrType(null), "deno5")
 
     val instr = IrBlock("entry", List(res, IrAlloca(lhsVal), IrAlloca(rhsVal), IrStore(lhsPar, lhsVal), IrStore(rhsPar, rhsVal), IrLoad(tmp0, lhsVal),
       IrGetElement(enu, decl, tmp0, List(0,0)), IrLoad(tmp1, enu), IrLoad(tmp2, lhsVal), IrGetElement(deno, decl, tmp2, List(0, 1)),
@@ -401,9 +409,9 @@ object rationalNumbers {
 
     val lhsPar = IrVar(IrPtrType(null), "param1")
     val rhsPar = IrVar(IrPtrType(null), "param2")
-    val ret = IrVar(IrStructNamed(decl.name), "res")
+    val ret = IrVar(IrPtrType(null), "res")
 
-    val res = IrAlloca(ret)
+    val res = IrAlloca(IrVar(IrStructNamed(decl.name), "res"))
     val lhsVal = IrVar(IrPtrType(null), "lhsAddr")
     val rhsVal = IrVar(IrPtrType(null), "rhsAddr")
 
@@ -425,9 +433,9 @@ object rationalNumbers {
     val tmp6 = IrVar(IrPtrType(null), "6")
     val tmp7 = IrVar(IrIntType.I64, "7")
     val tmp8 = IrVar(IrStructTyped("", List(IrIntType.I64, IrIntType.I64)), "8")
-    val mul4 = IrVar(IrPtrType(null), "mul4")
+    val mul4 = IrVar(IrIntType.I64, "mul4")
     val deno3 = IrVar(IrPtrType(null), "deno2")
-    val deno5 = IrVar(IrIntType.I64, "deno5")
+    val deno5 = IrVar(IrPtrType(null), "deno5")
 
     val instr = IrBlock("entry", List(res, IrAlloca(lhsVal), IrAlloca(rhsVal), IrStore(lhsPar, lhsVal), IrStore(rhsPar, rhsVal), IrLoad(tmp0, lhsVal),
       IrGetElement(enu, decl, tmp0, List(0,0)), IrLoad(tmp1, enu), IrLoad(tmp2, rhsVal), IrGetElement(enu1, decl, tmp2, List(0, 0)),
@@ -445,9 +453,9 @@ object rationalNumbers {
     val declNegate = IrDeclFun("Uniformal.Rat.negate", IrFunType(IrStructTyped(decl.name, decl.fields), List(IrPtrType(decl))))
 
     val lhsPar = IrVar(IrPtrType(null), "param1")
-    val ret = IrVar(IrStructNamed(decl.name), "res")
+    val ret = IrVar(IrPtrType(null), "res")
 
-    val res = IrAlloca(ret)
+    val res = IrAlloca(IrVar(IrStructNamed(decl.name), "res"))
     val lhsVal = IrVar(IrPtrType(null), "lhsAddr")
 
     val tmp0 = IrVar(IrPtrType(null), "0")
@@ -461,7 +469,7 @@ object rationalNumbers {
 
     val enu1 = IrVar(IrPtrType(null), "enu1")
     val tmp8 = IrVar(IrStructTyped("", List(IrIntType.I64, IrIntType.I64)), "8")
-    val deno2 = IrVar(IrIntType.I64, "deno2")
+    val deno2 = IrVar(IrPtrType(null), "deno2")
 
     val instr = IrBlock("entry", List(res, IrAlloca(lhsVal), IrStore(lhsPar, lhsVal), IrGetElement(enu, decl, ret, List(0,0)),
       IrLoad(tmp0, lhsVal), IrGetElement(enu1, decl, tmp0, List(0, 0)),
@@ -477,9 +485,9 @@ object rationalNumbers {
     val declInvert = IrDeclFun("Uniformal.Rat.invert", IrFunType(IrStructTyped(decl.name, decl.fields), List(IrPtrType(decl))))
 
     val lhsPar = IrVar(IrPtrType(null), "param1")
-    val ret = IrVar(IrStructNamed(decl.name), "res")
+    val ret = IrVar(IrPtrType(null), "res")
 
-    val res = IrAlloca(ret)
+    val res = IrAlloca(IrVar(IrStructNamed(decl.name), "res"))
     val lhsVal = IrVar(IrPtrType(null), "lhsAddr")
 
     val tmp0 = IrVar(IrPtrType(null), "0")
@@ -492,7 +500,7 @@ object rationalNumbers {
 
     val enu2 = IrVar(IrPtrType(null), "enu2")
     val tmp8 = IrVar(IrStructTyped("", List(IrIntType.I64, IrIntType.I64)), "8")
-    val deno1 = IrVar(IrIntType.I64, "deno1")
+    val deno1 = IrVar(IrPtrType(null), "deno1")
 
     val instr = IrBlock("entry", List(res, IrAlloca(lhsVal), IrStore(lhsPar, lhsVal), IrGetElement(enu, decl, ret, List(0,0)),
       IrLoad(tmp0, lhsVal), IrGetElement(deno, decl, tmp0, List(0, 1)),
@@ -507,7 +515,7 @@ object rationalNumbers {
   val functions: List[(IrDeclFun, IrFun)] = List(add(), mul(), negate(), invert())
 }
 
-case class IrRational(enu: Long, deno: Long, initLabel: String) extends IrValue {
+case class IrRational(enu: IrValue, deno: IrValue, initLabel: IrGlobal) extends IrValue {
   override def render(): String = rationalNumbers.decl.render()
   override def tp: IrType = rationalNumbers.decl
 }
