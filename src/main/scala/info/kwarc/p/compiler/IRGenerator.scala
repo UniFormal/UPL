@@ -478,7 +478,7 @@ private class IRGenerator {
       var r = frame
       var l = lev
       while (l>1) {
-        r = frame.parent.getOrElse(throw new IllegalArgumentException("no parent"))
+        r = r.parent.getOrElse(throw new IllegalArgumentException("no parent"))
         l -= 1
       }
       r.region.getOrElse(throw new IllegalArgumentException("no owner"))

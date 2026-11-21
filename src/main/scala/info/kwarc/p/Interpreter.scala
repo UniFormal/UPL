@@ -177,7 +177,7 @@ class Interpreter(vocInit: TheoryValue) {
         var r = frame
         var l = lev
         while (l>1) {
-          r = frame.parent.getOrElse(fail("no parent"))
+          r = r.parent.getOrElse(fail("no parent"))
           l -= 1
         }
         r.region.getOrElse(fail("no owner"))
