@@ -65,7 +65,6 @@ object SpecialStructs {
 }
 
 private object TypeExpansion extends StatelessTraverser {
-
   override def apply(tp: Type)(implicit gc: GlobalContext, a: Unit): Type = tp match {
     case MaybeAppliedRef(r, tpArgs, expArgs) =>
       gc.lookupRef(r) match {
@@ -83,6 +82,24 @@ private object TypeExpansion extends StatelessTraverser {
 
     case ct: ClassType => ct
     case _ => applyDefault(tp)
+  }
+}
+
+// Collects all closed refs of the current region that an expression evaluates directly.
+// It does not enter lambdas (evaluated later) or subexpressions that live in another region.
+private object ClosedRefCollector {
+  def apply(gc: GlobalContext, exp: Expression): List[String] = {
+    val found = mutable.LinkedHashSet[String]()
+    val t = new StatelessTraverser {
+      override def apply(exp: Expression)(implicit gc: GlobalContext, a: Unit): Expression = exp match {
+        case ClosedRef(n) => found += n; exp
+        case OwnedExpr(o, _, _) => apply(o); exp
+        case _: Lambda | _: Instance | _: ExprOver => exp
+        case _ => applyDefault(exp)
+      }
+    }
+    t(gc, exp)
+    found.toList
   }
 }
 
@@ -445,7 +462,7 @@ private class IRGenerator {
       ))
 
       // Initializes the expression declared by this instance
-      val re = RegionalEnvironment("new instance", Some(theoryPtr))
+      val re = RegionalEnvironment("new instance", Some(theoryPtr), parent = Some(frame))
       inFrame(re) {
         fields.foreach { field =>
           val valuePtr = boxValue(compileExpression(field.dfO.get)(gcI), fresh(s"value_ptr_${field.name}"))
@@ -457,6 +474,14 @@ private class IRGenerator {
         }
       }
       theoryPtr
+    case This(lev) =>
+      var r = frame
+      var l = lev
+      while (l>1) {
+        r = frame.parent.getOrElse(throw new IllegalArgumentException("no parent"))
+        l -= 1
+      }
+      r.region.getOrElse(throw new IllegalArgumentException("no owner"))
     case Tuple(comps) =>
       val values = comps.map(compileExpression)
       val struct = findProdStruct(values.map(a => a.tp))
@@ -626,7 +651,6 @@ private class IRGenerator {
   private def instanceFields(theory: Theory)(implicit gc: GlobalContext): List[ExprDecl] = {
     val fields = mutable.ArrayBuffer[ExprDecl]()
     val names = mutable.HashSet[String]()
-    val includes = mutable.HashSet[Theory]()
     var todo = theory.decls
     while (todo.nonEmpty) {
       val d = todo.head
@@ -634,12 +658,30 @@ private class IRGenerator {
       d match {
         case field: ExprDecl if field.dfO.isDefined && names.add(field.name) =>
           fields += field
-        case incl: Include if includes.add(incl.dom) =>
+        case incl: Include =>
           todo = todo ::: Checker.evaluateTheory(gc, incl.dom).decls
         case _ =>
       }
     }
-    fields.toList
+    sortByDependencies(fields.toList)
+  }
+
+  // Orders fields so that each one comes after the fields its definition uses.
+  private def sortByDependencies(fields: List[ExprDecl])(implicit gc: GlobalContext): List[ExprDecl] = {
+    val byName = fields.map(f => f.name -> f).toMap
+    val deps = fields.map(f => f.name -> ClosedRefCollector(gc, f.dfO.get)).toMap
+
+    val done = mutable.LinkedHashSet[String]()
+    val visiting = mutable.Set[String]()
+    def visit(n: String): Unit = if (!done.contains(n)) {
+      if (!visiting.add(n))
+        throw new IllegalArgumentException(s"Cyclic field definitions involving $n")
+      deps(n).foreach(visit)
+      visiting -= n
+      done += n
+    }
+    fields.foreach(f => visit(f.name))
+    done.toList.map(byName)
   }
 
   private def applyLambda(structPtr: IrValue, args: List[IrValue])(implicit gc: GlobalContext): IrVar = {
