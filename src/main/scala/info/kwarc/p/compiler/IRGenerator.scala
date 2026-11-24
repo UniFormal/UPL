@@ -484,20 +484,13 @@ private class IRGenerator {
       }
       r.region.getOrElse(throw new IllegalArgumentException("no owner"))
     case Tuple(comps) =>
-      val values = comps.map(compileExpression)
-      val struct = findProdStruct(values.map(a => a.tp))
-      val structPtr = mallocStruct(struct)
-
-      // Initializes the tuple values
-      values.zipWithIndex.foreach { case (vl, fieldIndex) => storeField(struct, structPtr, vl, fieldIndex)}
-      structPtr
+    val values = comps.map(compileExpression)
+      // Tuples are immutable, so they are struct values
+      buildStruct(findProdStruct(values.map(a => a.tp)), values)
     case Projection(tuple, index) =>
-      val structPtr = compileExpression(tuple)
-      val struct = structPtr.tp match {
-        case IrPtrType(s: IrStruct) => s
-      }
+      val value = compileExpression(tuple)
       // Projection indices start at 1, but llvm struct fields are 0 indexed
-      loadField(struct, structPtr, index - 1)
+      extractField(tupleStruct(value), value, index - 1)
     case Match(e, cases, false) =>
       val target = compileExpression(e)
       val endB = ctx.newBlock("end")
@@ -606,7 +599,7 @@ private class IRGenerator {
     case Tuple(components) =>
       val struct = tupleStruct(value)
       components.zipWithIndex.foreach { case (component, index) =>
-        compileAssignment(component, loadField(struct, value, index))
+        compileAssignment(component, extractField(struct, value, index))
       }
     case _ => ???
   }
@@ -629,7 +622,7 @@ private class IRGenerator {
     case Tuple(components) =>
       val struct = tupleStruct(value)
       components.zipWithIndex
-        .map { case (component, index) => compileMatch(component, loadField(struct, value, index), bindings) }
+        .map { case (component, index) => compileMatch(component, extractField(struct, value, index), bindings) }
         .foldLeft[IrValue](IrConst(true))(compileBooleanAnd)
     case nv: NumberValue =>
       val current = compileExpression(nv)
@@ -662,8 +655,22 @@ private class IRGenerator {
   }
 
   private def tupleStruct(value: IrValue): IrStruct = value.tp match {
-    case IrPtrType(struct: IrStruct) => struct
-    case _ => ???
+    case struct: IrStruct => struct
+    case _ => throw new IllegalArgumentException(s"Expected tuple struct, got ${value.tp}")
+  }
+
+  private def buildStruct(struct: IrStruct, fields: List[IrValue]): IrValue = {
+    fields.zipWithIndex.foldLeft[IrValue](IrPoison(struct)) { case (agg, (field, index)) =>
+      val next = IrVar(struct, fresh(s"${struct.name}_build"))
+      ctx.emit(IrInsertValue(next, agg, field, index))
+      next
+    }
+  }
+
+  private def extractField(struct: IrStruct, value: IrValue, fieldIndex: Int): IrVar = {
+    val field = IrVar(struct.fields(fieldIndex), fresh(s"${struct.name}_field$fieldIndex"))
+    ctx.emit(IrExtractValue(field, value, fieldIndex))
+    field
   }
 
   private def instanceFields(theory: Theory)(implicit gc: GlobalContext): List[ExprDecl] = {
@@ -937,16 +944,18 @@ private class IRGenerator {
       case ProdType(ExprContext(Nil)) => IrVoidType
       case u: UnknownType if u.known => llvmType(u.skipUnknown)
       case StringType => IrPtrType(IrConstChar(0))
-      case ProdType(c) => IrPtrType(findProdStruct(c.variables.reverse.map(v => llvmType(v.tp))))
+      case ProdType(c) => findProdStruct(c.variables.reverse.map(v => llvmType(v.tp)))
       case OwnedType(_, _, owned) =>
         llvmType(owned)
       case _ => throw new IllegalArgumentException(s"Unsupported type: $tp")
     }
   }
 
-  private def reduceTypeInfo(tp: IrType) = tp match {
+  private def reduceTypeInfo(tp: IrType): IrType = tp match {
     case _: IrPtrType => IrPtrType()
     case _: IrFunType => IrPtrType()
+    // Nested tuples are stored inline, so their field types must be reduced too to map to the same struct.
+    case s: IrStruct => s.copy(fields = s.fields.map(reduceTypeInfo))
     case _ => tp
   }
 

@@ -150,6 +150,15 @@ case class IrStore(op: IrValue, ptr: IrValue) extends IrInstr {
   override def render(): String = s"store ${op.tp.render()} ${op.render()}, ${ptr.renderWithType()}"
 }
 
+case class IrInsertValue(result: IrVar, agg: IrValue, value: IrValue, index: Int) extends IrInstr {
+  override def render(): String =
+    s"${result.render()} = insertvalue ${agg.renderWithType()}, ${value.renderWithType()}, $index"
+}
+
+case class IrExtractValue(result: IrVar, agg: IrValue, index: Int) extends IrInstr {
+  override def render(): String = s"${result.render()} = extractvalue ${agg.renderWithType()}, $index"
+}
+
 case class IrLoad(result: IrVar, ptr: IrValue) extends IrInstr {
   override def render(): String = s"${result.render()} = load ${result.tp.render()}, ${ptr.renderWithType()}"
 }
