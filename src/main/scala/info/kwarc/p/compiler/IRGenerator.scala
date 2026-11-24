@@ -55,6 +55,7 @@ object SpecialFunctions {
   val theoryCreate = IrDeclFun("theory_create", IrFunType(IrPtrType(), List(IrIntType.I64, IrPtrType())))
   val theoryInitField = IrDeclFun("theory_init_field", IrFunType(IrVoidType, List(IrPtrType(), IrPtrType(), IrPtrType())))
   val theoryGetField = IrDeclFun("theory_get_field", IrFunType(IrPtrType(), List(IrPtrType(), IrPtrType())))
+  val matchFailure = IrDeclFun("match_failure", IrFunType(IrVoidType, Nil))
 
   val stdin = IrGlobalExtern("stdin", IrPtrType(null))
 }
@@ -108,7 +109,8 @@ private class IRGenerator {
 
   private val declaredFunctions: mutable.ArrayBuffer[IrDeclFun] = mutable.ArrayBuffer(
     SpecialFunctions.malloc,
-    SpecialFunctions.theoryCreate, SpecialFunctions.theoryInitField, SpecialFunctions.theoryGetField
+    SpecialFunctions.theoryCreate, SpecialFunctions.theoryInitField, SpecialFunctions.theoryGetField,
+    SpecialFunctions.matchFailure
   )
 
   private val globals: mutable.ArrayBuffer[IrGlobalValue] = mutable.ArrayBuffer(SpecialFunctions.stdin)
@@ -499,36 +501,55 @@ private class IRGenerator {
     case Match(e, cases, false) =>
       val target = compileExpression(e)
       val endB = ctx.newBlock("end")
+      // result of a case, label of the block that jumps to endB with it
+      val incoming = mutable.ListBuffer[(IrValue, String)]()
 
-      var tp: IrType = IrUnknownType
-      val allocMatchResult = IrVar(IrPtrType(tp), fresh("alloc_match_result"))
-      ctx.emitFirst(IrAlloca(allocMatchResult))
-
-      cases.zipWithIndex.foreach { case (MatchCase(context, pattern, body), index)  =>
+      cases.foreach { case MatchCase(context, pattern, body) =>
         frame.inNewBlock {
           val gcI = gc.append(context)
           // Pattern variables, which will be assigned in compileMatch
           context.decls.foreach { case vd: EVarDecl => bindDeclaration(vd, None)(gcI) }
           val bindings = context.decls.collect { case vd: EVarDecl => vd.name }.toSet
 
-          val nextMatchB = if (index == cases.length - 1) endB else ctx.newBlock("next_match")
+          val nextMatchB = ctx.newBlock("next_match")
           val matchedB = ctx.newBlock("matched")
           ctx.emit(IrCondBranch(compileMatch(pattern, target, bindings)(gcI), matchedB.label, nextMatchB.label))
           ctx.insertBlock(matchedB)
 
-          val matchResult = compileExpression(body)(gcI)
-          tp = matchResult.tp
-          ctx.emit(IrStore(matchResult, allocMatchResult))
-
-          ctx.emit(IRBranch(endB.label))
+          incoming ++= branchTo(endB, compileExpression(body)(gcI))
           ctx.insertBlock(nextMatchB)
         }
       }
 
-      val result = IrVar(tp, fresh("result"))
-      ctx.emit(IrLoad(result, allocMatchResult))
+      // No case applied: fail at runtime like the interpreter does.
+      ctx.emit(IrCall(None, IrFunctionRef(SpecialFunctions.matchFailure), Nil))
+      ctx.emit(IrUnreachable)
 
+      ctx.insertBlock(endB)
+      mergeResults(incoming.toList)
+  }
+
+  // Ends the current block of a branch by jumping to `end` with the branch's value.
+  // Returns the phi entry, or None if the branch already left the block (e.g. through `return`).
+  private def branchTo(end: BlockBuilder, value: IrValue): Option[(IrValue, String)] = {
+    if (ctx.isTerminated) None
+    else {
+      val entry = value -> ctx.currentLabel
+      ctx.emit(IRBranch(end.label))
+      Some(entry)
+    }
+  }
+
+  // Emits a phi node at the start of the current block that joins the results of its predecessor blocks.
+  private def mergeResults(incoming: List[(IrValue, String)])(implicit gc: GlobalContext): IrValue = {
+    if (incoming.isEmpty) {
+      compileExpression(Unit.Value)
+    } else {
+      val tp = incoming.head._1.tp
+      val result = IrVar(tp, fresh("result"))
+      ctx.emit(IrPhi(result, incoming))
       result
+    }
   }
 
   private def compileIfThenElse(cond: Expression, thn: Expression, elsO: Option[Expression])(implicit gc: GlobalContext): IrValue = {
@@ -540,25 +561,23 @@ private class IRGenerator {
     val endB = ctx.newBlock("end")
 
     ctx.emit(IrCondBranch(compileDynamicBoolean(cond), thenB.label, elseB.map(_.label).getOrElse(endB.label)))
+    val condLabel = ctx.currentLabel
 
     ctx.insertBlock(thenB)
     val gcT = gc.append(LocalContext.collectContext(cond))
     val thnO = compileExpression(thn)(gcT)
-    val allocResult = IrVar(IrPtrType(thnO.tp), fresh("alloc_result"))
-    ctx.emit(IrStore(thnO, allocResult))
-    ctx.emit(IRBranch(endB.label))
+    val thenIncoming = branchTo(endB, thnO)
 
-    elseB.zip(elsO).foreach { case (block, els) =>
-      ctx.insertBlock(block)
-      ctx.emit(IrStore(compileExpression(els), allocResult))
-      ctx.emit(IRBranch(endB.label))
+    val elseIncoming = elseB.zip(elsO) match {
+      case Some((block, els)) =>
+        ctx.insertBlock(block)
+        branchTo(endB, compileExpression(els))
+      // Without else the condition jumps straight to `end`; that path has no meaningful value.
+      case None => Some(IrPoison(thnO.tp) -> condLabel)
     }
 
     ctx.insertBlock(endB)
-    ctx.emitFirst(IrAlloca(allocResult))
-    val result = IrVar(thnO.tp, fresh("result"))
-    ctx.emit(IrLoad(result, allocResult))
-    result
+    mergeResults(thenIncoming.toList ++ elseIncoming)
   }
 
   // Compiler equivalent of Interpreter.interpretDynamicBoolean.
@@ -971,9 +990,9 @@ private class IRGenerator {
   }
 
   private case class BlockBuilder(label: String, instructions: mutable.ArrayBuffer[IrInstr] = mutable.ArrayBuffer()) {
-    def addFirst(i: IrInstr): Unit = instructions.prepend(i)
-
     def add(i: IrInstr): Unit = instructions += i
+
+    def lastInstruction: Option[IrInstr] = instructions.lastOption
 
     def build() = IrBlock(label, instructions.toList)
   }
@@ -991,8 +1010,12 @@ private class IRGenerator {
       currentBlock = b
     }
 
-    def emitFirst(instr: IrInstr): Unit = {
-      blocks(0).addFirst(instr)
+    def currentLabel: String = currentBlock.label
+
+    // Whether the current block already ends with a terminator, so nothing may follow it.
+    def isTerminated: Boolean = currentBlock.lastInstruction.exists {
+      case _: IrReturn | IrReturnVoid | _: IRBranch | _: IrCondBranch | IrUnreachable => true
+      case _ => false
     }
 
     def emit(instr: IrInstr): Unit = {

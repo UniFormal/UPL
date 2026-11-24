@@ -136,6 +136,16 @@ case class IrAlloca(result: IrVar) extends IrInstr {
   override def render(): String = s"${result.render()} = alloca ${result.tp.render()}"
 }
 
+// Selects the value belonging to the block control came from. Must be at the start of its block.
+case class IrPhi(result: IrVar, incoming: List[(IrValue, String)]) extends IrInstr {
+  override def render(): String =
+    s"${result.render()} = phi ${result.tp.render()} ${incoming.map { case (v, l) => s"[ ${v.render()}, %$l ]" }.mkString(", ")}"
+}
+
+object IrUnreachable extends IrInstr {
+  override def render(): String = "unreachable"
+}
+
 case class IrStore(op: IrValue, ptr: IrValue) extends IrInstr {
   override def render(): String = s"store ${op.tp.render()} ${op.render()}, ${ptr.renderWithType()}"
 }
@@ -270,6 +280,10 @@ case class IrFunctionRef(fun: IrFunctionLike) extends IrGlobalValue {
 
 case class IrConst(override val tp: IrType, value: Any) extends IrConstant {
   override def render(): String = s"$value"
+}
+
+case class IrPoison(tp: IrType) extends IrConstant {
+  override def render(): String = "poison"
 }
 
 object IrConst {

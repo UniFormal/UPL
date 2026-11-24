@@ -24,6 +24,10 @@ typedef struct {
     size_t field_count;
 } Theory;
 
+_Noreturn void match_failure(void) {
+    runtime_fail("match error: no case applies");
+}
+
 static int compare_fields(const void *a, const void *b) {
     return strcmp(((TheoryField *)a)->name, ((TheoryField *)b)->name);
 }
