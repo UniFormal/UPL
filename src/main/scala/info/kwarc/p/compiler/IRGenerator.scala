@@ -122,7 +122,6 @@ private class IRGenerator {
   private var regions = List(RegionalEnvironment("toplevel"))
   private def frame = regions.head
 
-  private val checker = new Checker(ErrorThrower)
   private var ctx: FunctionContext = _
 
   private def lookupLocalO(n: String): Option[Variable] = {
@@ -214,7 +213,7 @@ private class IRGenerator {
       ctx.emit(IrICmp(cmpResult, if (positive) EQUAL else NOT_EQUAL, lO, rO))
       cmpResult
     case Application(f, args) => f match {
-      case bo@BaseOperator(operator, tp) => operator match {
+      case bo@BaseOperator(operator, FunType(ins, out)) => operator match {
         case inf: Comparison =>
           val irCond = inf match {
             case Greater => SIGNED_GREATER_THAN
@@ -281,7 +280,7 @@ private class IRGenerator {
               ctx.emit(IrBinOp(op_result, irOp, l, r))
             }
 
-            (checker.inferCheckedExpression(gc, args(0)), checker.inferCheckedExpression(gc, args(1))) match {
+            (ins.variables(0).tp, ins.variables(1).tp) match {
               case (NumberType.Rat, NumberType.Rat) =>
                 op_result = IrVar(IrStructTyped("", List(IrIntType.I64, IrIntType.I64)), fresh("op_result"))
                 inf match {
